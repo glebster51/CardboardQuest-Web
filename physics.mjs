@@ -9,6 +9,7 @@ export const LIMIT_Z = 9.1;
 export const PUCK_RADIUS = .8;
 export const COLLISION_RESTITUTION = .82;
 export const ATTACK_SPEED = 5;
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const ARENA_POINTS = Array.from({ length: 48 }, (_, index) => {
   const angle = index / 48 * Math.PI * 2;
   const radius = 1 + .035 * Math.sin(angle * 3 + .4) + .02 * Math.sin(angle * 7);
