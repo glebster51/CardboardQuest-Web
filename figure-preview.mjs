@@ -48,10 +48,13 @@ async function loadSubject(subject) {
     const unregisteredBack = backCtx.getImageData(0, 0, frame.width, frame.height).data;
     const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frame.width, frame.height);
     const backBounds = spriteAlphaBounds(backMask, frame.width, frame.height), registeredBack = document.createElement('canvas');
+    const cleanedBack = clipSpriteToAlphaMask(unregisteredBack, backMask), cleanBack = document.createElement('canvas');
+    cleanBack.width = frame.width; cleanBack.height = frame.height;
+    cleanBack.getContext('2d').putImageData(new ImageData(cleanedBack, frame.width, frame.height), 0, 0);
     const fittedBack = fitSpriteBounds(backBounds, neutralBounds);
     registeredBack.width = frame.width; registeredBack.height = frame.height;
     const registeredContext = registeredBack.getContext('2d', { willReadFrequently: true });
-    registeredContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
+    registeredContext.drawImage(cleanBack, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
       fittedBack.x, fittedBack.y, fittedBack.width, fittedBack.height);
     const backPixels = clipSpriteToAlphaMask(registeredContext.getImageData(0, 0, frame.width, frame.height).data, outline.rasterMask);
     backCtx.setTransform(1, 0, 0, 1, 0, 0); backCtx.clearRect(0, 0, frame.width, frame.height);

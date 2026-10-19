@@ -180,11 +180,14 @@ async function start() {
       const unregisteredBack = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
       const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frameWidth, frameHeight);
       const backBounds = spriteAlphaBounds(backMask, frameWidth, frameHeight);
+      const cleanedBackPixels = clipSpriteToAlphaMask(unregisteredBack, backMask), cleanBackCanvas = document.createElement('canvas');
+      cleanBackCanvas.width = frameWidth; cleanBackCanvas.height = frameHeight;
+      cleanBackCanvas.getContext('2d').putImageData(new ImageData(cleanedBackPixels, frameWidth, frameHeight), 0, 0);
       const fittedBack = fitSpriteBounds(backBounds, neutralBounds);
       const registeredBackCanvas = document.createElement('canvas');
       registeredBackCanvas.width = frameWidth; registeredBackCanvas.height = frameHeight;
       const registeredBackContext = registeredBackCanvas.getContext('2d', { willReadFrequently: true });
-      registeredBackContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
+      registeredBackContext.drawImage(cleanBackCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
         fittedBack.x, fittedBack.y, fittedBack.width, fittedBack.height);
       const registeredBack = registeredBackContext.getImageData(0, 0, frameWidth, frameHeight).data;
       const clippedBack = clipSpriteToAlphaMask(registeredBack, spriteGeometry.rasterMask);
