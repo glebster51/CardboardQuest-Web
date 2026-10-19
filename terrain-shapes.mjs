@@ -73,3 +73,16 @@ export function nearestPointOnPath(x, z, points) {
   return nearest;
 }
 
+export function containingTerrainLayer(x, z, boundaries) {
+  for (let layerIndex = 0; layerIndex < boundaries.length; layerIndex++) {
+    const boundary = boundaries[layerIndex];
+    let inside = false;
+    for (let a = 0, b = boundary.length - 1; a < boundary.length; b = a++) {
+      const p = boundary[a], q = boundary[b];
+      if ((p.z > z) !== (q.z > z) && x < (q.x - p.x) * (z - p.z) / (q.z - p.z) + p.x) inside = !inside;
+    }
+    if (inside) return layerIndex;
+  }
+  return -1;
+}
+

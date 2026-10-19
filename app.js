@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
-import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
+import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath, containingTerrainLayer } from './terrain-shapes.mjs?v=2';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
@@ -281,19 +281,6 @@ async function start() {
     cutContext.putImageData(cutData, 0, 0);
     return { cut, alphaPixels: cutData.data, width: cropWidth, height: cropHeight };
   }
-  function sceneryLayerIndex(x, z) {
-    let index = 0;
-    for (let i = 0; i < terrainBoundaries.length; i++) {
-      const boundary = terrainBoundaries[i];
-      let inside = false;
-      for (let a = 0, b = boundary.length - 1; a < boundary.length; b = a++) {
-        const p = boundary[a], q = boundary[b];
-        if ((p.z > z) !== (q.z > z) && x < (q.x - p.x) * (z - p.z) / (q.z - p.z) + p.x) inside = !inside;
-      }
-      if (inside) index = i;
-    }
-    return index;
-  }
   function loadSceneryTemplate(path) {
     if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
     const pending = (async () => {
@@ -312,8 +299,10 @@ async function start() {
   async function createScenery(path, x, z, size) {
     const template = await loadSceneryTemplate(path);
     const art = template.clone(true);
-    art.scale.setScalar(size / 2.05);
-    const layerIndex = sceneryLayerIndex(x, z);
+    // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
+    art.scale.set(size / 2.05, size / 2.05, 1);
+    const layerIndex = containingTerrainLayer(x, z, terrainBoundaries);
+    if (layerIndex < 0) return;
     const elevation = layerIndex * .28;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
     const inward = nearestPointOnPath(x, z, WALKABLE_POINTS);
@@ -351,6 +340,7 @@ async function start() {
     const typeRoll = growthRandom();
     const type = propTypes.find((item, index) => typeRoll < propTypes.slice(0, index + 1).reduce((sum, entry) => sum + entry.weight, 0)) || propTypes[0];
     const x = Math.cos(angle) * radius * 10.8, z = Math.sin(angle) * radius * 8.2;
+    if (containingTerrainLayer(x, z, terrainBoundaries) < 0) continue;
     if (radius < 1.35 && WALKABLE_POINTS.some(point => Math.hypot(point.x - x, point.z - z) < 1.1)) continue;
     const distanceScale = radius > 3.5 ? .64 : radius > 2.3 ? .82 : 1;
     sceneryPaths.push(createScenery(type.path, x, z, randomBetween(...type.size) * distanceScale));
