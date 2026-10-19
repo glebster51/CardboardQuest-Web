@@ -47,20 +47,39 @@ export function extractMainScenerySprite(image) {
   return { cut, alphaPixels: cutData.data, width: cropWidth, height: cropHeight };
 }
 
+function flipRgbaX(pixels, width, height) {
+  const flipped = new Uint8ClampedArray(pixels.length);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const source = (y * width + x) * 4, target = (y * width + width - 1 - x) * 4;
+    flipped.set(pixels.subarray(source, source + 4), target);
+  }
+  return flipped;
+}
+
+function flipCanvasX(source) {
+  const canvas = document.createElement('canvas'); canvas.width = source.width; canvas.height = source.height;
+  const context = canvas.getContext('2d'); context.translate(canvas.width, 0); context.scale(-1, 1); context.drawImage(source, 0, 0);
+  return canvas;
+}
+
 export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
   const sprite = extractMainScenerySprite(image);
   const frontTexture = new THREE.CanvasTexture(sprite.cut); frontTexture.colorSpace = THREE.SRGBColorSpace;
   // Each side gets its own accurate silhouette. Only one group is visible at
   // a time, so both sides share the same single cardboard thickness.
-  const backTexture = frontTexture;
+  const backCut = flipCanvasX(sprite.cut);
+  const backTexture = new THREE.CanvasTexture(backCut); backTexture.colorSpace = THREE.SRGBColorSpace;
   const anisotropy = Math.min(4, maxAnisotropy);
-  frontTexture.anisotropy = anisotropy;
+  frontTexture.anisotropy = backTexture.anisotropy = anisotropy;
   const shapes = silhouetteShapes(sprite.alphaPixels, sprite.width, sprite.height,
+    2.05 * sprite.width / sprite.height, 2.05).shapes;
+  const backAlphaPixels = flipRgbaX(sprite.alphaPixels, sprite.width, sprite.height);
+  const backShapes = silhouetteShapes(backAlphaPixels, sprite.width, sprite.height,
     2.05 * sprite.width / sprite.height, 2.05).shapes;
   const frontArt = makeExtrudedSprite(sprite.alphaPixels, sprite.width, sprite.height,
     frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
-  const backArt = makeExtrudedSprite(sprite.alphaPixels, sprite.width, sprite.height,
-    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
+  const backArt = makeExtrudedSprite(backAlphaPixels, sprite.width, sprite.height,
+    backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels);
   const group = new THREE.Group();
   frontArt.group.name = 'scenery-front';
   backArt.group.name = 'scenery-back';
@@ -70,5 +89,5 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
   return { ...frontArt, group, frontGroup: frontArt.group, backGroup: backArt.group,
     setViewBack(back) { frontArt.group.visible = !back; backArt.group.visible = back; },
     frontTexture, backTexture, width: sprite.width, height: sprite.height,
-    backFlipMatches: true, backTextureShared: true, singleExtrusion: true };
+    backFlipMatches: true, backTextureShared: false, singleExtrusion: true };
 }

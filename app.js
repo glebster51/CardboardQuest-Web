@@ -6,7 +6,7 @@ import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
-import { makeScenerySprite } from './scenery-model-v4.mjs?v=3';
+import { makeScenerySprite } from './scenery-model-v4.mjs?v=4';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
@@ -475,7 +475,7 @@ async function start() {
   };
   const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
   const sceneDetails = [
-    createScenery('assets/hero-house.png', 0, scaled(-2.4), 3.5, homeGroup, true, { fixedRadius: 1.2, base: true }),
+    createScenery('assets/hero-house.png', scaled(-2.4), scaled(-2.4), 3.5, homeGroup, true, { fixedRadius: 1.2, base: true }),
     populateForestEdge(locations.home, 10, 11),
     populateForestEdge(locations.forest, 36, 23),
     ...CAMP_HUT_ANCHORS.map(hut => createScenery('assets/env-troll-hut.png', scaled(hut.x), scaled(hut.z), 3.2,
