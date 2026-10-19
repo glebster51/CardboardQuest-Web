@@ -114,25 +114,37 @@ export function visitCampaignLocation(state, id) {
   return { firstVisit, location };
 }
 
+export function campaignCacheRewards(id) {
+  return id === 'stump-hollow' ? { berries: 2, scrap: 1 }
+    : id === 'squirrel-cache' ? { nuts: 2, hardtack: 1 }
+      : id === 'cave-cache' ? { bandage: 1, berries: 1 }
+        : id === 'herb-glen' ? { berries: 3, bandage: 1 }
+          : id === 'old-mill' ? { scrap: 2, hardtack: 1 }
+            : id === 'sunken-cart' ? { hardtack: 1, berries: 2 } : null;
+}
+
+/** Open a physical cache once and return its contents for world-space pickup. */
+export function openCampaignCache(state, id) {
+  const location = CAMPAIGN_BY_ID.get(id);
+  const rewards = campaignCacheRewards(id);
+  if (!location || state.currentLocationId !== id || location.options !== 'secret' || state.collected[id] || !rewards) return null;
+  state.seen[id] = true;
+  state.collected[id] = true;
+  if (id === 'stump-hollow') state.flags.foundButton = true;
+  if (id === 'herb-glen') state.flags.knowsOgreFear = true;
+  if (id === 'old-mill') state.flags.foundDiary = true;
+  if (id === 'sunken-cart') state.flags.foundToy = true;
+  return { title: location.title, text: location.scene, rewards };
+}
+
 export function inspectCampaignLocation(state, id = state.currentLocationId) {
   const location = CAMPAIGN_BY_ID.get(id);
   if (!location) return null;
+  if (location.options === 'secret') return {
+    title: location.title, text: 'Ударь шайбой по сундуку, чтобы открыть его.', options: [],
+  };
   if (state.collected[id]) return { title: location.title, text: 'Ты уже осмотрел это место.', options: [] };
   state.seen[id] = true;
-  if (location.options === 'secret') {
-    state.collected[id] = true;
-    const rewards = id === 'stump-hollow' ? { berries: 2, scrap: 1 }
-      : id === 'squirrel-cache' ? { nuts: 2, hardtack: 1 }
-        : id === 'cave-cache' ? { bandage: 1, berries: 1 }
-          : id === 'herb-glen' ? { berries: 3, bandage: 1 }
-            : id === 'old-mill' ? { scrap: 2, hardtack: 1 } : { hardtack: 1, berries: 2 };
-    addItems(state, rewards);
-    if (id === 'stump-hollow') state.flags.foundButton = true;
-    if (id === 'herb-glen') state.flags.knowsOgreFear = true;
-    if (id === 'old-mill') state.flags.foundDiary = true;
-    if (id === 'sunken-cart') state.flags.foundToy = true;
-    return { title: location.title, text: location.scene, reward: rewards, options: [] };
-  }
   return { title: location.title, text: location.scene, options: location.options };
 }
 

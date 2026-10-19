@@ -11,11 +11,12 @@ import { createTerrainHeightMap } from './terrain-shapes.mjs?v=5';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
-import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=2';
+import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=2';
 import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
-  consumeFood, createCampaignState, inspectCampaignLocation, visitCampaignLocation } from './game/story-campaign.mjs?v=1';
+  consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=2';
+import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=3';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
@@ -60,6 +61,7 @@ async function start() {
     location.initialized = stored.initialized ?? location.initialized;
     location.combatTriggered = stored.combatTriggered ?? location.combatTriggered;
     location.lastExitPositions = stored.lastExitPositions ?? location.lastExitPositions;
+    location.loot = normalizeWorldLoot(stored.loot);
   }
   heroBody.maxHealth = 20 + campaignState.maxHealthBonus;
   const playerStart = resolveCampaignPlayerStart(locations[campaignState.currentLocationId], {
@@ -74,6 +76,7 @@ async function start() {
     locations[campaignState.currentLocationId], savedCampaign.lastSafePosition)
     ? savedLastSafePosition : { ...playerStart.position };
   for (const location of Object.values(locations)) location.obstacles = [];
+  for (const location of Object.values(locations)) location.loot ??= [];
   let activeLocation = locations[campaignState.currentLocationId];
   const locationTitle = document.querySelector('#location-title');
   const locationDetail = document.querySelector('#location-detail');
@@ -469,6 +472,7 @@ async function start() {
       reinforcementQueue: (location.reinforcementQueue ?? []).map(due => Math.max(0, due - elapsed)), bossSpawned: location.bossSpawned,
       initialized: location.initialized, combatTriggered: location.combatTriggered,
       lastExitPositions: location.lastExitPositions,
+      loot: location.loot.map(({ id, itemId, x, z }) => ({ id, itemId, x, z })),
     }]));
     try { localStorage.setItem(CAMPAIGN_SAVE_KEY, JSON.stringify(campaignState)); } catch (error) {
       console.warn('Не удалось сохранить поход', error);
@@ -496,19 +500,99 @@ async function start() {
     location.reload();
   });
 
-  // Simple cardboard chests give secret caches a visible, consistent world-space cue.
+  const chestVisuals = new Map();
+  const worldItemVisuals = new Map();
   const chestMaterial = new THREE.MeshStandardMaterial({ color: 0x94623a, roughness: .78, map: paper });
   const chestLidMaterial = new THREE.MeshStandardMaterial({ color: 0xb18450, roughness: .72, map: paper });
   const chestLatchMaterial = new THREE.MeshStandardMaterial({ color: 0xd5b354, roughness: .38, metalness: .12 });
-  for (const location of Object.values(locations)) if (location.secret) {
-    const chest = new THREE.Group(); chest.name = `cache-${location.id}`;
-    const base = new THREE.Mesh(new THREE.BoxGeometry(.82, .38, .55), chestMaterial);
-    base.position.y = .22; base.castShadow = true; base.receiveShadow = true; chest.add(base);
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(.86, .17, .59), chestLidMaterial);
-    lid.position.y = .48; lid.castShadow = true; chest.add(lid);
-    const latch = new THREE.Mesh(new THREE.BoxGeometry(.12, .19, .04), chestLatchMaterial);
-    latch.position.set(0, .34, .3); chest.add(latch);
-    chest.position.set(0, 0, 0); location.sceneGroup.add(chest);
+  const lootColors = { berries: 0xe45148, hardtack: 0xe1bd63, jerky: 0x985437,
+    bandage: 0xf5e8c7, scrap: 0xd29a46, nuts: 0x91683a, bladeShard: 0x95b4ba };
+  const lootMaterials = new Map(Object.entries(lootColors).map(([id, color]) =>
+    [id, new THREE.MeshStandardMaterial({ color, roughness: .5, metalness: id === 'scrap' || id === 'bladeShard' ? .25 : 0,
+      emissive: color, emissiveIntensity: .12 })]));
+  const lootBeamMaterials = new Map();
+  const makeLootBeamMaterial = color => {
+    if (!lootBeamMaterials.has(color)) lootBeamMaterials.set(color, new THREE.MeshBasicMaterial({ color,
+      transparent: true, opacity: .24, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    return lootBeamMaterials.get(color);
+  };
+  function createLootVisual(location, item, source = null) {
+    const group = new THREE.Group();
+    group.name = item.id;
+    const material = lootMaterials.get(item.itemId);
+    const add = (geometry, x, y, z, scale = [1, 1, 1]) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z); mesh.scale.set(...scale); mesh.castShadow = true; mesh.receiveShadow = true;
+      group.add(mesh); return mesh;
+    };
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(.34, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffdf8a, transparent: true, opacity: .28, depthWrite: false }));
+    glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
+    const token = new THREE.Mesh(new THREE.CylinderGeometry(.24, .27, .095, 24),
+      new THREE.MeshStandardMaterial({ color: 0xe8d3a4, roughness: .83, map: paper }));
+    token.position.y = .07; token.receiveShadow = true; group.add(token);
+    if (item.itemId === 'berries') {
+      for (const [x, z] of [[-.075, -.035], [.065, -.025], [0, .075]])
+        add(new THREE.SphereGeometry(.085, 10, 8), x, .205, z);
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(.055, .11, 5),
+        new THREE.MeshStandardMaterial({ color: 0x668a43, roughness: .9 }));
+      leaf.position.set(0, .287, -.01); group.add(leaf);
+    } else if (item.itemId === 'hardtack') {
+      add(new THREE.CylinderGeometry(.15, .17, .085, 8), 0, .17, 0, [1.15, 1, .82]);
+    } else if (item.itemId === 'jerky') {
+      add(new THREE.BoxGeometry(.28, .085, .14), 0, .17, 0, [1, 1, 1]);
+    } else if (item.itemId === 'bandage') {
+      add(new THREE.BoxGeometry(.28, .075, .22), 0, .17, 0);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(.055, .082, .224),
+        new THREE.MeshStandardMaterial({ color: 0xb85842, roughness: .8 }));
+      stripe.position.set(0, .17, 0); group.add(stripe);
+    } else if (item.itemId === 'nuts') {
+      add(new THREE.SphereGeometry(.12, 10, 8), 0, .18, 0, [.78, 1.2, .85]);
+    } else {
+      add(new THREE.TetrahedronGeometry(.17, 0), 0, .2, 0, [1.2, .7, .65]);
+    }
+    const color = lootColors[item.itemId] ?? 0xffdf8a;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(.035, .2, 1.55, 16, 1, true), makeLootBeamMaterial(0xffd879));
+    beam.position.y = .98; group.add(beam);
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(.012, .045, 1.65, 12, 1, true), makeLootBeamMaterial(color));
+    core.material = core.material.clone(); core.material.opacity = .52; core.position.y = 1.03; group.add(core);
+    const spark = new THREE.Mesh(new THREE.SphereGeometry(.065, 10, 8), lootMaterials.get(item.itemId));
+    spark.position.y = 1.83; group.add(spark);
+    group.position.set(item.x, 0, item.z);
+    location.sceneGroup.add(group);
+    const visual = { group, beam, core, glow, spark, spawn: source ? { ...source, age: 0, duration: .62 } : null };
+    worldItemVisuals.set(item.id, visual);
+    return visual;
+  }
+  function makeCacheBody(location) {
+    const position = location.cachePosition ?? { x: scaled(3.4), z: 0 };
+    const body = { id: `cache-${location.id}`, kind: 'cache-chest', team: 'neutral', locationId: location.id,
+      x: position.x, z: position.z, vx: 0, vz: 0, radius: 1.12, fixed: true, opened: false };
+    location.cacheBody = body;
+    if (campaignState.collected[location.id]) return;
+    location.obstacles.push(body);
+    const group = new THREE.Group(); group.name = body.id;
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.22, 48), ambientShadowMaterial);
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = .008; group.add(shadow);
+    const puck = new THREE.Mesh(new THREE.CylinderGeometry(body.radius, body.radius, .2, 64), [
+      new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ map: paper, roughness: .96, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
+    ]);
+    puck.position.y = .1; puck.castShadow = true; puck.receiveShadow = true; group.add(puck);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(.98, .42, .7), chestMaterial);
+    box.position.y = .4; box.castShadow = true; box.receiveShadow = true; group.add(box);
+    const lidPivot = new THREE.Group(); lidPivot.position.set(0, .61, -.35); group.add(lidPivot);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(1.04, .16, .78), chestLidMaterial);
+    lid.position.set(0, .06, .37); lid.castShadow = true; lidPivot.add(lid);
+    const latch = new THREE.Mesh(new THREE.BoxGeometry(.13, .2, .04), chestLatchMaterial);
+    latch.position.set(0, .39, .36); group.add(latch);
+    group.position.set(body.x, 0, body.z); location.sceneGroup.add(group);
+    chestVisuals.set(location.id, { body, group, lidPivot });
+  }
+  for (const location of Object.values(locations)) {
+    if (location.secret) makeCacheBody(location);
+    for (const item of location.loot) createLootVisual(location, item);
   }
 
   function refreshLocationInfo() {
@@ -662,6 +746,69 @@ async function start() {
     });
     bursts.push({ group, ring, dots, material, age: 0, strength });
   }
+  function spawnWorldLoot(location, sourceId, x, z, rewards) {
+    if (!location || !rewards) return [];
+    const drops = scatterWorldLoot({ sourceId, x, z, rewards,
+      isInside: (px, pz) => pointInWalkableArea(px, pz, location.walkablePoints),
+      spread: [1.15, 2.65] });
+    location.loot.push(...drops);
+    for (const item of drops) createLootVisual(location, item, { x, z });
+    return drops;
+  }
+  function openCache(body) {
+    if (body.opened || body.locationId !== activeLocation.id) return false;
+    const result = openCampaignCache(campaignState, body.locationId);
+    if (!result) return false;
+    body.opened = true;
+    activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== body);
+    const visual = chestVisuals.get(activeLocation.id);
+    if (visual) visual.lidPivot.rotation.x = -1.1;
+    spawnWorldLoot(activeLocation, body.id, body.x, body.z, result.rewards);
+    rebuildBodies();
+    burst(body.x, body.z, 1.2);
+    vibrate(28);
+    persistCampaign();
+    refreshLocationInfo();
+    return true;
+  }
+  function updateWorldLoot(dt) {
+    for (const item of [...activeLocation.loot]) {
+      let visual = worldItemVisuals.get(item.id);
+      if (!visual) visual = createLootVisual(activeLocation, item);
+      if (visual.spawn) {
+        visual.spawn.age += dt;
+        const t = Math.min(1, visual.spawn.age / visual.spawn.duration);
+        const eased = 1 - (1 - t) ** 3;
+        visual.group.position.set(
+          visual.spawn.x + (item.x - visual.spawn.x) * eased,
+          Math.sin(t * Math.PI) * .9,
+          visual.spawn.z + (item.z - visual.spawn.z) * eased,
+        );
+        visual.group.rotation.y += dt * 5;
+        if (t >= 1) { visual.group.position.y = 0; visual.spawn = null; }
+      } else {
+        visual.group.position.set(item.x, 0, item.z);
+        visual.group.rotation.y += dt * .45;
+      }
+      const pulse = .82 + Math.sin(elapsed * 3.4 + item.x * 2 + item.z) * .12;
+      visual.beam.scale.y = pulse;
+      visual.beam.position.y = .2 + .78 * pulse;
+      visual.core.scale.y = pulse;
+      visual.core.position.y = .2 + .83 * pulse;
+      visual.spark.position.y = 1.66 * pulse + .16;
+      visual.glow.material.opacity = .2 + (Math.sin(elapsed * 4 + item.z) + 1) * .07;
+      if (heroBody.health <= 0 || Math.hypot(heroBody.x - item.x, heroBody.z - item.z) > PUCK_RADIUS + .35) continue;
+      const pickup = takeWorldLoot(activeLocation.loot, item.id);
+      if (!pickup) continue;
+      activeLocation.sceneGroup.remove(visual.group);
+      worldItemVisuals.delete(item.id);
+      addItems(campaignState, { [pickup.itemId]: 1 });
+      renderInventory();
+      burst(item.x, item.z, .48);
+      vibrate(16);
+      persistCampaign();
+    }
+  }
   function damage(target, damageQuarters, speed) {
     if (target.hitCooldown > 0 || target.health <= 0) return false;
     const rawDamage = Math.max(1, Math.trunc(damageQuarters));
@@ -685,9 +832,7 @@ async function start() {
     }
     if (target.team === 'enemy' && target.health === 0 && !target.lootDropped) {
       target.lootDropped = true;
-      const drop = Math.random() < .65 ? { berries: 1 } : Math.random() < .8 ? { hardtack: 1 } : { jerky: 1 };
-      addItems(campaignState, drop);
-      renderInventory();
+      spawnWorldLoot(locations[target.locationId], target.id, target.x, target.z, rollEnemyLoot());
     }
     persistCampaign();
     return true;
@@ -719,7 +864,12 @@ async function start() {
     if (b) {
       let playerDealtDamage = false, playerTookDamage = false;
       const attackHit = (attacker, target) => {
-        if (attacker.fixed || target.fixed) return;
+        if (attacker.fixed) return;
+        if (target.kind === 'cache-chest') {
+          if (attacker.team === 'player' && attacker.health > 0) openCache(target);
+          return;
+        }
+        if (target.fixed) return;
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
         const bonus = attacker.team === 'player' ? campaignState.damageBonus : 0;
         if (!damage(target, ricochetDamageQuarters(attacker.attackRicochets || 0) + bonus, speed)) return;
@@ -937,6 +1087,7 @@ async function start() {
       });
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
+    updateWorldLoot(dt);
     if (isCampaignPositionSafe(activeLocation, heroBody)) heroBody.lastSafePosition = { x: heroBody.x, z: heroBody.z };
     for (const figure of figures) {
       if (figure.poolDormant) continue;
@@ -1056,8 +1207,8 @@ async function start() {
       if (exit) enterLocation(exit.to, activeLocation.id);
     }
     const nearInteraction = heroBody.health > 0 && Math.hypot(heroBody.x, heroBody.z) <= 2.65;
-    interactButton.hidden = !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive;
-    interactButton.textContent = activeLocation.secret ? 'Открыть тайник' : 'Осмотреть';
+    interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive;
+    interactButton.textContent = 'Осмотреть';
     playerMarker.material.color.lerp(
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
       1 - Math.exp(-18 * dt));
