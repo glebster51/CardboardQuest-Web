@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS } from './physics.mjs?v=12';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS } from './physics.mjs?v=13';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -76,6 +76,74 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
     const next = points[(index + 1) % points.length];
     return sum + point.x * next.y - next.x * point.y;
   }, 0) / 2;
+  const simplifyOpen = (path, tolerance) => {
+    if (path.length <= 2) return path;
+    const keep = new Uint8Array(path.length);
+    keep[0] = keep[path.length - 1] = 1;
+    const stack = [[0, path.length - 1]];
+    const toleranceSquared = tolerance * tolerance;
+    while (stack.length) {
+      const [first, last] = stack.pop();
+      const a = path[first], b = path[last];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      let furthest = toleranceSquared, furthestIndex = -1;
+      for (let i = first + 1; i < last; i++) {
+        const point = path[i];
+        const t = lengthSquared > 1e-12
+          ? THREE.MathUtils.clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1) : 0;
+        const distanceSquared = (point.x - (a.x + dx * t)) ** 2 + (point.y - (a.y + dy * t)) ** 2;
+        if (distanceSquared > furthest) { furthest = distanceSquared; furthestIndex = i; }
+      }
+      if (furthestIndex >= 0) {
+        keep[furthestIndex] = 1;
+        stack.push([first, furthestIndex], [furthestIndex, last]);
+      }
+    }
+    return path.filter((_point, index) => keep[index]);
+  };
+  const simplifyClosed = (points, tolerance) => {
+    if (points.length <= 8) return points;
+    const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector2()).multiplyScalar(1 / points.length);
+    let start = 0, farthest = 0;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i].distanceToSquared(center) > farthest) { farthest = points[i].distanceToSquared(center); start = i; }
+    }
+    let end = start, diameterSquared = 0;
+    for (let i = 0; i < points.length; i++) {
+      const distanceSquared = points[i].distanceToSquared(points[start]);
+      if (distanceSquared > diameterSquared) { diameterSquared = distanceSquared; end = i; }
+    }
+    const arc = (from, to) => {
+      const result = [];
+      for (let i = from; ; i = (i + 1) % points.length) {
+        result.push(points[i]);
+        if (i === to) return result;
+      }
+    };
+    const first = simplifyOpen(arc(start, end), tolerance);
+    const second = simplifyOpen(arc(end, start), tolerance);
+    const result = [...first.slice(0, -1), ...second.slice(0, -1)];
+    return result.length >= 3 ? result : points;
+  };
+  // Keep each printed contour near 3.2x the puck's 80-segment rim budget.
+  const contourPointBudget = 256;
+  let tolerance = Math.max(worldWidth, worldHeight) / 128 * .75;
+  let simplifiedLoops = loops;
+  for (let attempt = 0; attempt < 16; attempt++) {
+    simplifiedLoops = loops.map(points => simplifyClosed(points, tolerance));
+    if (simplifiedLoops.reduce((total, points) => total + points.length, 0) <= contourPointBudget) break;
+    tolerance *= 1.4;
+  }
+  if (simplifiedLoops.reduce((total, points) => total + points.length, 0) > contourPointBudget) {
+    const kept = [];
+    let usedPoints = 0;
+    for (const points of [...simplifiedLoops].sort((a, b) => Math.abs(area(b)) - Math.abs(area(a)))) {
+      if (usedPoints + points.length > contourPointBudget) continue;
+      kept.push(points); usedPoints += points.length;
+    }
+    simplifiedLoops = kept;
+  }
   const contains = (point, polygon) => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -84,7 +152,7 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
     }
     return inside;
   };
-  const entries = loops.map(points => ({ points, area: Math.abs(area(points)), parent: null, depth: 0 }))
+  const entries = simplifiedLoops.map(points => ({ points, area: Math.abs(area(points)), parent: null, depth: 0 }))
     .sort((a, b) => b.area - a.area);
   for (let i = 0; i < entries.length; i++) {
     for (let j = 0; j < i; j++) if (contains(entries[i].points[0], entries[j].points)) {
