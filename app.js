@@ -174,9 +174,15 @@ async function start() {
     const sourceWidth = maxX - minX + 1, sourceHeight = maxY - minY + 1;
     const scale = Math.min(120 / sourceWidth, 120 / sourceHeight);
     const drawWidth = sourceWidth * scale, drawHeight = sourceHeight * scale;
-    return texture(128, 128, context => context.drawImage(heartAtlasImage,
-      minX, minY, sourceWidth, sourceHeight,
-      (128 - drawWidth) / 2, (128 - drawHeight) / 2, drawWidth, drawHeight));
+    return texture(128, 128, context => {
+      context.save();
+      context.translate(128, 0);
+      context.scale(-1, 1);
+      context.drawImage(heartAtlasImage,
+        minX, minY, sourceWidth, sourceHeight,
+        (128 - drawWidth) / 2, (128 - drawHeight) / 2, drawWidth, drawHeight);
+      context.restore();
+    });
   });
   const heartMaterials = heartTextures.map(map => new THREE.MeshBasicMaterial({ map, transparent: true,
     side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
