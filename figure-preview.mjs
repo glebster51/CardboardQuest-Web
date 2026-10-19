@@ -26,7 +26,7 @@ const paper = new THREE.CanvasTexture(paperCanvas); paper.colorSpace = THREE.SRG
 const built = new Map(), cells = [];
 
 async function loadSubject(subject) {
-  const backTexture = await loader.loadAsync(`assets/${subject.back}`);
+  const backTexture = await loader.loadAsync(`assets/${subject.back}?v=2`);
   const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png`)));
   const frame = validateSpriteFrames(textures.map(texture => texture.image), backTexture.image);
   const neutralCanvas = document.createElement('canvas'); neutralCanvas.width = frame.width; neutralCanvas.height = frame.height;

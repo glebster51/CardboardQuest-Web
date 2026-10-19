@@ -148,7 +148,7 @@ async function start() {
     slot.position.y = .219; group.add(slot);
 
     const loader = new THREE.TextureLoader();
-    const backTexture = await loader.loadAsync(backPath);
+    const backTexture = await loader.loadAsync(`${backPath}?v=2`);
     const artStates = {};
     const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png`)));
     const frame = validateSpriteFrames(sources.map(source => source.image), backTexture.image);
