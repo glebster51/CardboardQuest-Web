@@ -72,28 +72,37 @@ async function loadAssets() {
     const baseTop = layout.baseTop;
     const artBottom = model.group.position.y - asset.height / 2;
     const flipMatches = model.backFlipMatches;
+    const visibleExtrusions = Number(model.frontGroup.visible) + Number(model.backGroup.visible);
     audit.push({ id: asset.id, views: 4, extrusionDepth: depth * layout.scale,
       baseRadius: asset.radius ?? 0, baseTop, artBottom, groundGap: artBottom - baseTop,
-      backFlipMatches: flipMatches, backTextureShared: model.backTextureShared, singleExtrusion: model.singleExtrusion });
+      backFlipMatches: flipMatches, backTextureShared: model.backTextureShared,
+      singleExtrusion: model.singleExtrusion, visibleExtrusions });
     if (!flipMatches) throw new Error(`${asset.label}: задняя сторона не совпадает со спрайтом, отражённым по X (audit=${String(flipMatches)})`);
+    if (visibleExtrusions !== 1) throw new Error(`${asset.label}: одновременно видны две толщины картона`);
     if (Math.abs(artBottom - baseTop) > 1e-8) throw new Error(`${asset.label}: основание проваливается или висит над шайбой`);
   }
 }
 
 function render() {
   const ratio = renderer.getPixelRatio(), bounds = renderer.domElement.getBoundingClientRect();
+  const activeExtrusions = Object.fromEntries(assets.map(asset => [asset.id, []]));
   renderer.setSize(sheet.clientWidth, sheet.clientHeight, false); renderer.setScissorTest(true);
   for (const { cell, asset, view } of cells) {
     const r = cell.getBoundingClientRect(), x = Math.round((r.left - bounds.left) * ratio), y = Math.round((bounds.bottom - r.bottom) * ratio);
     const w = Math.round(r.width * ratio), h = Math.round(r.height * ratio);
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, true);
-    const model = models.get(asset.id); model.root.rotation.y = view.angle; scene.add(model.root);
+    const model = models.get(asset.id); model.root.rotation.y = view.angle; model.model.setViewBack(view.angle > Math.PI / 2);
+    const visibleExtrusions = Number(model.model.frontGroup.visible) + Number(model.model.backGroup.visible);
+    activeExtrusions[asset.id].push(visibleExtrusions);
+    if (visibleExtrusions !== 1) throw new Error(`${asset.label} (${view.label}): одновременно видны две толщины картона`);
+    scene.add(model.root);
     const aspect = r.width / r.height, halfHeight = 2.1;
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect; camera.top = halfHeight; camera.bottom = -halfHeight;
     camera.position.set(0, 3.1, 8); camera.lookAt(0, 1.5, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
     renderer.render(scene, camera); scene.remove(model.root);
   }
   renderer.setScissorTest(false);
+  for (const item of audit) item.activeExtrusionsPerView = activeExtrusions[item.id];
   status.textContent = `Готово: ${audit.length} фишек отрисованы в четырёх ракурсах; шайбы, толщина и зеркальные задники проверены.`;
   auditElement.textContent = JSON.stringify({ ok: true, models: audit });
 }

@@ -370,6 +370,7 @@ async function start() {
     return figure;
   }
   const sceneryTemplates = new Map();
+  const sceneryFacePairs = [];
   function loadSceneryTemplate(path) {
     if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
     const pending = (async () => {
@@ -409,6 +410,7 @@ async function start() {
     }
     const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);
     prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
+    sceneryFacePairs.push({ prop, front: art.getObjectByName('scenery-front'), back: art.getObjectByName('scenery-back') });
     parent.add(prop);
     return prop;
   }
@@ -1099,6 +1101,12 @@ async function start() {
       1 - Math.exp(-18 * dt));
     playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
     updateCamera();
+    for (const { prop, front, back } of sceneryFacePairs) {
+      const dx = camera.position.x - prop.position.x, dz = camera.position.z - prop.position.z;
+      const cameraOnFront = dx * Math.sin(prop.rotation.y) + dz * Math.cos(prop.rotation.y) >= 0;
+      front.visible = cameraOnFront;
+      back.visible = !cameraOnFront;
+    }
     for (const figure of figures) {
       if (figure.body !== heroBody && figure.locationId !== activeLocation.id) continue;
       figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);

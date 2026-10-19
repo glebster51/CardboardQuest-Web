@@ -50,22 +50,25 @@ export function extractMainScenerySprite(image) {
 export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
   const sprite = extractMainScenerySprite(image);
   const frontTexture = new THREE.CanvasTexture(sprite.cut); frontTexture.colorSpace = THREE.SRGBColorSpace;
-  // The back is viewed from the opposite side of the same physical cutout, so
-  // its projection already mirrors the image. Reusing the source texture avoids
-  // cancelling that flip and keeps one shared cardboard extrusion.
+  // Each side gets its own accurate silhouette. Only one group is visible at
+  // a time, so both sides share the same single cardboard thickness.
   const backTexture = frontTexture;
   const anisotropy = Math.min(4, maxAnisotropy);
   frontTexture.anisotropy = anisotropy;
-  const symmetricAlpha = new Uint8ClampedArray(sprite.alphaPixels.length);
-  for (let y = 0; y < sprite.height; y++) for (let x = 0; x < sprite.width; x++) {
-    const left = (y * sprite.width + x) * 4 + 3, right = (y * sprite.width + sprite.width - 1 - x) * 4 + 3;
-    symmetricAlpha[left] = Math.max(sprite.alphaPixels[left], sprite.alphaPixels[right]);
-  }
-  const art = makeExtrudedSprite(symmetricAlpha, sprite.width, sprite.height,
-    frontTexture, backTexture, corrugation, false,
-    silhouetteShapes(symmetricAlpha, sprite.width, sprite.height,
-      2.05 * sprite.width / sprite.height, 2.05).shapes,
-    sprite.alphaPixels);
-  return { ...art, frontTexture, backTexture, width: sprite.width, height: sprite.height,
+  const shapes = silhouetteShapes(sprite.alphaPixels, sprite.width, sprite.height,
+    2.05 * sprite.width / sprite.height, 2.05).shapes;
+  const frontArt = makeExtrudedSprite(sprite.alphaPixels, sprite.width, sprite.height,
+    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
+  const backArt = makeExtrudedSprite(sprite.alphaPixels, sprite.width, sprite.height,
+    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
+  const group = new THREE.Group();
+  frontArt.group.name = 'scenery-front';
+  backArt.group.name = 'scenery-back';
+  backArt.group.rotation.y = Math.PI;
+  backArt.group.visible = false;
+  group.add(frontArt.group, backArt.group);
+  return { ...frontArt, group, frontGroup: frontArt.group, backGroup: backArt.group,
+    setViewBack(back) { frontArt.group.visible = !back; backArt.group.visible = back; },
+    frontTexture, backTexture, width: sprite.width, height: sprite.height,
     backFlipMatches: true, backTextureShared: true, singleExtrusion: true };
 }
