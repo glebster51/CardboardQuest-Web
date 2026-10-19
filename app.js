@@ -137,23 +137,61 @@ async function start() {
   const heartPath = context => {
     context.beginPath();
     context.moveTo(64, 113);
-    context.bezierCurveTo(54, 104, 12, 72, 12, 43);
-    context.bezierCurveTo(12, 19, 42, 10, 64, 35);
-    context.bezierCurveTo(86, 10, 116, 19, 116, 43);
-    context.bezierCurveTo(116, 72, 74, 104, 64, 113);
+    context.bezierCurveTo(52, 104, 22, 86, 13, 61);
+    context.bezierCurveTo(3, 34, 22, 13, 43, 20);
+    context.bezierCurveTo(54, 23, 61, 33, 64, 42);
+    context.bezierCurveTo(73, 20, 91, 12, 103, 27);
+    context.bezierCurveTo(119, 52, 105, 83, 64, 113);
     context.closePath();
   };
   const heartTextures = Array.from({ length: 5 }, (_, quarters) => texture(128, 128, (context) => {
+    // Build a rounded, glossy red heart; only its silhouette comes from the sketch.
+    context.save(); context.translate(2, 4); heartPath(context);
+    context.fillStyle = 'rgba(52, 8, 15, .48)'; context.shadowColor = 'rgba(35, 5, 8, .35)';
+    context.shadowBlur = 5; context.fill(); context.restore();
+
     context.save(); heartPath(context); context.clip();
-    context.fillStyle = '#eee0c1'; context.fillRect(0, 0, 128, 128);
+    const empty = context.createLinearGradient(0, 15, 0, 116);
+    empty.addColorStop(0, '#7c1824'); empty.addColorStop(.48, '#55101b'); empty.addColorStop(1, '#310b13');
+    context.fillStyle = empty; context.fillRect(0, 0, 128, 128);
+
     if (quarters > 0) {
-      context.fillStyle = '#d9473d'; context.fillRect(0, 0, 128 * quarters / 4, 128);
-      context.fillStyle = '#f68569'; context.globalAlpha = .48;
-      context.fillRect(0, 0, 128 * quarters / 4, 18);
+      const fillStart = [128, 96, 64, 32, 0][quarters];
+      context.save(); context.beginPath(); context.rect(fillStart, 0, 128 - fillStart, 128); context.clip();
+      const red = context.createLinearGradient(12, 12, 108, 112);
+      red.addColorStop(0, '#ff8375'); red.addColorStop(.24, '#f4434d');
+      red.addColorStop(.62, '#d91f35'); red.addColorStop(1, '#8e1027');
+      context.fillStyle = red; context.fillRect(0, 0, 128, 128);
+      const glow = context.createRadialGradient(39, 34, 2, 48, 47, 67);
+      glow.addColorStop(0, 'rgba(255, 231, 202, .76)');
+      glow.addColorStop(.24, 'rgba(255, 142, 120, .42)'); glow.addColorStop(1, 'rgba(255, 80, 80, 0)');
+      context.fillStyle = glow; context.fillRect(0, 0, 128, 128);
+      context.restore();
     }
+
+    // A soft lower bevel and a broad upper-left gleam make the icon read as raised.
+    context.save();
+    const bevel = context.createLinearGradient(0, 72, 0, 120);
+    bevel.addColorStop(0, 'rgba(58, 5, 17, 0)'); bevel.addColorStop(1, 'rgba(48, 4, 14, .44)');
+    context.fillStyle = bevel; context.fillRect(0, 68, 128, 60);
     context.restore();
-    context.lineJoin = 'round'; context.lineWidth = 9; context.strokeStyle = '#553421'; heartPath(context); context.stroke();
-    context.lineJoin = 'round'; context.lineWidth = 3; context.strokeStyle = '#f8e9c8'; heartPath(context); context.stroke();
+    context.restore();
+
+    context.lineJoin = 'round'; context.lineCap = 'round'; context.lineWidth = 8;
+    context.strokeStyle = '#390b16'; heartPath(context); context.stroke();
+    context.lineWidth = 3.2; context.strokeStyle = '#ffb09a'; context.globalAlpha = .9;
+    context.save(); context.translate(-1.4, -1.5); heartPath(context); context.stroke(); context.restore();
+    context.globalAlpha = 1;
+
+    if (quarters > 0) {
+      const fillStart = [128, 96, 64, 32, 0][quarters];
+      context.save(); context.beginPath(); context.rect(fillStart, 0, 128 - fillStart, 128); context.clip();
+      context.fillStyle = 'rgba(255, 245, 220, .76)';
+      context.beginPath(); context.ellipse(39, 31, 15, 7, -.48, 0, Math.PI * 2); context.fill();
+      context.fillStyle = 'rgba(255, 220, 193, .4)';
+      context.beginPath(); context.ellipse(48, 43, 8, 3.2, -.48, 0, Math.PI * 2); context.fill();
+      context.restore();
+    }
   }));
   const heartMaterials = heartTextures.map(map => new THREE.MeshBasicMaterial({ map, transparent: true,
     side: THREE.DoubleSide, depthWrite: false }));
