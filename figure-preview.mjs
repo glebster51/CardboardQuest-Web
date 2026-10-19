@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=1';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=2';
 import { validateSpriteFrames, spriteAlphaBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=4';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
@@ -29,11 +29,16 @@ async function loadSubject(subject) {
   const backTexture = await loader.loadAsync(`assets/${subject.back}`);
   const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png`)));
   const frame = validateSpriteFrames(textures.map(texture => texture.image), backTexture.image);
+  const neutralCanvas = document.createElement('canvas'); neutralCanvas.width = frame.width; neutralCanvas.height = frame.height;
+  const neutralCtx = neutralCanvas.getContext('2d', { willReadFrequently: true });
+  neutralCtx.drawImage(textures[states.indexOf('idle')].image, 0, 0, frame.width, frame.height);
+  const neutralPixels = neutralCtx.getImageData(0, 0, frame.width, frame.height).data;
+  const neutralBounds = spriteAlphaBounds(unionSpriteAlpha(neutralPixels, neutralPixels, frame.width, frame.height), frame.width, frame.height);
   for (let si = 0; si < states.length; si++) {
     const source = textures[si], canvas = document.createElement('canvas'); canvas.width = frame.width; canvas.height = frame.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source.image, 0, 0, frame.width, frame.height);
     const pixels = ctx.getImageData(0, 0, frame.width, frame.height).data;
-    const cleaned = unionSpriteAlpha(pixels, pixels, frame.width, frame.height), frontBounds = spriteAlphaBounds(cleaned, frame.width, frame.height);
+    const cleaned = unionSpriteAlpha(pixels, pixels, frame.width, frame.height);
     const worldWidth = 2.05 * frame.width / frame.height;
     const outline = silhouetteShapes(cleaned, frame.width, frame.height, worldWidth, 2.05), frontPixels = clipSpriteToAlphaMask(pixels, outline.rasterMask);
     ctx.putImageData(new ImageData(frontPixels, frame.width, frame.height), 0, 0);
@@ -46,7 +51,7 @@ async function loadSubject(subject) {
     registeredBack.width = frame.width; registeredBack.height = frame.height;
     const registeredContext = registeredBack.getContext('2d', { willReadFrequently: true });
     registeredContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
-      frontBounds.x, frontBounds.y, frontBounds.width, frontBounds.height);
+      neutralBounds.x, neutralBounds.y, neutralBounds.width, neutralBounds.height);
     const backPixels = clipSpriteToAlphaMask(registeredContext.getImageData(0, 0, frame.width, frame.height).data, outline.rasterMask);
     backCtx.setTransform(1, 0, 0, 1, 0, 0); backCtx.clearRect(0, 0, frame.width, frame.height);
     backCtx.putImageData(new ImageData(backPixels, frame.width, frame.height), 0, 0);

@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { traceSpriteContours } from './sprite-geometry.mjs?v=3';
+import { traceSpriteContours } from './sprite-geometry.mjs?v=4';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);
@@ -39,7 +39,7 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
 }
 
 export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
-  const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = .144;
+  const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = .075;
   const uv = (vertices, index) => new THREE.Vector2(vertices[index * 3] / worldWidth + .5, vertices[index * 3 + 1] / worldHeight + .5);
   const uvGenerator = {
     generateTopUV(_geometry, vertices, a, b, c) { return [uv(vertices, a), uv(vertices, b), uv(vertices, c)]; },
@@ -64,9 +64,9 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.FrontSide, ...stencil });
   const body = new THREE.Mesh(sideGeometry, sideMaterial); body.castShadow = true; body.userData.sideWall = true;
   const capGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight), frontCap = new THREE.Mesh(capGeometry, frontMaterial);
-  frontCap.position.z = depth / 2 + .003; frontCap.castShadow = true; frontCap.userData.print = true;
+  frontCap.position.z = depth / 2 + .001; frontCap.castShadow = true; frontCap.userData.print = true;
   const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight), new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, ...stencil }));
-  backPlane.position.z = -depth / 2 - .003; backPlane.userData.print = true;
+  backPlane.position.z = -depth / 2 - .001; backPlane.userData.print = true;
   const flashGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight), whiteMask = document.createElement('canvas'); whiteMask.width = width; whiteMask.height = height;
   const whiteContext = whiteMask.getContext('2d'); whiteContext.fillStyle = '#fff'; whiteContext.fillRect(0, 0, width, height);
   const alphaCanvas = document.createElement('canvas'); alphaCanvas.width = width; alphaCanvas.height = height;
@@ -83,7 +83,7 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   backWhiteContext.globalCompositeOperation = 'destination-in'; backWhiteContext.drawImage(backAlphaCanvas, 0, 0);
   const backFlashTexture = new THREE.CanvasTexture(backWhiteMask), backFlashMaterial = new THREE.MeshBasicMaterial({ map: backFlashTexture, transparent: true, opacity: 0, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false, ...stencil });
   const backFlash = new THREE.Mesh(flashGeometry, backFlashMaterial);
-  frontFlash.position.z = depth / 2 + .005; backFlash.position.z = -depth / 2 - .005; frontFlash.userData.print = backFlash.userData.print = true;
+  frontFlash.position.z = depth / 2 + .002; backFlash.position.z = -depth / 2 - .002; frontFlash.userData.print = backFlash.userData.print = true;
   const group = new THREE.Group(); group.add(body, frontCap, backPlane, frontFlash, backFlash);
   return { group, body, geometry: sideGeometry, frontMaterial, sideMaterial, frontCap, backPlane, flashMaterial, flashTexture, backFlashMaterial, backFlashTexture, alphaPixels, width, height };
 }

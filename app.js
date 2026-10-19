@@ -153,6 +153,11 @@ async function start() {
     const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png`)));
     const frame = validateSpriteFrames(sources.map(source => source.image), backTexture.image);
     const frameWidth = frame.width, frameHeight = frame.height;
+    const neutralCanvas = document.createElement('canvas'); neutralCanvas.width = frameWidth; neutralCanvas.height = frameHeight;
+    const neutralContext = neutralCanvas.getContext('2d', { willReadFrequently: true });
+    neutralContext.drawImage(sources[VISUAL_STATES.indexOf('idle')].image, 0, 0, frameWidth, frameHeight);
+    const neutralPixels = neutralContext.getImageData(0, 0, frameWidth, frameHeight).data;
+    const neutralBounds = spriteAlphaBounds(unionSpriteAlpha(neutralPixels, neutralPixels, frameWidth, frameHeight), frameWidth, frameHeight);
     for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
       const visualState = VISUAL_STATES[stateIndex], source = sources[stateIndex], image = source.image;
       const sourceCanvas = document.createElement('canvas');
@@ -162,7 +167,6 @@ async function start() {
       const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
       const cleanedMask = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
-      const frontBounds = spriteAlphaBounds(cleanedMask, frameWidth, frameHeight);
       const worldWidth = 2.05 * frameWidth / frameHeight;
       const spriteGeometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
       const alphaPixels = clipSpriteToAlphaMask(sourcePixels, spriteGeometry.rasterMask);
@@ -180,7 +184,7 @@ async function start() {
       registeredBackCanvas.width = frameWidth; registeredBackCanvas.height = frameHeight;
       const registeredBackContext = registeredBackCanvas.getContext('2d', { willReadFrequently: true });
       registeredBackContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
-        frontBounds.x, frontBounds.y, frontBounds.width, frontBounds.height);
+        neutralBounds.x, neutralBounds.y, neutralBounds.width, neutralBounds.height);
       const registeredBack = registeredBackContext.getImageData(0, 0, frameWidth, frameHeight).data;
       const clippedBack = clipSpriteToAlphaMask(registeredBack, spriteGeometry.rasterMask);
       backContext.setTransform(1, 0, 0, 1, 0, 0); backContext.clearRect(0, 0, frameWidth, frameHeight);
