@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advance, facingAngle, LIMIT_X, LIMIT_Z, MAX_PULL } from './physics.mjs';
+import { clampPull, launch, advance, facingAngle, LIMIT_X, LIMIT_Z, MAX_PULL } from './physics.mjs?v=2';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
