@@ -94,6 +94,7 @@ function render() {
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, true);
     const model = built.get(`${subject.id}:${state}`); scene.add(model.group);
     model.art.group.rotation.set(0, view.angle, 0); model.art.group.updateMatrix(); model.art.group.updateMatrixWorld(true);
+    model.art.backPlane.visible = view.angle > Math.PI / 2;
     const aspect = r.width / r.height, halfHeight = 1.58;
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect; camera.top = halfHeight; camera.bottom = -halfHeight;
     camera.position.set(0, 2.5, 8); camera.lookAt(0, 1.16, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();

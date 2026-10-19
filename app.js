@@ -689,6 +689,9 @@ async function start() {
         figure.facing = facingAngle(body.vx, body.vz, figure.facing);
       }
       if (body.health > 0) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
+      const cameraDx = camera.position.x - figure.group.position.x, cameraDz = camera.position.z - figure.group.position.z;
+      const cameraOnBack = cameraDx * Math.sin(figure.group.rotation.y) + cameraDz * Math.cos(figure.group.rotation.y) < 0;
+      for (const art of Object.values(figure.artStates)) art.backPlane.visible = cameraOnBack;
       figure.hitAge += dt;
       figure.hurtAge += dt;
       figure.dealDamageAge += dt;
