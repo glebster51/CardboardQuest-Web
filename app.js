@@ -4,15 +4,16 @@ import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v
 import { createTerrainPeaks, createTerrainHeightMap, extractTerrainContours, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
+import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
 const bodies = [
-  { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] },
-  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
-  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
-  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
+  { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0, health: 20, maxHealth: 20, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] },
+  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 32, maxHealth: 32, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
+  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 32, maxHealth: 32, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
+  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 32, maxHealth: 32, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
 ];
 let state = bodies[0];
 let selected = true;
@@ -133,6 +134,29 @@ async function start() {
       c.stroke();
     }
   });
+  const heartPath = context => {
+    context.beginPath();
+    context.moveTo(64, 113);
+    context.bezierCurveTo(54, 104, 12, 72, 12, 43);
+    context.bezierCurveTo(12, 19, 42, 10, 64, 35);
+    context.bezierCurveTo(86, 10, 116, 19, 116, 43);
+    context.bezierCurveTo(116, 72, 74, 104, 64, 113);
+    context.closePath();
+  };
+  const heartTextures = Array.from({ length: 5 }, (_, quarters) => texture(128, 128, (context) => {
+    context.save(); heartPath(context); context.clip();
+    context.fillStyle = '#eee0c1'; context.fillRect(0, 0, 128, 128);
+    if (quarters > 0) {
+      context.fillStyle = '#d9473d'; context.fillRect(0, 0, 128 * quarters / 4, 128);
+      context.fillStyle = '#f68569'; context.globalAlpha = .48;
+      context.fillRect(0, 0, 128 * quarters / 4, 18);
+    }
+    context.restore();
+    context.lineJoin = 'round'; context.lineWidth = 9; context.strokeStyle = '#553421'; heartPath(context); context.stroke();
+    context.lineJoin = 'round'; context.lineWidth = 3; context.strokeStyle = '#f8e9c8'; heartPath(context); context.stroke();
+  }));
+  const heartMaterials = heartTextures.map(map => new THREE.MeshBasicMaterial({ map, transparent: true,
+    side: THREE.DoubleSide, depthWrite: false }));
   const terrainCorrugation = corrugation.clone();
   terrainCorrugation.wrapS = terrainCorrugation.wrapT = THREE.RepeatWrapping;
   terrainCorrugation.repeat.set(1, 1);
@@ -235,12 +259,13 @@ async function start() {
     const initialArt = artStates.idle;
 
     const healthHUD = new THREE.Group();
-    const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .14),
-      new THREE.MeshBasicMaterial({ color: 0x392719, side: THREE.DoubleSide }));
-    const healthFill = new THREE.Mesh(new THREE.PlaneGeometry(1.42, .075),
-      new THREE.MeshBasicMaterial({ color: body.team === 'player' ? 0x65d536 : 0xd84a38, side: THREE.DoubleSide }));
-    healthFill.position.set(-.04, 0, .01);
-    healthHUD.add(healthBack, healthFill);
+    const initialHeartLevels = heartHealthLevels(body.health, body.maxHealth);
+    const heartIcons = initialHeartLevels.map((level, index) => {
+      const heart = new THREE.Mesh(new THREE.PlaneGeometry(.23, .23), heartMaterials[level]);
+      heart.position.set((index - (initialHeartLevels.length - 1) / 2) * .245, 0, .01);
+      healthHUD.add(heart);
+      return { mesh: heart, level };
+    });
     let chargePips = [];
     if (body.team === 'player') {
       chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
@@ -266,7 +291,7 @@ async function start() {
     }
     const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
-      healthHUD, healthFill, chargePips, enemyMarker,
+      healthHUD, heartIcons, chargePips, enemyMarker,
       flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
       viewBack: false, facing: 0, hitAge: 10, hitStrength: 0,
       hurtAge: 10, dealDamageAge: 10 };
@@ -419,9 +444,9 @@ async function start() {
     });
     bursts.push({ group, ring, dots, material, age: 0, strength });
   }
-  function damage(target, speed, multiplier = 1) {
+  function damage(target, damageQuarters, speed) {
     if (target.hitCooldown > 0 || target.health <= 0) return false;
-    target.health = Math.max(0, target.health - THREE.MathUtils.clamp(Math.round(speed * 2.3), 8, 24) * multiplier);
+    target.health = Math.max(0, target.health - Math.max(1, Math.trunc(damageQuarters)));
     target.hitCooldown = .65;
     if (target.team === 'enemy') target.aiStunRemaining = Math.max(target.aiStunRemaining || 0, .55);
     const figure = figures.find(item => item.body === target);
@@ -452,7 +477,7 @@ async function start() {
       let playerDealtDamage = false, playerTookDamage = false;
       const attackHit = (attacker, target) => {
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
-        if (!damage(target, speed, Math.pow(.5, attacker.attackRicochets || 0))) return;
+        if (!damage(target, ricochetDamageQuarters(attacker.attackRicochets || 0), speed)) return;
         attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
         const attackerFigure = figures.find(item => item.body === attacker);
         if (attackerFigure) attackerFigure.dealDamageAge = 0;
@@ -794,10 +819,13 @@ async function start() {
         figure.artGroup.rotation.set(0, 0, squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012);
       }
       figure.attacking = isAttacking(body) && body !== held;
-      const healthRatio = Math.max(0, body.health / body.maxHealth);
-      figure.healthFill.scale.x = healthRatio;
-      figure.healthFill.position.x = -.04 - .71 * (1 - healthRatio);
-      figure.healthFill.material.color.setHex(body.health <= 25 ? 0xf2a33b : body.team === 'player' ? 0x65d536 : 0xd84a38);
+      const heartLevels = heartHealthLevels(body.health, body.maxHealth);
+      figure.heartIcons.forEach((icon, index) => {
+        const level = heartLevels[index];
+        if (icon.level === level) return;
+        icon.mesh.material = heartMaterials[level];
+        icon.level = level;
+      });
       const rechargeProgress = chargeRechargeProgress(body);
       figure.chargePips.forEach(({ group, base, fill }, index) => {
         const amount = index < body.charges ? 1 : index === body.charges ? rechargeProgress : 0;
