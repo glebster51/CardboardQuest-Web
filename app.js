@@ -507,7 +507,14 @@ async function start() {
       path.closePath();
       return path;
     };
-    if (filled) return new THREE.ShapeGeometry(orientedPath(inner, false));
+    if (filled) {
+      const fillPath = orientedPath(inner, false);
+      const fillShape = new THREE.Shape();
+      fillShape.moveTo(fillPath.curves[0].v1.x, fillPath.curves[0].v1.y);
+      for (const curve of fillPath.curves) fillShape.lineTo(curve.v2.x, curve.v2.y);
+      fillShape.closePath();
+      return new THREE.ShapeGeometry(fillShape);
+    }
     const shape = new THREE.Shape();
     const outside = orientedPath(outer, false);
     shape.moveTo(outside.curves[0].v1.x, outside.curves[0].v1.y);
