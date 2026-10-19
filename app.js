@@ -1,18 +1,20 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=6';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=7';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
 const bodies = [
   { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0 },
-  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiTimer: .5 },
-  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiTimer: 1.1 },
-  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiTimer: 1.7 },
+  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() },
+  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() },
+  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() },
 ];
 let state = bodies[0];
 let selected = true;
 const pointers = new Map();
 let gesture = null;
+const randomBetween = (min, max) => min + Math.random() * (max - min);
+document.querySelector('#restart').addEventListener('click', () => location.reload());
 
 async function start() {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -171,27 +173,54 @@ async function start() {
       artGroup.add(face);
     }
 
+    const healthHUD = new THREE.Group();
     const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .14),
       new THREE.MeshBasicMaterial({ color: 0x392719, side: THREE.DoubleSide }));
     const healthFill = new THREE.Mesh(new THREE.PlaneGeometry(1.42, .075),
       new THREE.MeshBasicMaterial({ color: body.team === 'player' ? 0x65d536 : 0xd84a38, side: THREE.DoubleSide }));
-    healthBack.position.set(0, 2.65, .035); healthFill.position.set(-.04, 2.65, .045);
-    group.add(healthBack, healthFill);
-    const chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
-      const pip = new THREE.Mesh(new THREE.SphereGeometry(.065, 10, 8),
-        new THREE.MeshStandardMaterial({ color: 0xf5d476, emissive: 0x5b4014, roughness: .48 }));
-      pip.position.set((index - (body.maxCharges - 1) / 2) * .25, .245, .53);
-      group.add(pip);
-      return pip;
-    });
+    healthFill.position.set(-.04, 0, .01);
+    healthHUD.add(healthBack, healthFill);
+    let chargePips = [];
+    if (body.team === 'player') {
+      chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
+        const pip = new THREE.Group();
+        const outline = new THREE.Mesh(new THREE.RingGeometry(.045, .07, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+        const fill = new THREE.Mesh(new THREE.CircleGeometry(.043, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+        fill.position.z = .012;
+        pip.position.set((index - (body.maxCharges - 1) / 2) * .24, .24, .02);
+        pip.add(outline, fill); healthHUD.add(pip);
+        return { group: pip, fill };
+      });
+    }
+    healthHUD.position.set(body.x, 2.65, body.z);
+    scene.add(healthHUD);
     let enemyRing = null;
+    let attackIndicator = null;
+    let attackProgress = null;
     if (body.team === 'enemy') {
       enemyRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80),
         new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
       enemyRing.rotation.x = -Math.PI / 2; scene.add(enemyRing);
+      attackIndicator = new THREE.Group();
+      const warningShape = new THREE.Shape([
+        new THREE.Vector2(-.18, 0), new THREE.Vector2(.18, 0), new THREE.Vector2(.18, .68),
+        new THREE.Vector2(.48, .68), new THREE.Vector2(0, 1), new THREE.Vector2(-.48, .68), new THREE.Vector2(-.18, .68),
+      ]);
+      const warningArrow = new THREE.Mesh(new THREE.ShapeGeometry(warningShape),
+        new THREE.MeshBasicMaterial({ color: 0xa52d27, transparent: true, opacity: .76, side: THREE.DoubleSide, depthWrite: false }));
+      warningArrow.rotation.x = Math.PI / 2; warningArrow.scale.set(.9, 2.35, 1);
+      attackIndicator.add(warningArrow);
+      attackProgress = new THREE.Mesh(new THREE.PlaneGeometry(.13, 1.8),
+        new THREE.MeshBasicMaterial({ color: 0xfff0ad, transparent: true, opacity: .98, side: THREE.DoubleSide, depthWrite: false }));
+      attackProgress.rotation.x = Math.PI / 2; attackProgress.position.z = -.025; attackProgress.visible = false;
+      attackIndicator.add(attackProgress);
+      attackIndicator.visible = false; scene.add(attackIndicator);
     }
     const figure = { group, artGroup, body, alphaPixels, width: cut.width, height: cut.height,
-      healthFill, chargePips, enemyRing, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0 };
+      healthHUD, healthFill, chargePips, enemyRing, attackIndicator, attackProgress,
+      markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
     return figure;
@@ -232,6 +261,13 @@ async function start() {
       figure.hitStrength = THREE.MathUtils.clamp(speed / 22, .15, .38);
     }
   }
+  let lastVibration = 0;
+  function vibrate(pattern) {
+    const now = performance.now();
+    if (now - lastVibration < 100) return;
+    lastVibration = now;
+    navigator.vibrate?.(pattern);
+  }
   function onImpact(a, b, speed, attackingA = false, attackingB = false) {
     for (const figure of figures) {
       if (figure.body === a || figure.body === b) {
@@ -242,6 +278,11 @@ async function start() {
     if (b && a.team !== b.team) {
       if (attackingA) damage(b, speed);
       if (attackingB) damage(a, speed);
+      const playerDealtDamage = (attackingA && a.team === 'player') || (attackingB && b.team === 'player');
+      const playerTookDamage = (attackingA && b.team === 'player') || (attackingB && a.team === 'player');
+      if (playerDealtDamage && playerTookDamage) vibrate([32, 18, 48]);
+      else if (playerTookDamage) vibrate([48, 24, 70]);
+      else if (playerDealtDamage) vibrate(28);
     }
     burst(b ? (a.x + b.x) / 2 : a.x, b ? (a.z + b.z) / 2 : a.z, Math.min(1.5, speed / 7));
   }
@@ -417,19 +458,24 @@ async function start() {
         if (body.charges === body.maxCharges) body.rechargeTimer = 0;
       }
       if (body.team !== 'enemy') continue;
-      body.aiTimer -= dt;
+      if (body.aiPhase !== 'dash') body.aiTimer -= dt;
       const dx = state.x - body.x, dz = state.z - body.z;
       const distanceToPlayer = Math.hypot(dx, dz);
-      if (state.health > 0 && distanceToPlayer > .001 && Math.hypot(body.vx, body.vz) < .05) {
+      const speed = Math.hypot(body.vx, body.vz);
+      if (state.health > 0 && distanceToPlayer > .001 && speed < .05) {
         const figure = figures.find(item => item.body === body);
         figure.facing = facingAngle(dx, dz, figure.facing);
       }
-      if (state.health > 0 && body.health > 0 && body.charges > 0 && body.aiTimer <= 0 && Math.hypot(body.vx, body.vz) < 1.2) {
+      if (body.aiPhase === 'dash' && speed < .2) {
+        body.aiPhase = 'pause'; body.aiTimer = randomBetween(1, 2);
+      } else if (body.aiPhase === 'pause' && body.aiTimer <= 0) {
+        body.aiPhase = 'aim'; body.aiAimDuration = randomBetween(.85, 1.35); body.aiTimer = body.aiAimDuration;
+      } else if (body.aiPhase === 'aim' && body.aiTimer <= 0 && body.charges > 0 && state.health > 0 && body.health > 0) {
         const power = THREE.MathUtils.clamp(distanceToPlayer * .12, .55, .95);
-        body.charges--; body.rechargeTimer = 0; body.aiTimer = 1.1;
+        body.charges--; body.rechargeTimer = 0; body.aiPhase = 'dash';
         launch(body, { x: -dx / Math.max(.001, distanceToPlayer) * power,
           z: -dz / Math.max(.001, distanceToPlayer) * power });
-        burst(body.x, body.z, .35);
+        burst(body.x, body.z, .45);
       }
       if (body.health <= 0) body.vx = body.vz = 0;
     }
@@ -452,9 +498,11 @@ async function start() {
       figure.healthFill.scale.x = healthRatio;
       figure.healthFill.position.x = -.04 - .71 * (1 - healthRatio);
       figure.healthFill.material.color.setHex(body.health <= 25 ? 0xf2a33b : body.team === 'player' ? 0x65d536 : 0xd84a38);
-      figure.chargePips.forEach((pip, index) => {
-        pip.visible = index < body.charges;
-        pip.material.emissive.setHex(index < body.charges ? 0x5b4014 : 0x000000);
+      const rechargeProgress = body.charges < body.maxCharges ? body.rechargeTimer / 3 : 0;
+      figure.chargePips.forEach(({ group, fill }, index) => {
+        const amount = index < body.charges ? 1 : index === body.charges ? rechargeProgress : 0;
+        group.visible = true;
+        fill.scale.setScalar(Math.max(.001, amount));
       });
       if (figure.enemyRing) {
         figure.markerAge += dt;
@@ -463,6 +511,16 @@ async function start() {
         figure.enemyRing.position.set(body.x, .013, body.z);
         figure.enemyRing.scale.setScalar(Math.max(.001, bounce) * (body.health > 0 ? 1 : .88));
         figure.enemyRing.material.opacity = body.health > 0 ? .9 : .35;
+        const aimingAtPlayer = body.health > 0 && body.aiPhase === 'aim';
+        figure.attackIndicator.visible = aimingAtPlayer;
+        if (aimingAtPlayer) {
+          figure.attackIndicator.position.set(body.x, .028, body.z);
+          figure.attackIndicator.rotation.y = facingAngle(state.x - body.x, state.z - body.z, figure.facing);
+          const progress = 1 - body.aiTimer / body.aiAimDuration;
+          figure.attackProgress.scale.y = progress;
+          figure.attackProgress.position.y = .9 * progress;
+          figure.attackProgress.visible = progress > .005;
+        }
       }
     }
     for (let i = bursts.length - 1; i >= 0; i--) {
@@ -492,7 +550,12 @@ async function start() {
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
       1 - Math.exp(-18 * dt));
     selectionRing.position.set(state.x, .012, state.z);
-    updateCamera(); renderer.render(scene, camera);
+    updateCamera();
+    for (const figure of figures) {
+      figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);
+      figure.healthHUD.quaternion.copy(camera.quaternion);
+    }
+    renderer.render(scene, camera);
   });
 }
 
