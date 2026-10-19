@@ -200,9 +200,38 @@ export function validateSpriteFrames(states, backFrame) {
     backX: (width - backWidth) / 2, backY: (height - backHeight) / 2 };
 }
 
-export function clipBackAlphaToFront(frontRGBA, backRGBA) {
+export function unionSpriteAlpha(frontRGBA, backRGBA, width, height, minimumIslandPixels = 12) {
   if (frontRGBA.length !== backRGBA.length || frontRGBA.length % 4 !== 0) throw new RangeError('Front and back textures must share a frame');
-  const result = new Uint8ClampedArray(backRGBA);
-  for (let i = 3; i < result.length; i += 4) result[i] = Math.round(result[i] * frontRGBA[i] / 255);
+  const pixelCount = frontRGBA.length / 4;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width * height !== pixelCount) throw new RangeError('Sprite alpha union dimensions must match the pixel data');
+  const mask = new Uint8Array(pixelCount);
+  for (let i = 0; i < pixelCount; i++) mask[i] = frontRGBA[i * 4 + 3] >= 81 || backRGBA[i * 4 + 3] >= 81 ? 1 : 0;
+  const visited = new Uint8Array(pixelCount), output = new Uint8Array(frontRGBA.length);
+  const stack = [];
+  for (let start = 0; start < pixelCount; start++) {
+    if (!mask[start] || visited[start]) continue;
+    stack.length = 0; stack.push(start); visited[start] = 1;
+    const component = [];
+    while (stack.length) {
+      const index = stack.pop(); component.push(index);
+      const x = index % width, y = (index / width) | 0;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const neighbor = ny * width + nx;
+        if (mask[neighbor] && !visited[neighbor]) { visited[neighbor] = 1; stack.push(neighbor); }
+      }
+    }
+    if (component.length >= minimumIslandPixels) for (const index of component) output[index * 4 + 3] = 255;
+  }
+  return output;
+}
+
+export function clipSpriteToAlphaMask(pixels, mask) {
+  if (pixels.length !== mask.length || pixels.length % 4 !== 0) throw new RangeError('Sprite and clipping mask must share a frame');
+  const result = new Uint8ClampedArray(pixels);
+  for (let i = 3; i < result.length; i += 4) result[i] = Math.round(result[i] * mask[i] / 255);
   return result;
 }
+

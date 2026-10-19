@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=16';
-import { traceSpriteContours, validateSpriteFrames, clipBackAlphaToFront } from './sprite-geometry.mjs?v=1';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
+import { traceSpriteContours, validateSpriteFrames, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=3';
+import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -52,11 +53,11 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   });
 }
 
-function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false) {
+function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, geometryPixels = alphaPixels, backAlphaPixels = alphaPixels) {
   const worldWidth = 2.05 * width / height;
   const worldHeight = 2.05;
   const depth = .144;
-  const shapes = silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight);
+  const shapes = silhouetteShapes(geometryPixels, width, height, worldWidth, worldHeight);
   const uv = (vertices, index) => {
     const x = vertices[index * 3], y = vertices[index * 3 + 1];
     return new THREE.Vector2(x / worldWidth + .5, y / worldHeight + .5);
@@ -97,12 +98,23 @@ function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation
   const flashMaterial = new THREE.MeshBasicMaterial({ map: flashTexture, transparent: true, opacity: 0, alphaTest: .1,
     side: THREE.DoubleSide, depthWrite: false, ...stencil });
   const frontFlash = new THREE.Mesh(flashGeometry, flashMaterial);
-  const backFlash = new THREE.Mesh(flashGeometry, flashMaterial);
+  const backAlphaCanvas = document.createElement('canvas'); backAlphaCanvas.width = width; backAlphaCanvas.height = height;
+  const backAlphaImage = backAlphaCanvas.getContext('2d').createImageData(width, height);
+  for (let i = 0; i < width * height; i++) backAlphaImage.data[i * 4 + 3] = backAlphaPixels[i * 4 + 3];
+  backAlphaCanvas.getContext('2d').putImageData(backAlphaImage, 0, 0);
+  const backWhiteMask = document.createElement('canvas'); backWhiteMask.width = width; backWhiteMask.height = height;
+  const backWhiteContext = backWhiteMask.getContext('2d');
+  backWhiteContext.fillStyle = '#fff'; backWhiteContext.fillRect(0, 0, width, height);
+  backWhiteContext.globalCompositeOperation = 'destination-in'; backWhiteContext.drawImage(backAlphaCanvas, 0, 0);
+  const backFlashTexture = new THREE.CanvasTexture(backWhiteMask);
+  const backFlashMaterial = new THREE.MeshBasicMaterial({ map: backFlashTexture, transparent: true, opacity: 0, alphaTest: .1,
+    side: THREE.DoubleSide, depthWrite: false, ...stencil });
+  const backFlash = new THREE.Mesh(flashGeometry, backFlashMaterial);
   frontFlash.position.z = depth / 2 + .004; backFlash.position.z = -depth / 2 - .004;
   frontFlash.userData.print = backFlash.userData.print = true;
   const group = new THREE.Group();
   group.add(body, backPlane, frontFlash, backFlash);
-  return { group, body, geometry, frontMaterial, sideMaterial, backPlane, flashMaterial, flashTexture, alphaPixels, width, height };
+  return { group, body, geometry, frontMaterial, sideMaterial, backPlane, flashMaterial, flashTexture, backFlashMaterial, backFlashTexture, alphaPixels, width, height };
 }
 
 document.querySelector('#restart').addEventListener('click', () => location.reload());
@@ -117,8 +129,8 @@ async function start() {
   host.append(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xc7b391, 24, 55);
-  const camera = new THREE.PerspectiveCamera(38, 1, .1, 80);
+  scene.fog = new THREE.Fog(0xc7b391, 68, 230);
+  const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   const target = new THREE.Vector3(0, .65, 0);
   let theta = .22, phi = .86, distance = innerWidth < 650 ? 18 : 10.5;
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
@@ -139,15 +151,16 @@ async function start() {
     map.colorSpace = THREE.SRGBColorSpace;
     return map;
   }
-  function terrainShape(scale = 1, holeScale = 0) {
+  const terrainPeaks = createTerrainPeaks(1937, 34, 6.5);
+  function terrainShape(outerPoints, innerPoints = null) {
     const shape = new THREE.Shape();
-    const outer = WALKABLE_POINTS.map(point => new THREE.Vector2(point.x * scale, -point.z * scale));
+    const outer = outerPoints.map(point => new THREE.Vector2(point.x, -point.z));
     const orderedOuter = THREE.ShapeUtils.isClockWise(outer) ? [...outer].reverse() : outer;
     shape.moveTo(orderedOuter[0].x, orderedOuter[0].y);
     for (let i = 1; i < orderedOuter.length; i++) shape.lineTo(orderedOuter[i].x, orderedOuter[i].y);
     shape.closePath();
-    if (holeScale > 0) {
-      const inner = WALKABLE_POINTS.map(point => new THREE.Vector2(point.x * holeScale, -point.z * holeScale));
+    if (innerPoints) {
+      const inner = innerPoints.map(point => new THREE.Vector2(point.x, -point.z));
       const orderedInner = THREE.ShapeUtils.isClockWise(inner) ? inner : [...inner].reverse();
       const hole = new THREE.Path();
       hole.moveTo(orderedInner[0].x, orderedInner[0].y);
@@ -175,16 +188,20 @@ async function start() {
       c.stroke();
     }
   });
-  const terrainLayers = [
-    { scale: 1, holeScale: 0, depth: .3, top: 0, topColor: 0x789456, sideColor: 0x9c7243 },
-    { scale: 1.18, holeScale: 1, depth: .3, top: .3, topColor: 0x9eaa61, sideColor: 0x8e683d },
-    { scale: 1.4, holeScale: 1.18, depth: .34, top: .64, topColor: 0xb4a365, sideColor: 0x795630 },
-    { scale: 1.66, holeScale: 1.4, depth: .4, top: 1.04, topColor: 0x938260, sideColor: 0x65472c },
-  ];
+  const terrainScales = [1, 1.15, 1.32, 1.52, 1.76, 2.05, 2.4, 2.82, 3.3, 3.85, 4.45, 5.1, 5.8, 6.5];
+  const terrainBoundaries = terrainScales.map(scale => makeNoisyBoundary(WALKABLE_POINTS, scale, terrainPeaks, 7));
+  const terrainColors = [0x789456, 0x91a05b, 0xa2a063, 0xb1a36c, 0x9b8c66, 0x897858, 0x9f956f, 0xb2a878, 0x8b8369, 0x9d9477, 0xb4a983, 0x968e79, 0xb3aa91, 0x8b816e];
+  const terrainLayers = terrainBoundaries.map((boundary, index) => ({
+    outer: boundary, inner: index ? terrainBoundaries[index - 1] : null,
+    depth: index === 0 ? .3 : .25 + index * .012,
+    top: index * .28,
+    topColor: terrainColors[index],
+    sideColor: index % 2 ? 0x805b39 : 0x9c7243,
+  }));
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   for (const layer of terrainLayers) {
-    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.scale, layer.holeScale), { depth: layer.depth, bevelEnabled: false, steps: 1 });
+    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.outer, layer.inner), { depth: layer.depth, bevelEnabled: false, steps: 1 });
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, [
       new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96, ...sceneStencil }),
@@ -218,21 +235,22 @@ async function start() {
       sourceCanvas.width = frameWidth; sourceCanvas.height = frameHeight;
       const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
       sourceContext.drawImage(image, 0, 0, frameWidth, frameHeight);
-      const sourcePixels = sourceContext.getImageData(0, 0, image.width, image.height).data;
+      const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
       const alphaPixels = sourcePixels;
       const front = new THREE.CanvasTexture(sourceCanvas); front.colorSpace = THREE.SRGBColorSpace;
       front.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       const backCanvas = document.createElement('canvas'); backCanvas.width = frameWidth; backCanvas.height = frameHeight;
       const backContext = backCanvas.getContext('2d');
-      backContext.fillStyle = '#fff4d8'; backContext.fillRect(0, 0, frameWidth, frameHeight);
+      backContext.translate(frameWidth, 0); backContext.scale(-1, 1);
       backContext.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
-      const backImage = backContext.getImageData(0, 0, frameWidth, frameHeight);
-      backImage.data.set(clipBackAlphaToFront(sourcePixels, backImage.data));
-      backContext.putImageData(backImage, 0, 0);
+      const backPixels = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
+      const geometryPixels = unionSpriteAlpha(sourcePixels, backPixels, frameWidth, frameHeight);
+      const clippedBack = clipSpriteToAlphaMask(backPixels, geometryPixels);
+      backContext.putImageData(new ImageData(clippedBack, frameWidth, frameHeight), 0, 0);
       const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
       back.anisotropy = front.anisotropy;
-      const art = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player');
+      const art = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player', geometryPixels, clippedBack);
       art.group.position.y = 1.25;
       art.group.visible = visualState === 'idle';
       group.add(art.group);
@@ -282,13 +300,16 @@ async function start() {
     const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
       healthHUD, healthFill, chargePips, enemyRing, attackIndicator, attackProgress,
-      flashMaterial: initialArt.flashMaterial, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0,
+      flashMaterial: initialArt.flashMaterial, backFlashMaterial: initialArt.backFlashMaterial, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0,
       hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
     return figure;
   }
-  async function createScenery(path, x, z, size) {
+  const sceneryTemplates = new Map();
+  function loadSceneryTemplate(path) {
+    if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
+    const pending = (async () => {
     const source = await new THREE.TextureLoader().loadAsync(path);
     const image = source.image;
     const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -307,12 +328,25 @@ async function start() {
     const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
     artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     const art = makeExtrudedSprite(alphaPixels, cut.width, cut.height, artTexture, artTexture, corrugation);
-    art.group.position.y = 1.025; art.group.scale.setScalar(size / 2.05);
-    const radius = Math.hypot(x / 10.8, z / 8.55);
-    const elevation = radius <= 1.18 ? .3 : radius <= 1.4 ? .64 : 1.04;
-    const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art.group);
-    scene.add(prop);
+    art.group.position.y = 1.025;
     source.dispose();
+    return art.group;
+    })();
+    sceneryTemplates.set(path, pending);
+    return pending;
+  }
+  async function createScenery(path, x, z, size) {
+    const template = await loadSceneryTemplate(path);
+    const art = template.clone(true);
+    art.scale.setScalar(size / 2.05);
+    const radius = Math.hypot(x / 10.8, z / 8.2);
+    let layerIndex = 0;
+    while (layerIndex < terrainScales.length - 1 && radius >= terrainScales[layerIndex + 1]) layerIndex++;
+    const elevation = layerIndex * .28;
+    const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
+    const inward = nearestPointOnPath(x, z, WALKABLE_POINTS);
+    prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
+    scene.add(prop);
   }
   const figures = await Promise.all([
     createFigure(bodies[0], 'hero', 'assets/hero-back.png'),
@@ -320,14 +354,37 @@ async function start() {
     createFigure(bodies[2], 'goblin', 'assets/goblin-back.png'),
     createFigure(bodies[3], 'goblin', 'assets/goblin-back.png'),
   ]);
-  await Promise.all([
+  const sceneryPaths = [
     createScenery('assets/env-tree.png', -13, -3.5, 3.8),
     createScenery('assets/env-bushes.png', -10.5, -9.3, 2.6),
     createScenery('assets/env-troll-hut.png', 0, -14, 3.9),
     createScenery('assets/env-moss-rocks.png', 12.2, -8.8, 2.8),
     createScenery('assets/env-fortress.png', 14, 1.4, 3.8),
     createScenery('assets/env-evergreen.png', 5.5, 13.2, 3.7),
-  ]);
+  ];
+  const growthRandom = (() => { let seed = 0x51a7c0de; return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); })();
+  const propTypes = [
+    { path: 'assets/env-tree.png', weight: .28, size: [2.1, 3.3] },
+    { path: 'assets/env-evergreen.png', weight: .24, size: [1.9, 3.1] },
+    { path: 'assets/env-moss-rocks.png', weight: .28, size: [1.1, 2.4] },
+    { path: 'assets/env-bushes.png', weight: .2, size: [1.4, 2.6] },
+  ];
+  await Promise.all(propTypes.map(type => loadSceneryTemplate(type.path)));
+  let addedProps = 0;
+  for (let candidate = 0; candidate < 600 && addedProps < 72; candidate++) {
+    const angle = growthRandom() * Math.PI * 2;
+    const radius = 1.22 + Math.sqrt(growthRandom()) * 5.12;
+    const density = gaussianGrowthField(radius, angle, terrainPeaks);
+    if (density < .18 || growthRandom() > .18 + density * .62) continue;
+    const typeRoll = growthRandom();
+    const type = propTypes.find((item, index) => typeRoll < propTypes.slice(0, index + 1).reduce((sum, entry) => sum + entry.weight, 0)) || propTypes[0];
+    const x = Math.cos(angle) * radius * 10.8, z = Math.sin(angle) * radius * 8.2;
+    if (radius < 1.35 && WALKABLE_POINTS.some(point => Math.hypot(point.x - x, point.z - z) < 1.1)) continue;
+    const distanceScale = radius > 3.5 ? .64 : radius > 2.3 ? .82 : 1;
+    sceneryPaths.push(createScenery(type.path, x, z, randomBetween(...type.size) * distanceScale));
+    addedProps++;
+  }
+  await Promise.all(sceneryPaths);
   function setVisualState(figure, visualState) {
     if (figure.visualState === visualState) return;
     figure.artGroup.visible = false;
@@ -338,6 +395,7 @@ async function start() {
     figure.width = art.width;
     figure.height = art.height;
     figure.flashMaterial = art.flashMaterial;
+    figure.backFlashMaterial = art.backFlashMaterial;
     figure.visualState = visualState;
   }
   let activeFigure = figures[0];
@@ -372,6 +430,7 @@ async function start() {
       figure.hitStrength = THREE.MathUtils.clamp(speed / 22, .15, .38);
       figure.hurtAge = 0;
       figure.flashMaterial.opacity = 1;
+      figure.backFlashMaterial.opacity = 1;
     }
     return true;
   }
@@ -688,6 +747,7 @@ async function start() {
               : isAttacking(body) && body !== held ? 'attack' : 'idle';
       setVisualState(figure, visualState);
       figure.flashMaterial.opacity = figure.hurtAge < .42 && Math.floor(figure.hurtAge / .055) % 2 === 0 ? 1 : 0;
+      figure.backFlashMaterial.opacity = figure.flashMaterial.opacity;
       const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
       const squash = figure.hitStrength * spring;
       figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
@@ -777,3 +837,4 @@ start().catch(error => {
   document.querySelector('#error').textContent = 'Не удалось загрузить сцену. Обнови страницу.';
   console.error(error);
 });
+
