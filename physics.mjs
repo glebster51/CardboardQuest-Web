@@ -96,8 +96,10 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null) {
   for (let pass = 0; pass < 4; pass++) {
     for (let i = 0; i < bodies.length; i++) {
       for (let j = i + 1; j < bodies.length; j++) {
-        const strength = collide(bodies[i], bodies[j], held);
-        if (strength > .4) onImpact?.(bodies[i], bodies[j], strength);
+        const a = bodies[i], b = bodies[j];
+        const attackingA = isAttacking(a), attackingB = isAttacking(b);
+        const strength = collide(a, b, held);
+        if (strength > .4) onImpact?.(a, b, strength, attackingA, attackingB);
       }
     }
     for (const body of bodies) if (body !== held) {

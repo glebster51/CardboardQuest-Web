@@ -1,14 +1,16 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=5';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=6';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
 const bodies = [
-  { x: -1.15, z: .7, vx: 0, vz: 0 },
-  { x: 1.15, z: -.7, vx: 0, vz: 0 },
+  { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0 },
+  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiTimer: .5 },
+  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiTimer: 1.1 },
+  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiTimer: 1.7 },
 ];
 let state = bodies[0];
-let selected = false;
+let selected = true;
 const pointers = new Map();
 let gesture = null;
 
@@ -169,12 +171,27 @@ async function start() {
       artGroup.add(face);
     }
 
-    const attackRing = new THREE.Mesh(new THREE.RingGeometry(1.18, 1.4, 80),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
-    attackRing.rotation.x = -Math.PI / 2;
-    attackRing.visible = false; scene.add(attackRing);
-    const figure = { group, artGroup, attackRing, body, alphaPixels, width: cut.width, height: cut.height,
-      facing: 0, hitAge: 10, hitStrength: 0 };
+    const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .14),
+      new THREE.MeshBasicMaterial({ color: 0x392719, side: THREE.DoubleSide }));
+    const healthFill = new THREE.Mesh(new THREE.PlaneGeometry(1.42, .075),
+      new THREE.MeshBasicMaterial({ color: body.team === 'player' ? 0x65d536 : 0xd84a38, side: THREE.DoubleSide }));
+    healthBack.position.set(0, 2.65, .035); healthFill.position.set(-.04, 2.65, .045);
+    group.add(healthBack, healthFill);
+    const chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
+      const pip = new THREE.Mesh(new THREE.SphereGeometry(.065, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xf5d476, emissive: 0x5b4014, roughness: .48 }));
+      pip.position.set((index - (body.maxCharges - 1) / 2) * .25, .245, .53);
+      group.add(pip);
+      return pip;
+    });
+    let enemyRing = null;
+    if (body.team === 'enemy') {
+      enemyRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80),
+        new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
+      enemyRing.rotation.x = -Math.PI / 2; scene.add(enemyRing);
+    }
+    const figure = { group, artGroup, body, alphaPixels, width: cut.width, height: cut.height,
+      healthFill, chargePips, enemyRing, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
     return figure;
@@ -182,6 +199,8 @@ async function start() {
   const figures = await Promise.all([
     createFigure(bodies[0], 'assets/hero-a.png', 'assets/hero-back.png'),
     createFigure(bodies[1], 'assets/goblin-front.png', 'assets/goblin-back.png'),
+    createFigure(bodies[2], 'assets/goblin-front.png', 'assets/goblin-back.png'),
+    createFigure(bodies[3], 'assets/goblin-front.png', 'assets/goblin-back.png'),
   ]);
   let activeFigure = figures[0];
   let selectionAge = 0;
@@ -189,6 +208,8 @@ async function start() {
   const bursts = [];
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
   const dustGeometry = new THREE.SphereGeometry(.045, 5, 4);
+  const selectedColor = new THREE.Color(0x65d536);
+  const attackColor = new THREE.Color(0xffffff);
   function burst(x, z, strength = 1) {
     if (bursts.length >= 12) return;
     const group = new THREE.Group();
@@ -201,18 +222,32 @@ async function start() {
     });
     bursts.push({ group, ring, dots, material, age: 0, strength });
   }
-  function onImpact(a, b, speed) {
+  function damage(target, speed) {
+    if (target.hitCooldown > 0 || target.health <= 0) return;
+    target.health = Math.max(0, target.health - THREE.MathUtils.clamp(Math.round(speed * 2.3), 8, 24));
+    target.hitCooldown = .65;
+    const figure = figures.find(item => item.body === target);
+    if (figure) {
+      figure.hitAge = 0;
+      figure.hitStrength = THREE.MathUtils.clamp(speed / 22, .15, .38);
+    }
+  }
+  function onImpact(a, b, speed, attackingA = false, attackingB = false) {
     for (const figure of figures) {
       if (figure.body === a || figure.body === b) {
         figure.hitAge = 0;
         figure.hitStrength = THREE.MathUtils.clamp(speed / 28, .08, .3);
       }
     }
+    if (b && a.team !== b.team) {
+      if (attackingA) damage(b, speed);
+      if (attackingB) damage(a, speed);
+    }
     burst(b ? (a.x + b.x) / 2 : a.x, b ? (a.z + b.z) / 2 : a.z, Math.min(1.5, speed / 7));
   }
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80), new THREE.MeshBasicMaterial({ color: 0x65d536, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
   selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = .012;
-  selectionRing.visible = false; scene.add(selectionRing);
+  selectionRing.visible = true; scene.add(selectionRing);
   const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
   const arrowShape = new THREE.Shape([
     new THREE.Vector2(-.5, 0), new THREE.Vector2(.5, 0),
@@ -243,21 +278,22 @@ async function start() {
     return null;
   }
   function choose(figure) {
-    if (figure && (!selected || figure !== activeFigure)) {
+    if (!figure) return;
+    if (figure.body.team === 'enemy') {
+      figure.markerAge = 0;
+      return;
+    }
+    if (figure !== activeFigure) {
       activeFigure = figure; state = figure.body;
       selectionAge = 0;
       selectionRing.scale.setScalar(.001);
     }
-    selected = !!figure;
-    selectionRing.visible = selected;
+    selected = true;
+    selectionRing.visible = true;
   }
   function stopAim() {
     aiming.visible = false;
     host.classList.remove('aiming');
-  }
-  function pinchDistance() {
-    const [a, b] = [...pointers.values()];
-    return Math.hypot(a.x - b.x, a.y - b.y);
   }
   host.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
@@ -266,7 +302,7 @@ async function start() {
     if (pointers.size > 1) {
       stopAim();
       const points = [...pointers.values()];
-      gesture = { mode: 'pinch', distance: pinchDistance(), zoom: distance,
+      gesture = { mode: 'touchOrbit',
         lastX: (points[0].x + points[1].x) / 2, lastY: (points[0].y + points[1].y) / 2 };
       return;
     }
@@ -284,9 +320,8 @@ async function start() {
   host.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId) || !gesture) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (gesture.mode === 'pinch') {
+    if (gesture.mode === 'touchOrbit') {
       if (pointers.size >= 2) {
-        distance = THREE.MathUtils.clamp(gesture.zoom * gesture.distance / Math.max(1, pinchDistance()), 4.5, 18);
         const points = [...pointers.values()];
         const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
         theta -= (x - gesture.lastX) * .007;
@@ -314,7 +349,8 @@ async function start() {
         aiming.position.set(state.x, .025, state.z);
         aiming.rotation.y = activeFigure.facing;
         arrow.scale.y = .8 + 3.6 * length / MAX_PULL;
-        arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
+        if (state.charges > 0 && state.health > 0) arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
+        else arrow.material.color.setHex(0x77736b);
       }
     } else {
       const dx = event.clientX - gesture.lastX, dy = event.clientY - gesture.lastY;
@@ -328,14 +364,18 @@ async function start() {
     if (gesture?.pointer === event.pointerId) {
       if (gesture.mode === 'aim') {
         if (!cancelled && gesture.moved) {
-          launch(state, gesture.pull);
-          if (Math.hypot(state.vx, state.vz) > 1) burst(state.x, state.z, .55);
+          if (state.team === 'player' && state.health > 0 && state.charges > 0) {
+            state.charges--; state.rechargeTimer = 0;
+            launch(state, gesture.pull);
+            if (Math.hypot(state.vx, state.vz) > 1) burst(state.x, state.z, .55);
+          }
         }
         else if (!cancelled) choose(gesture.hit);
         stopAim();
       }
       gesture = null;
     }
+    if (gesture?.mode === 'touchOrbit') gesture = null;
     pointers.delete(event.pointerId);
     if (pointers.size === 0) gesture = null;
   }
@@ -345,8 +385,6 @@ async function start() {
   host.addEventListener('contextmenu', event => event.preventDefault());
   host.addEventListener('wheel', event => {
     event.preventDefault();
-    if (gesture?.mode === 'aim') return;
-    distance = THREE.MathUtils.clamp(distance * Math.exp(event.deltaY * .001), 4.5, 18);
   }, { passive: false });
   addEventListener('blur', () => { stopAim(); gesture = null; pointers.clear(); });
 
@@ -368,6 +406,34 @@ async function start() {
     previousTime = time;
     elapsed += dt;
     const held = gesture?.mode === 'aim' ? state : null;
+    for (const body of bodies) {
+      body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
+      if (body.charges < body.maxCharges) {
+        body.rechargeTimer += dt;
+        while (body.rechargeTimer >= 3 && body.charges < body.maxCharges) {
+          body.rechargeTimer -= 3;
+          body.charges++;
+        }
+        if (body.charges === body.maxCharges) body.rechargeTimer = 0;
+      }
+      if (body.team !== 'enemy') continue;
+      body.aiTimer -= dt;
+      const dx = state.x - body.x, dz = state.z - body.z;
+      const distanceToPlayer = Math.hypot(dx, dz);
+      if (state.health > 0 && distanceToPlayer > .001 && Math.hypot(body.vx, body.vz) < .05) {
+        const figure = figures.find(item => item.body === body);
+        figure.facing = facingAngle(dx, dz, figure.facing);
+      }
+      if (state.health > 0 && body.health > 0 && body.charges > 0 && body.aiTimer <= 0 && Math.hypot(body.vx, body.vz) < 1.2) {
+        const power = THREE.MathUtils.clamp(distanceToPlayer * .12, .55, .95);
+        body.charges--; body.rechargeTimer = 0; body.aiTimer = 1.1;
+        launch(body, { x: -dx / Math.max(.001, distanceToPlayer) * power,
+          z: -dz / Math.max(.001, distanceToPlayer) * power });
+        burst(body.x, body.z, .35);
+      }
+      if (body.health <= 0) body.vx = body.vz = 0;
+    }
+    if (state.health <= 0) state.vx = state.vz = 0;
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact);
     for (const figure of figures) {
       const body = figure.body;
@@ -382,11 +448,22 @@ async function start() {
       figure.artGroup.position.y = .225 + Math.max(0, squash) * .2;
       figure.artGroup.rotation.z = squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012;
       figure.attacking = isAttacking(body) && body !== held;
-      const opacity = figure.attackRing.material.opacity;
-      figure.attackRing.material.opacity += ((figure.attacking ? .95 : 0) - opacity) * (1 - Math.exp(-24 * dt));
-      figure.attackRing.visible = figure.attackRing.material.opacity > .02;
-      figure.attackRing.position.set(body.x, .016, body.z);
-      figure.attackRing.scale.setScalar(1 + .025 * Math.sin(elapsed * 18));
+      const healthRatio = Math.max(0, body.health / body.maxHealth);
+      figure.healthFill.scale.x = healthRatio;
+      figure.healthFill.position.x = -.04 - .71 * (1 - healthRatio);
+      figure.healthFill.material.color.setHex(body.health <= 25 ? 0xf2a33b : body.team === 'player' ? 0x65d536 : 0xd84a38);
+      figure.chargePips.forEach((pip, index) => {
+        pip.visible = index < body.charges;
+        pip.material.emissive.setHex(index < body.charges ? 0x5b4014 : 0x000000);
+      });
+      if (figure.enemyRing) {
+        figure.markerAge += dt;
+        const t = Math.min(1, figure.markerAge / .55);
+        const bounce = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
+        figure.enemyRing.position.set(body.x, .013, body.z);
+        figure.enemyRing.scale.setScalar(Math.max(.001, bounce) * (body.health > 0 ? 1 : .88));
+        figure.enemyRing.material.opacity = body.health > 0 ? .9 : .35;
+      }
     }
     for (let i = bursts.length - 1; i >= 0; i--) {
       const effect = bursts[i]; effect.age += dt;
@@ -402,19 +479,18 @@ async function start() {
         dot.position.set(Math.cos(angle) * radius, Math.sin(t * Math.PI) * .3, Math.sin(angle) * radius);
       });
     }
-    if (!held) {
-      if (selected) {
-        const easing = 1 - Math.exp(-dt * 8);
-        target.x += (state.x - target.x) * easing;
-        target.z += (state.z - target.z) * easing;
-      }
-    }
+    const easing = 1 - Math.exp(-dt * 8);
+    target.x += (state.x - target.x) * easing;
+    target.z += (state.z - target.z) * easing;
     if (selected) {
       selectionAge += dt;
       const t = Math.min(1, selectionAge / .6);
       const scale = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
       selectionRing.scale.setScalar(Math.max(.001, scale));
     }
+    selectionRing.material.color.lerp(
+      state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
+      1 - Math.exp(-18 * dt));
     selectionRing.position.set(state.x, .012, state.z);
     updateCamera(); renderer.render(scene, camera);
   });
