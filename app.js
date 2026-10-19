@@ -1,21 +1,20 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
-import { createTerrainPeaks, createTerrainHeightMap, extractTerrainContours, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
+import { createTerrainHeightMap, extractTerrainContours, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
+import { CAMP_BOSS_DEFEATS, CAMP_LIVING_CAP, createLocationNetwork, findNearbyExit,
+  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=1';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
-const bodies = [
-  { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0, health: 20, maxHealth: 20, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] },
-  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 32, maxHealth: 32, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
-  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 32, maxHealth: 32, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
-  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 32, maxHealth: 32, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
-];
-let state = bodies[0];
+const heroBody = { id: 'hero', team: 'player', x: 1.8, z: .7, vx: 0, vz: 0,
+  health: 20, maxHealth: 20, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] };
+let bodies = [heroBody];
+let state = heroBody;
 let selected = true;
 const pointers = new Map();
 let gesture = null;
@@ -39,6 +38,15 @@ async function start() {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xc7b391, 68, 230);
+  const locations = createLocationNetwork();
+  let activeLocation = locations.home;
+  const locationTitle = document.querySelector('#location-title');
+  const locationDetail = document.querySelector('#location-detail');
+  const locationGroups = Object.fromEntries(Object.values(locations).map(location => {
+    const group = new THREE.Group(); group.visible = location.id === activeLocation.id; scene.add(group);
+    location.sceneGroup = group;
+    return [location.id, group];
+  }));
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   const target = new THREE.Vector3(0, .65, 0);
   let theta = .22, phi = .86, distance = innerWidth < 650 ? 18 : 10.5;
@@ -60,7 +68,6 @@ async function start() {
     map.colorSpace = THREE.SRGBColorSpace;
     return map;
   }
-  const terrainPeaks = createTerrainPeaks(1937, 34, 6.5);
   const terrainHeightMap = createTerrainHeightMap(8128, WALKABLE_POINTS, { cellSize: .85, step: .24, maxHeight: 3.6 });
   function terrainShape(outerPoints, innerPoints = null) {
     const shape = new THREE.Shape();
@@ -408,33 +415,53 @@ async function start() {
     sceneryTemplates.set(path, pending);
     return pending;
   }
-  async function createScenery(path, x, z, size) {
+  async function createScenery(path, x, z, size, parent = scene, allowFlat = false) {
     const template = await loadSceneryTemplate(path);
     const art = template.clone(true);
     // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
     art.scale.set(size / 2.05, size / 2.05, 1);
     const elevation = terrainHeightMap.sample(x, z);
-    if (elevation <= 0) return;
+    if (elevation <= 0 && !allowFlat) return null;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
     const inward = nearestPointOnPath(x, z, WALKABLE_POINTS);
     prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
-    scene.add(prop);
+    parent.add(prop);
+    return prop;
   }
-  const figures = await Promise.all([
-    createFigure(bodies[0], 'hero'),
-    createFigure(bodies[1], 'goblin'),
-    createFigure(bodies[2], 'goblin'),
-    createFigure(bodies[3], 'goblin'),
-  ]);
-  const sceneryPaths = [
-    createScenery('assets/env-tree.png', -13, -3.5, 3.8),
-    createScenery('assets/env-bushes.png', -10.5, -9.3, 2.6),
-    createScenery('assets/env-troll-hut.png', 0, -14, 3.9),
-    createScenery('assets/env-moss-rocks.png', 12.2, -8.8, 2.8),
-    createScenery('assets/env-fortress.png', 14, 1.4, 3.8),
-    createScenery('assets/env-evergreen.png', 5.5, 13.2, 3.7),
+  const figures = [];
+  const heroFigure = await createFigure(heroBody, 'hero');
+  heroFigure.locationId = 'home'; figures.push(heroFigure);
+  const enemyBody = (id, locationId, x, z, options = {}) => ({
+    id, team: 'enemy', locationId, x, z, vx: 0, vz: 0,
+    health: options.health ?? 32, maxHealth: options.maxHealth ?? 32,
+    charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: randomBetween(1, 4),
+    combatAwake: options.combatAwake ?? false, spawnReady: options.spawnReady ?? true,
+    boss: options.boss ?? false,
+  });
+  const forestSpawns = [{ x: -3.1, z: .3 }, { x: 3.1, z: .3 }];
+  for (let index = 0; index < forestSpawns.length; index++) {
+    const point = forestSpawns[index];
+    const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z);
+    locations.forest.enemies.push(body);
+    const figure = await createFigure(body, 'goblin');
+    figure.locationId = 'forest'; figure.group.visible = false; figure.healthHUD.visible = false;
+    figure.enemyMarker.group.visible = false; figures.push(figure);
+  }
+  const campSpawns = [
+    { x: -5.6, z: -2.8, hutX: -8.5, hutZ: -5.4 },
+    { x: 5.6, z: -2.8, hutX: 8.5, hutZ: -5.4 },
+    { x: -5.6, z: 2.8, hutX: -8.5, hutZ: 5.4 },
   ];
-  const growthRandom = (() => { let seed = 0x51a7c0de; return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); })();
+  for (let index = 0; index < campSpawns.length; index++) {
+    const point = campSpawns[index];
+    const body = enemyBody(`camp-goblin-${index + 1}`, 'camp', point.x, point.z, { spawnReady: false, combatAwake: true });
+    locations.camp.enemies.push(body);
+    const figure = await createFigure(body, 'goblin');
+    figure.locationId = 'camp'; figure.spawnSource = { x: point.hutX, z: point.hutZ }; figure.spawnStarted = false;
+    figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+    figures.push(figure);
+  }
+  locations.camp.reinforcementQueue.push(2);
   const propTypes = [
     { path: 'assets/env-tree.png', weight: .28, size: [2.1, 3.3] },
     { path: 'assets/env-evergreen.png', weight: .24, size: [1.9, 3.1] },
@@ -442,22 +469,67 @@ async function start() {
     { path: 'assets/env-bushes.png', weight: .2, size: [1.4, 2.6] },
   ];
   await Promise.all(propTypes.map(type => loadSceneryTemplate(type.path)));
-  let addedProps = 0;
-  for (let candidate = 0; candidate < 600 && addedProps < 72; candidate++) {
-    const angle = growthRandom() * Math.PI * 2;
-    const radius = 1.22 + Math.sqrt(growthRandom()) * 5.12;
-    const density = gaussianGrowthField(radius, angle, terrainPeaks);
-    if (density < .18 || growthRandom() > .18 + density * .62) continue;
-    const typeRoll = growthRandom();
-    const type = propTypes.find((item, index) => typeRoll < propTypes.slice(0, index + 1).reduce((sum, entry) => sum + entry.weight, 0)) || propTypes[0];
-    const x = Math.cos(angle) * radius * 10.8, z = Math.sin(angle) * radius * 8.2;
-    if (terrainHeightMap.sample(x, z) <= 0) continue;
-    if (radius < 1.35 && WALKABLE_POINTS.some(point => Math.hypot(point.x - x, point.z - z) < 1.1)) continue;
-    const distanceScale = radius > 3.5 ? .64 : radius > 2.3 ? .82 : 1;
-    sceneryPaths.push(createScenery(type.path, x, z, randomBetween(...type.size) * distanceScale));
-    addedProps++;
-  }
-  await Promise.all(sceneryPaths);
+  const addTrail = (group, start, end, color = 0xa9824f) => {
+    const material = new THREE.MeshStandardMaterial({ color, roughness: 1, ...sceneStencil });
+    const length = Math.hypot(end.x - start.x, end.z - start.z);
+    const count = Math.max(4, Math.ceil(length / .7));
+    for (let index = 0; index <= count; index++) {
+      const t = index / count;
+      const stone = new THREE.Mesh(new THREE.CylinderGeometry(.2, .23, .035, 6), material);
+      stone.position.set(start.x + (end.x - start.x) * t, .025, start.z + (end.z - start.z) * t);
+      stone.rotation.y = (index % 2 ? 1 : -1) * .13;
+      stone.receiveShadow = true; group.add(stone);
+    }
+  };
+  const addPortal = (group, x, z, color) => {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.58, .79, 48), new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: .92, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(x, .04, z); ring.renderOrder = 4; group.add(ring);
+    const center = new THREE.Mesh(new THREE.CircleGeometry(.55, 40), new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: .13, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    center.rotation.x = -Math.PI / 2; center.position.set(x, .032, z); center.renderOrder = 3; group.add(center);
+  };
+  const populateForestEdge = async (location, count, seedOffset = 0) => {
+    const group = locationGroups[location.id];
+    const random = (() => { let seed = (0x4f1bbcdc + seedOffset) >>> 0; return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); })();
+    const tasks = [];
+    const scatterTypes = [propTypes[0], propTypes[1], propTypes[2], propTypes[3]];
+    let placed = 0;
+    for (let candidate = 0; candidate < 180 && placed < count; candidate++) {
+      const angle = random() * Math.PI * 2;
+      const radius = 10.8 + Math.sqrt(random()) * 3.3;
+      const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius * .78;
+      if (terrainHeightMap.sample(x, z) <= 0) continue;
+      const type = scatterTypes[Math.floor(random() * scatterTypes.length)];
+      tasks.push(createScenery(type.path, x, z, randomBetween(...type.size), group)); placed++;
+    }
+    await Promise.all(tasks);
+  };
+  const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
+  const sceneDetails = [
+    createScenery('assets/env-troll-hut.png', 0, -13, 4.5, homeGroup),
+    createScenery('assets/env-troll-hut.png', 0, -1.7, 2.1, homeGroup, true),
+    populateForestEdge(locations.home, 10, 11),
+    populateForestEdge(locations.forest, 36, 23),
+    createScenery('assets/env-troll-hut.png', -8.5, -5.4, 3.2, campGroup, true),
+    createScenery('assets/env-troll-hut.png', 8.5, -5.4, 3.2, campGroup, true),
+    createScenery('assets/env-troll-hut.png', -8.5, 5.4, 3.2, campGroup, true),
+    createScenery('assets/env-troll-hut.png', 8.5, 5.4, 3.2, campGroup, true),
+    populateForestEdge(locations.camp, 18, 37),
+  ];
+  addTrail(homeGroup, { x: 0, z: -2.2 }, { x: 0, z: -6.35 }, 0xb9935d);
+  addPortal(homeGroup, 0, -6.35, 0xffd476);
+  addTrail(forestGroup, { x: 0, z: -6.35 }, { x: 0, z: 6.35 }, 0xb9935d);
+  addPortal(forestGroup, 0, -6.35, 0xe9d39b);
+  addPortal(forestGroup, 0, 6.35, 0xdf6650);
+  addTrail(campGroup, { x: 0, z: 4.4 }, { x: 0, z: 6.35 }, 0x986d45);
+  addPortal(campGroup, 0, 6.35, 0xdf6650);
+  await Promise.all(sceneDetails);
+  const homeSign = homeGroup.children.find(child => child.position?.x === 0 && child.position?.z === -1.7);
+  if (homeSign) homeSign.rotation.y = 0;
+  refreshLocationInfo();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
     for (const [name, stateArt] of Object.entries(figure.artStates)) stateArt.group.visible = name === visualState;
@@ -473,6 +545,90 @@ async function start() {
   let activeFigure = figures[0];
   let selectionAge = .6;
   let elapsed = 0;
+  let transitionCooldown = 0;
+  const campSpawnPoints = [
+    { x: -5.6, z: -2.8, hutX: -8.5, hutZ: -5.4 },
+    { x: 5.6, z: -2.8, hutX: 8.5, hutZ: -5.4 },
+    { x: -5.6, z: 2.8, hutX: -8.5, hutZ: 5.4 },
+    { x: 5.6, z: 2.8, hutX: 8.5, hutZ: 5.4 },
+  ];
+  function refreshLocationInfo() {
+    locationTitle.textContent = activeLocation.title;
+    if (activeLocation.kind === 'home') locationDetail.textContent = 'Тропа на севере ведёт в лес';
+    else if (activeLocation.kind === 'forest') locationDetail.textContent = activeLocation.combatTriggered
+      ? 'Гоблины напали. Сквозная тропа ведёт к лагерю'
+      : 'Тихий лес. Подойди к гоблинам, чтобы начать бой';
+    else locationDetail.textContent = activeLocation.bossSpawned
+      ? `Вожак вышел! Победы: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS}`
+      : `Победы: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS} · живых гоблинов: ${activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length}`;
+  }
+  function rebuildBodies() {
+    bodies = [heroBody, ...activeLocation.enemies.filter(body => body.spawnReady)];
+  }
+  function showActiveLocationFigures() {
+    for (const figure of figures) {
+      const active = figure.body === heroBody || figure.locationId === activeLocation.id;
+      const spawning = Boolean(figure.spawnAnimation);
+      figure.group.visible = active && (!spawning || figure.spawnAnimation.age >= 0);
+      figure.healthHUD.visible = active && figure.body.health > 0 && !spawning;
+      if (figure.enemyMarker) figure.enemyMarker.group.visible = active && figure.body.health > 0 && !spawning;
+    }
+    for (const [id, group] of Object.entries(locationGroups)) group.visible = id === activeLocation.id;
+  }
+  function beginSpawn(figure, from) {
+    figure.spawnSource = from;
+    figure.spawnAnimation = { age: 0, duration: .78, fromX: from.x, fromZ: from.z };
+    const isCurrentLocation = activeLocation.id === figure.locationId;
+    figure.group.visible = isCurrentLocation;
+    figure.healthHUD.visible = false;
+    if (figure.enemyMarker) figure.enemyMarker.group.visible = false;
+  }
+  async function spawnCampGoblin(source = null, boss = false) {
+    const spawn = source ?? campSpawnPoints[Math.floor(Math.random() * campSpawnPoints.length)];
+    const index = locations.camp.enemies.filter(body => body.id.startsWith('camp-goblin-')).length + 1;
+    const body = enemyBody(boss ? 'camp-ogre' : `camp-goblin-${index}-${Math.round(elapsed * 1000)}`,
+      'camp', spawn.x, spawn.z, boss
+        ? { health: 48, maxHealth: 48, combatAwake: true, spawnReady: false, boss: true }
+        : { combatAwake: true, spawnReady: false });
+    body.aiPhase = 'pause'; body.aiTimer = randomBetween(.4, 1.2);
+    locations.camp.enemies.push(body);
+    const figure = await createFigure(body, 'goblin');
+    figure.locationId = 'camp'; figures.push(figure);
+    if (boss) {
+      figure.bossScale = 1.65;
+      figure.spawnSource = { x: 0, z: -6.1 };
+    } else figure.spawnSource = { x: spawn.hutX, z: spawn.hutZ };
+    beginSpawn(figure, figure.spawnSource);
+    if (activeLocation.id === 'camp') refreshLocationInfo();
+    return figure;
+  }
+  function enterLocation(locationId, fromLocationId) {
+    const next = locations[locationId];
+    if (!next) return;
+    stopAim(); gesture = null; pointers.clear();
+    activeLocation = next;
+    const arrival = locationArrival(activeLocation, fromLocationId);
+    heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
+    transitionCooldown = .85;
+    if (activeLocation.kind === 'camp' && !activeLocation.initialized) {
+      activeLocation.initialized = true;
+      activeLocation.reinforcementQueue.push(elapsed + 2);
+      for (const figure of figures.filter(item => item.locationId === 'camp' && !item.body.boss && !item.body.spawnReady)) {
+        beginSpawn(figure, figure.spawnSource);
+      }
+    }
+    showActiveLocationFigures();
+    rebuildBodies();
+    refreshLocationInfo();
+  }
+  function startQueuedReinforcement() {
+    activeLocation.pendingSpawns = Math.max(0, activeLocation.pendingSpawns - 1);
+    spawnCampGoblin().catch(error => console.error('Не удалось создать гоблина лагеря', error));
+  }
+  function spawnCampBoss() {
+    spawnCampGoblin({ x: 0, z: -4.2, hutX: 0, hutZ: -7.4 }, true)
+      .catch(error => console.error('Не удалось создать огра', error));
+  }
   const bursts = [];
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
   const dustGeometry = new THREE.SphereGeometry(.045, 5, 4);
@@ -503,6 +659,12 @@ async function start() {
       figure.hurtAge = 0;
       figure.flashMaterial.opacity = 1;
       figure.backFlashMaterial.opacity = 1;
+    }
+    if (target.team === 'enemy' && target.locationId === 'camp' && !target.boss && target.health === 0 && !target.defeatRecorded) {
+      target.defeatRecorded = true;
+      const bossUnlocked = recordCampDefeat(locations.camp, elapsed);
+      refreshLocationInfo();
+      if (bossUnlocked) spawnCampBoss();
     }
     return true;
   }
@@ -621,7 +783,8 @@ async function start() {
   }
   function hitFigure(x, y) {
     rayAt(x, y);
-    for (const hit of raycaster.intersectObjects(figures.map(figure => figure.group), true)) {
+    const visibleFigures = figures.filter(figure => figure.body === heroBody || figure.locationId === activeLocation.id);
+    for (const hit of raycaster.intersectObjects(visibleFigures.map(figure => figure.group), true)) {
       let root = hit.object;
       while (root && !root.userData.figure) root = root.parent;
       const figure = root?.userData.figure;
@@ -634,7 +797,7 @@ async function start() {
     const groundPoint = raycaster.ray.intersectPlane(figureHitPlane, new THREE.Vector3());
     if (!groundPoint) return null;
     let closest = null, closestDistance = (PUCK_RADIUS + .08) ** 2;
-    for (const figure of figures) {
+    for (const figure of visibleFigures) {
       const dx = groundPoint.x - figure.body.x, dz = groundPoint.z - figure.body.z;
       const distanceSquared = dx * dx + dz * dz;
       if (distanceSquared < closestDistance) { closest = figure; closestDistance = distanceSquared; }
@@ -673,7 +836,9 @@ async function start() {
     } else {
       const hit = hitFigure(event.clientX, event.clientY);
       if (hit?.body.team === 'player') choose(hit);
-      if (hit) {
+      if (hit?.body.team === 'enemy') {
+        gesture = { mode: 'blocked', pointer: event.pointerId };
+      } else if (hit) {
         if (state.charges > 0 && state.health > 0) {
           gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
             hit, startX: event.clientX, startY: event.clientY, moved: false };
@@ -786,12 +951,48 @@ async function start() {
     const dt = previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
     elapsed += dt;
+    transitionCooldown = Math.max(0, transitionCooldown - dt);
+    for (const figure of figures) if (figure.spawnAnimation) {
+      const animation = figure.spawnAnimation;
+      animation.age += dt;
+      const t = Math.min(1, animation.age / animation.duration);
+      const eased = 1 - (1 - t) ** 3;
+      figure.group.position.set(
+        animation.fromX + (figure.body.x - animation.fromX) * eased,
+        Math.sin(t * Math.PI) * 1.05,
+        animation.fromZ + (figure.body.z - animation.fromZ) * eased,
+      );
+      if (t >= 1) {
+        figure.group.position.y = 0;
+        figure.body.spawnReady = true;
+        figure.spawnAnimation = null;
+        if (figure.locationId === activeLocation.id) {
+          figure.healthHUD.visible = figure.body.health > 0;
+          if (figure.enemyMarker) figure.enemyMarker.group.visible = figure.body.health > 0;
+          rebuildBodies();
+        }
+      }
+    }
+    if (activeLocation.kind === 'forest' && wakeForestCombat(activeLocation, heroBody)) {
+      for (const enemy of activeLocation.enemies) enemy.aiTimer = randomBetween(.5, 1.4);
+      refreshLocationInfo();
+    }
+    if (activeLocation.kind === 'camp') {
+      const living = activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length;
+      if (takeDueReinforcement(activeLocation, elapsed, living)) startQueuedReinforcement();
+    }
     const held = gesture?.mode === 'aim' ? state : null;
     for (const body of bodies) {
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
       advanceChargeRecharge(body, dt);
       if (body.team !== 'enemy') continue;
       if (body.health <= 0) continue;
+      if (!body.combatAwake) {
+        const dx = state.x - body.x, dz = state.z - body.z;
+        const figure = figures.find(item => item.body === body);
+        if (figure && Math.hypot(body.vx, body.vz) < .05) figure.facing = facingAngle(dx, dz, figure.facing);
+        continue;
+      }
       if (body.aiStunRemaining > 0) {
         body.aiStunRemaining = Math.max(0, body.aiStunRemaining - dt);
         continue;
@@ -827,6 +1028,8 @@ async function start() {
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact);
     for (const figure of figures) {
       const body = figure.body;
+      if (body !== heroBody && figure.locationId !== activeLocation.id) continue;
+      if (figure.spawnAnimation) continue;
       figure.group.position.set(body.x, 0, body.z);
       const speed = Math.hypot(body.vx, body.vz);
       if (body.health > 0 && body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
@@ -856,12 +1059,13 @@ async function start() {
       figure.backFlashMaterial.opacity = figure.viewBack ? flashOpacity : 0;
       const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
       const squash = figure.hitStrength * spring;
+      const artScale = figure.bossScale ?? 1;
       if (visualState === 'dead') {
-        figure.artGroup.scale.set(1, 1, 1);
+        figure.artGroup.scale.set(artScale, artScale, artScale);
         figure.artGroup.position.y = figure.deadGroundedY;
         figure.artGroup.rotation.set(0, 0, 0);
       } else {
-        figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
+        figure.artGroup.scale.set(artScale * (1 + squash * .7), artScale * (1 - squash), artScale);
         figure.artGroup.position.y = 1.25 + Math.max(0, squash) * .2;
         figure.artGroup.rotation.set(0, 0, squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012);
       }
@@ -924,12 +1128,17 @@ async function start() {
       const scale = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
       playerMarker.group.scale.setScalar(Math.max(.001, scale));
     }
+    if (transitionCooldown <= 0) {
+      const exit = findNearbyExit(activeLocation, heroBody);
+      if (exit) enterLocation(exit.to, activeLocation.id);
+    }
     playerMarker.material.color.lerp(
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
       1 - Math.exp(-18 * dt));
     playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
     updateCamera();
     for (const figure of figures) {
+      if (figure.body !== heroBody && figure.locationId !== activeLocation.id) continue;
       figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);
       figure.healthHUD.quaternion.copy(camera.quaternion);
     }
