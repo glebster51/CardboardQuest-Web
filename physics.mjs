@@ -50,7 +50,7 @@ export function launch(state, drag) {
   state.vz = -pull.z * LAUNCH_GAIN || 0;
 }
 
-export function advance(state, dt, arenaPoints = ARENA_POINTS) {
+export function advance(state, dt, arenaPoints = ARENA_POINTS, fallZones = [], canFall = false) {
   const speed = Math.hypot(state.vx, state.vz);
   if (speed === 0 || dt <= 0) return 0;
   const travelTime = Math.min(dt, speed / FRICTION);
@@ -61,10 +61,10 @@ export function advance(state, dt, arenaPoints = ARENA_POINTS) {
   const nextSpeed = Math.max(0, speed - FRICTION * dt);
   state.vx = nx * nextSpeed;
   state.vz = nz * nextSpeed;
-  return confine(state, arenaPoints);
+  return confine(state, arenaPoints, fallZones, canFall);
 }
 
-function confine(state, arenaPoints) {
+function confine(state, arenaPoints, fallZones = [], canFall = false) {
   let inside = false;
   for (let i = 0, j = arenaPoints.length - 1; i < arenaPoints.length; j = i++) {
     const a = arenaPoints[i], b = arenaPoints[j];
@@ -79,15 +79,20 @@ function confine(state, arenaPoints) {
     const distance = (state.x - x) ** 2 + (state.z - z) ** 2;
     if (distance < nearestDistance) { nearestDistance = distance; nearestX = x; nearestZ = z; }
   }
-  if (inside && nearestDistance >= PUCK_RADIUS ** 2) return 0;
   let inX = inside ? state.x - nearestX : nearestX - state.x;
   let inZ = inside ? state.z - nearestZ : nearestZ - state.z;
   const length = Math.hypot(inX, inZ) || 1;
   inX /= length; inZ /= length;
-  state.x = nearestX + inX * (PUCK_RADIUS - .001);
-  state.z = nearestZ + inZ * (PUCK_RADIUS - .001);
   const outX = -inX, outZ = -inZ;
   const outwardSpeed = state.vx * outX + state.vz * outZ;
+  if (inside && nearestDistance >= PUCK_RADIUS ** 2) return 0;
+  if (canFall && outwardSpeed > .02 && fallZones.some(zone => Math.hypot(zone.x - nearestX, zone.z - nearestZ) <= zone.radius)) {
+    state.fell = true;
+    state.vx = 0; state.vz = 0;
+    return 0;
+  }
+  state.x = nearestX + inX * (PUCK_RADIUS - .001);
+  state.z = nearestZ + inZ * (PUCK_RADIUS - .001);
   if (outwardSpeed <= 0) return 0;
   state.vx -= (1 + REBOUND) * outwardSpeed * outX;
   state.vz -= (1 + REBOUND) * outwardSpeed * outZ;
@@ -117,9 +122,18 @@ export function collide(a, b, held = null) {
   return -closingSpeed;
 }
 
-export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoints = ARENA_POINTS) {
-  for (const body of bodies) if (!body.fixed && body !== held) {
-    const strength = advance(body, dt, arenaPoints);
+export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoints = ARENA_POINTS, options = {}) {
+  const fallZones = options.fallZones ?? [];
+  const canFall = body => options.fallable?.(body) ?? false;
+  const confineBody = body => {
+    if (body.fell) return;
+    const strength = confine(body, arenaPoints, fallZones, canFall(body));
+    if (body.fell) options.onFall?.(body);
+    else if (strength > .4) onImpact?.(body, null, strength);
+  };
+  for (const body of bodies) if (!body.fixed && body !== held && !body.fell) {
+    const strength = advance(body, dt, arenaPoints, fallZones, canFall(body));
+    if (body.fell) { options.onFall?.(body); continue; }
     if (strength > .4) onImpact?.(body, null, strength);
   }
   // Reconcile overlap with the table edges after each contact pass.
@@ -127,14 +141,12 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoin
     for (let i = 0; i < bodies.length; i++) {
       for (let j = i + 1; j < bodies.length; j++) {
         const a = bodies[i], b = bodies[j];
+        if (a.fell || b.fell) continue;
         const attackingA = isAttacking(a), attackingB = isAttacking(b);
         const strength = collide(a, b, held);
         if (strength > .4) onImpact?.(a, b, strength, attackingA, attackingB);
       }
     }
-    for (const body of bodies) if (!body.fixed && body !== held) {
-      const strength = confine(body, arenaPoints);
-      if (strength > .4) onImpact?.(body, null, strength);
-    }
+    for (const body of bodies) if (!body.fixed && body !== held && !body.fell) confineBody(body);
   }
 }

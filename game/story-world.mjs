@@ -21,15 +21,20 @@ function boundaryClearance(point, polygon) {
   return nearest;
 }
 
+export function isCampaignPositionSafe(location, point, clearance = 1.2) {
+  const points = location?.walkablePoints ?? [];
+  return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.z) && points.length >= 3
+    && pointInside(point, points) && boundaryClearance(point, points) >= clearance
+    && !(location.exits ?? []).some(exit => Math.hypot(point.x - exit.x, point.z - exit.z) <= 2.1));
+}
+
 /** Restore a save without starting the player dead, outside the field, or inside an exit trigger. */
 export function resolveCampaignPlayerStart(location, { health, maxHealth, position } = {}) {
   const maximum = Math.max(1, Math.trunc(Number.isFinite(maxHealth) ? maxHealth : 20));
   const numericHealth = Number.isFinite(health) ? Math.trunc(health) : maximum;
   const restoredHealth = numericHealth <= 0 ? maximum : Math.min(numericHealth, maximum);
   const points = location?.walkablePoints ?? [];
-  const isSafe = candidate => candidate && Number.isFinite(candidate.x) && Number.isFinite(candidate.z)
-    && points.length >= 3 && pointInside(candidate, points) && boundaryClearance(candidate, points) >= 1.2
-    && !(location.exits ?? []).some(exit => Math.hypot(candidate.x - exit.x, candidate.z - exit.z) <= 2.1);
+  const isSafe = candidate => isCampaignPositionSafe(location, candidate);
 
   let spawn = isSafe(position) ? { x: position.x, z: position.z } : null;
   if (!spawn) {
@@ -100,6 +105,16 @@ export function createCampaignLocations(locations, scale = 1.5) {
       to,
       label: 'Проход между холмами',
     }));
+    const angularDistance = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+    const dropAngle = Array.from({ length: 24 }, (_, index) => index / 24 * Math.PI * 2)
+      .map(angle => ({ angle, clearance: exits.length
+        ? Math.min(...exits.map(exit => angularDistance(angle, Math.atan2(exit.z, exit.x)))) : Math.PI }))
+      .sort((a, b) => b.clearance - a.clearance)[0].angle;
+    const dropPoint = walkablePoints.reduce((best, point) => {
+      const delta = Math.atan2(Math.sin(Math.atan2(point.z, point.x) - dropAngle),
+        Math.cos(Math.atan2(point.z, point.x) - dropAngle));
+      return !best || Math.abs(delta) < best.delta ? { x: point.x, z: point.z, delta: Math.abs(delta) } : best;
+    }, null);
     const arrivals = {};
     for (const [from, to] of CAMPAIGN_EDGES) if (to === authored.id) {
       const arrivalAngle = directions[neighbors.indexOf(from)];
@@ -118,6 +133,7 @@ export function createCampaignLocations(locations, scale = 1.5) {
       campaignOptions: authored.options,
       secret: authored.options === 'secret',
       exits,
+      dropZones: [{ x: dropPoint.x, z: dropPoint.z, radius: 2.35 }],
       arrivals,
       entry: { x: 0, z: 0 },
       walkablePoints,

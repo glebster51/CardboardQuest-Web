@@ -25,6 +25,14 @@ function pointInsidePolygon(x, z, points) {
   return inside;
 }
 
+/** Marching squares also traces the zero-height playable floor as a contour; it must stay a hole. */
+export function removeContoursCoveringPlayableArea(contours, walkablePoints) {
+  if (!Array.isArray(contours) || !Array.isArray(walkablePoints) || walkablePoints.length < 3) return [];
+  const probe = walkablePoints.reduce((center, point) => ({ x: center.x + point.x / walkablePoints.length,
+    z: center.z + point.z / walkablePoints.length }), { x: 0, z: 0 });
+  return contours.filter(contour => contour.length >= 3 && !pointInsidePolygon(probe.x, probe.z, contour));
+}
+
 function latticeNoise(x, z, seed) {
   const hash = (ix, iz) => {
     let value = Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + seed;

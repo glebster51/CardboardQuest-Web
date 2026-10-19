@@ -5,17 +5,18 @@ import { createPointerInput } from './game/pointer-input.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=3';
-import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=4';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=20';
 import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=2';
 import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
+import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
   consumeFood, createCampaignState, inspectCampaignLocation, visitCampaignLocation } from './game/story-campaign.mjs?v=1';
-import { createCampaignLocations, resolveCampaignPlayerStart } from './game/story-world.mjs?v=2';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=3';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=6';
@@ -66,6 +67,12 @@ async function start() {
   });
   heroBody.health = playerStart.health;
   heroBody.x = playerStart.position.x; heroBody.z = playerStart.position.z;
+  const savedLastSafePosition = resolveCampaignPlayerStart(locations[campaignState.currentLocationId], {
+    health: heroBody.health, maxHealth: heroBody.maxHealth, position: savedCampaign?.lastSafePosition,
+  }).position;
+  heroBody.lastSafePosition = savedCampaign?.lastSafePosition && isCampaignPositionSafe(
+    locations[campaignState.currentLocationId], savedCampaign.lastSafePosition)
+    ? savedLastSafePosition : { ...playerStart.position };
   for (const location of Object.values(locations)) location.obstacles = [];
   let activeLocation = locations[campaignState.currentLocationId];
   const locationTitle = document.querySelector('#location-title');
@@ -453,6 +460,7 @@ async function start() {
     campaignState.currentLocationId = activeLocation.id;
     campaignState.playerHealth = heroBody.health;
     campaignState.playerPosition = { x: heroBody.x, z: heroBody.z };
+    campaignState.lastSafePosition = { ...heroBody.lastSafePosition };
     campaignState.elapsed = elapsed;
     campaignState.world = Object.fromEntries(Object.values(locations).map(location => [location.id, {
       enemies: location.enemies.map(enemy => ({ id: enemy.id, x: enemy.x, z: enemy.z, vx: enemy.vx, vz: enemy.vz,
@@ -597,6 +605,7 @@ async function start() {
     protectedEntryFrom = fromLocationId;
     const arrival = lastExitPosition(activeLocation, fromLocationId) ?? locationArrival(activeLocation, fromLocationId);
     heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
+    heroBody.lastSafePosition = { x: arrival.x, z: arrival.z };
     const direction = locationEntryDirection(activeLocation, fromLocationId);
     const heading = Math.atan2(direction.x, direction.z);
     heroFigure.facing = heading; heroFigure.group.rotation.y = heading;
@@ -689,6 +698,16 @@ async function start() {
     if (now - lastVibration < 100) return;
     lastVibration = now;
     navigator.vibrate?.(pattern);
+  }
+  function recoverPlayerFromFall(body) {
+    if (body !== heroBody) return;
+    const safe = body.lastSafePosition ?? activeLocation.entry;
+    recoverAfterFall(body, safe);
+    const figure = figures.find(item => item.body === body);
+    if (figure) { figure.hurtAge = 0; figure.hitAge = 0; figure.hitStrength = .2; }
+    vibrate([55, 24, 55]);
+    burst(body.x, body.z, .9);
+    persistCampaign();
   }
   function onImpact(a, b, speed, attackingA = false, attackingB = false) {
     for (const figure of figures) {
@@ -913,9 +932,12 @@ async function start() {
       if (decision.launched) burst(body.x, body.z, .45);
     }
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
-      advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints);
+      advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints, {
+        fallZones: activeLocation.dropZones, fallable: body => body === heroBody, onFall: recoverPlayerFromFall,
+      });
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
+    if (isCampaignPositionSafe(activeLocation, heroBody)) heroBody.lastSafePosition = { x: heroBody.x, z: heroBody.z };
     for (const figure of figures) {
       if (figure.poolDormant) continue;
       const body = figure.body;
