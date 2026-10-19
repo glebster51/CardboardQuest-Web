@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=77">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
@@ -15,12 +15,17 @@
     <button id="interact" type="button" hidden>Осмотреть</button>
     <button id="inventory-toggle" type="button">Рюкзак</button>
   </div>
-  <section id="story-dialogue" hidden aria-live="polite">
+  <section id="story-dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="story-title" tabindex="-1">
     <article>
+      <img id="story-portrait" alt="" hidden>
+      <div id="story-copy">
       <strong id="story-title"></strong>
+      <strong id="story-speaker"></strong>
       <p id="story-text"></p>
+      <small id="story-progress"></small>
       <div id="story-options"></div>
-      <button id="story-close" type="button">Понятно</button>
+      <button id="story-close" type="button">Дальше →</button>
+      </div>
     </article>
   </section>
   <section id="inventory-panel" hidden aria-live="polite">
@@ -33,7 +38,7 @@
   </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-<script type="module" src="app.js?v=76"></script>
+<script type="module" src="app.js?v=77"></script>
 </body>
 </html>
 

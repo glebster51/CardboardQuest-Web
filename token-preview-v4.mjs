@@ -10,6 +10,9 @@ const assets = [
   { id: 'moss-rocks', label: 'Мох и камни', path: 'assets/env-moss-rocks.png', height: 2.2 },
   { id: 'bushes', label: 'Кусты', path: 'assets/env-bushes.png', height: 2.4 },
   { id: 'fortress', label: 'Крепость', path: 'assets/env-fortress.png', height: 3.1 },
+  { id: 'grandpa-alive', label: 'Дед Егор', path: 'assets/npc-grandpa-idle.png', height: 1.8, radius: .8 },
+  { id: 'grandpa-dead', label: 'Последняя тишина', path: 'assets/npc-grandpa-dead.png', height: .85, radius: .8 },
+  { id: 'cartographer', label: 'Мартын', path: 'assets/npc-cartographer-idle.png', height: 1.75, radius: .8 },
 ];
 const views = [
   { id: 'front', label: 'Спереди', angle: 0 },

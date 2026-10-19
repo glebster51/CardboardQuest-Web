@@ -3,7 +3,10 @@ import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=1';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=1';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
-import { createPointerInput } from './game/pointer-input.mjs?v=1';
+import { createPointerInput } from './game/pointer-input.mjs?v=2';
+import { getStoryDialogue } from './game/story-dialogue.mjs?v=1';
+import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
+import { createStoryActors } from './render/story-actors.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=2';
@@ -19,9 +22,9 @@ import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } fr
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
-  consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=3';
+  consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=4';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=4';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=5';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=7';
@@ -91,6 +94,23 @@ async function start() {
   const interactButton = document.querySelector('#interact');
   const dialoguePanel = document.querySelector('#story-dialogue');
   const inventoryPanel = document.querySelector('#inventory-panel');
+  let inputController = null;
+  const dialogue = createDialoguePanel({ root: dialoguePanel,
+    onOpen() { inputController?.cancel(); inventoryPanel.hidden = true; },
+    onClose() {
+      if (activeLocation.id === 'bell-vault' && (campaignState.flags.choseGoodbye || campaignState.flags.triedToReplaceGrandpa)) {
+        campaignState.flags.grandpaDead = true;
+        storyActors.update(); rebuildBodies(); persistCampaign();
+      }
+    },
+    onChoose(option) {
+      const result = chooseCampaignOption(campaignState, activeLocation.id, option.id);
+      if (!result) return null;
+      persistCampaign(); renderInventory(); refreshLocationInfo();
+      const lines = getStoryDialogue(campaignState, activeLocation.id, 'choice', option.id);
+      return { ...result, lines };
+    },
+  });
   const locationGroups = Object.fromEntries(Object.values(locations).map(location => {
     const group = new THREE.Group(); group.visible = location.id === activeLocation.id; scene.add(group);
     location.sceneGroup = group;
@@ -264,6 +284,7 @@ async function start() {
   }
   await populateNarrativeScenery({ locations, createScenery, loadTemplate: loadSceneryTemplate,
     scale: LOCATION_SCALE, hutAnchors: CAMP_HUT_ANCHORS, puckRadius: PUCK_RADIUS });
+  const storyActors = await createStoryActors({ locations, createScenery, scale: LOCATION_SCALE, campaign: campaignState });
   const decorationSpecs = Object.fromEntries(Object.values(locations).map((location, index) => [location.id, {
     seed: location.heightSeed,
     decalCount: location.kind === 'camp' ? 48 : location.biome === 'quarry' ? 36 : 28,
@@ -284,7 +305,8 @@ async function start() {
     createLocationWalkPaths, scatterGroundDetails });
   refreshLocationInfo();
   const initialVisit = visitCampaignLocation(campaignState, activeLocation.id);
-  if (initialVisit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro });
+  if (initialVisit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro,
+    lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') });
   renderInventory();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
@@ -412,24 +434,8 @@ async function start() {
     document.querySelector('#use-food').disabled = !['bandage', 'jerky', 'hardtack', 'berries'].some(id => campaignState.items[id] > 0)
       || heroBody.health <= 0 || heroBody.health >= heroBody.maxHealth;
   }
-  function showStoryCard({ title, text, options = [] }) {
-    document.querySelector('#story-title').textContent = title ?? activeLocation.title;
-    document.querySelector('#story-text').textContent = text ?? '';
-    const container = document.querySelector('#story-options');
-    container.replaceChildren();
-    for (const option of options) {
-      const button = document.createElement('button');
-      button.type = 'button'; button.textContent = option.label;
-      button.addEventListener('click', () => {
-        const result = chooseCampaignOption(campaignState, activeLocation.id, option.id);
-        if (!result) return;
-        persistCampaign(); renderInventory();
-        showStoryCard({ title: result.title, text: result.text });
-        refreshLocationInfo();
-      }, { once: true });
-      container.append(button);
-    }
-    dialoguePanel.hidden = false;
+  function showStoryCard(card) {
+    dialogue.show({ ...card, title: card.title ?? activeLocation.title });
   }
   function persistCampaign() {
     campaignState.currentLocationId = activeLocation.id;
@@ -438,6 +444,8 @@ async function start() {
     campaignState.lastSafePosition = { ...heroBody.lastSafePosition };
     campaignState.elapsed = elapsed;
     campaignState.world = Object.fromEntries(Object.values(locations).map(location => [location.id, {
+      actors: storyActors.actors.filter(actor => actor.spec.location === location.id)
+        .map(actor => ({ id: actor.spec.id, x: actor.body.x, z: actor.body.z })),
       enemies: location.enemies.map(enemy => ({ id: enemy.id, x: enemy.x, z: enemy.z, vx: enemy.vx, vz: enemy.vz,
         health: enemy.health, combatAwake: enemy.combatAwake, spawnReady: enemy.spawnReady, fell: enemy.fell })),
       defeats: location.defeats, goblinsSpawned: location.goblinsSpawned,
@@ -451,8 +459,9 @@ async function start() {
     }
   }
   if (savedCampaign && playerStart.recovered) persistCampaign();
-  document.querySelector('#story-close').addEventListener('click', () => { dialoguePanel.hidden = true; });
   document.querySelector('#inventory-toggle').addEventListener('click', () => {
+    if (dialogue.isOpen()) return;
+    inputController?.cancel();
     renderInventory(); inventoryPanel.hidden = false;
   });
   document.querySelector('#inventory-close').addEventListener('click', () => { inventoryPanel.hidden = true; });
@@ -465,7 +474,9 @@ async function start() {
   interactButton.addEventListener('click', () => {
     const result = inspectCampaignLocation(campaignState, activeLocation.id);
     if (!result) return;
-    persistCampaign(); renderInventory(); showStoryCard(result);
+    persistCampaign(); renderInventory();
+    showStoryCard({ ...result, lines: campaignState.collected[activeLocation.id] ? []
+      : getStoryDialogue(campaignState, activeLocation.id) });
   });
   document.querySelector('#restart').addEventListener('click', () => {
     try { localStorage.removeItem(CAMPAIGN_SAVE_KEY); } catch { /* A fresh session still starts at home. */ }
@@ -582,7 +593,7 @@ async function start() {
       : `${activeLocation.campaignIntro} · ${progress}`;
   }
   function rebuildBodies() {
-    bodies = [heroBody, ...activeLocation.obstacles, ...activeLocation.enemies.filter(body => body.spawnReady)];
+    bodies = [heroBody, ...activeLocation.obstacles.filter(body => body.active !== false), ...activeLocation.enemies.filter(body => body.spawnReady)];
   }
   rebuildBodies();
   function showActiveLocationFigures() {
@@ -662,6 +673,7 @@ async function start() {
     heroFigure.victoryAnimation = null;
     clearProjectiles();
     activeLocation = next;
+    dialogue.close();
     protectedEntryFrom = fromLocationId;
     const remembered = lastExitPosition(activeLocation, fromLocationId);
     const arrival = remembered && isPlayableFloor(activeLocation, remembered.x, remembered.z, .2)
@@ -675,6 +687,7 @@ async function start() {
     target.set(heroBody.x, .65, heroBody.z);
     transitionCooldown = .85;
     const visit = visitCampaignLocation(campaignState, activeLocation.id);
+    storyActors.update();
     if (activeLocation.kind === 'camp') {
       restoreSavedCampEnemies().catch(error => console.error('Не удалось восстановить состояние лагеря', error));
       activeLocation.initialized = true;
@@ -689,7 +702,8 @@ async function start() {
     refreshLocationInfo();
     renderInventory();
     persistCampaign();
-    if (visit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro });
+    if (visit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro,
+      lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') });
   }
   function startQueuedReinforcement() {
     const camp = locations.camp;
@@ -773,6 +787,7 @@ async function start() {
     vibrate(28);
     persistCampaign();
     refreshLocationInfo();
+    showStoryCard({ ...result, lines: getStoryDialogue(campaignState, activeLocation.id) });
     return true;
   }
   function updateWorldLoot(dt) {
@@ -1024,7 +1039,8 @@ async function start() {
     playerMarker.setExtension(0);
     host.classList.remove('aiming');
   }
-  const inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
+  inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
+    isBlocked: () => dialogue.isOpen() || !inventoryPanel.hidden,
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
@@ -1060,7 +1076,7 @@ async function start() {
     view(id, distance = 43) {
       simulationPaused = true;
       enterLocation(id, activeLocation.id);
-      dialoguePanel.hidden = true; inventoryPanel.hidden = true;
+      dialogue.close(); inventoryPanel.hidden = true;
       heroBody.x = 0; heroBody.z = 0; heroBody.vx = 0; heroBody.vz = 0;
       heroBody.health = heroBody.maxHealth;
       heroFigure.victoryAnimation = null;
@@ -1073,6 +1089,20 @@ async function start() {
       updateCamera();
     },
     pause(value = true) { simulationPaused = value; },
+    story(kind = 'scene') {
+      const card = inspectCampaignLocation(campaignState, activeLocation.id);
+      showStoryCard({ ...card, lines: getStoryDialogue(campaignState, activeLocation.id, kind) });
+    },
+    actorView(id, angle = 0) {
+      const actor = storyActors.actors.find(actor => actor.spec.id === id);
+      if (!actor) throw new Error(`Unknown story actor: ${id}`);
+      simulationPaused = true;
+      target.set(actor.body.x, .75, actor.body.z);
+      orbit.distance = 6; orbit.theta = angle; orbit.phi = .95;
+      heroFigure.group.visible = false; playerMarker.group.visible = false;
+      for (const figure of figures) figure.healthHUD.visible = false;
+      updateCamera();
+    },
     place(id, x, z, vx = 0, vz = 0) {
       const body = id === 'hero' ? heroBody : activeLocation.enemies.find(enemy => enemy.id === id);
       if (!body) throw new Error(`Unknown test unit: ${id}`);
@@ -1080,10 +1110,16 @@ async function start() {
     },
     snapshot() {
       return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
-        hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health },
+        hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer },
+        dialogue: dialogue.frame(), elapsed,
+        actors: storyActors.actors.filter(actor => actor.spec.location === activeLocation.id)
+          .map(actor => ({ id: actor.spec.id, visible: actor.prop.visible, fixed: actor.body.fixed, x: actor.body.x, z: actor.body.z,
+            baseY: actor.prop.position.y, meshes: actor.prop.children.length })),
         heroVictory: Boolean(heroFigure.victoryAnimation), hazards: activeLocation.hazards,
-        enemies: activeLocation.enemies.map(({ id, x, z, vx, vz, health, archetype, fell, aiPhase }) => ({ id, x, z, vx, vz, health, archetype, fell, aiPhase })),
+        enemies: activeLocation.enemies.map(({ id, x, z, vx, vz, health, archetype, fell, aiPhase, aiTimer, charges, rechargeTimer }) =>
+          ({ id, x, z, vx, vz, health, archetype, fell, aiPhase, aiTimer, charges, rechargeTimer })),
         projectiles: projectiles.length,
+        shots: projectiles.map(({ x, z, age }) => ({ x, z, age })),
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
         loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
     },
@@ -1096,6 +1132,9 @@ async function start() {
   renderer.setAnimationLoop(time => {
     const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
+    if (dialogue.isOpen() || !inventoryPanel.hidden) {
+      updateCamera(); renderer.render(scene, camera); return;
+    }
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
     if (heroBody.health <= 0) beginVictorySequence();
@@ -1149,15 +1188,17 @@ async function start() {
         if (figure) figure.dealDamageAge = 0;
       }
     }
-    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
+    for (let remaining = dt; remaining > 0 && !dialogue.isOpen(); remaining -= 1 / 120) {
       advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints, {
         fallZones: activeLocation.dropZones, hazards: activeLocation.hazards,
         fallable: body => body === heroBody || body.team === 'enemy', onFall: recoverPlayerFromFall,
       });
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
+    if (dialogue.isOpen()) { updateCamera(); renderer.render(scene, camera); return; }
     updateWorldLoot(dt);
     updateProjectiles(dt);
+    storyActors.update();
     if (isCampaignPositionSafe(activeLocation, heroBody)) heroBody.lastSafePosition = { x: heroBody.x, z: heroBody.z };
     for (const enemy of activeLocation.enemies) if (enemy.health > 0 && isCampaignPositionSafe(activeLocation, enemy))
       enemy.lastSafePosition = { x: enemy.x, z: enemy.z };
@@ -1290,7 +1331,8 @@ async function start() {
       if (exit) enterLocation(exit.to, activeLocation.id);
     }
     const nearInteraction = heroBody.health > 0 && Math.hypot(heroBody.x, heroBody.z) <= 2.65;
-    interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive;
+    interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive
+      || activeLocation.enemies.some(enemy => enemy.health > 0);
     interactButton.textContent = 'Осмотреть';
     playerMarker.material.color.lerp(
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,

@@ -5,7 +5,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 /** Bind the tabletop pointer, drag-to-aim, orbit, and zoom gestures. */
 export function createPointerInput({ THREE, host, inputElement = host, camera, orbit, playerMarker, windowRef = window,
   getBody, getActiveFigure, hitFigure, choose, stopAim, onLaunch,
-  groundUiY, aimDragSensitivity = 1 / 3, maxAimMarkerExtension }) {
+  groundUiY, aimDragSensitivity = 1 / 3, maxAimMarkerExtension, isBlocked = () => false }) {
   const pointers = new Map();
   let gesture = null;
 
@@ -16,6 +16,7 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
   }
 
   function release(event, cancelled) {
+    if (isBlocked()) { cancel(); return; }
     if (!pointers.has(event.pointerId)) return;
     if (gesture?.pointer === event.pointerId) {
       if (gesture.mode === 'aim') {
@@ -33,6 +34,7 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
   }
 
   inputElement.addEventListener('pointerdown', event => {
+    if (isBlocked()) return;
     if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
     event.preventDefault();
     try { event.target.setPointerCapture(event.pointerId); } catch { /* Window listeners still track the drag. */ }
@@ -67,6 +69,7 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
   });
 
   windowRef.addEventListener('pointermove', event => {
+    if (isBlocked()) { cancel(); return; }
     if (!pointers.has(event.pointerId) || !gesture) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (gesture.mode === 'touchOrbit') {
@@ -120,6 +123,7 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
   inputElement.addEventListener('contextmenu', event => event.preventDefault());
   inputElement.addEventListener('wheel', event => {
     event.preventDefault();
+    if (isBlocked()) return;
     const pixels = event.deltaY * (event.deltaMode === windowRef.WheelEvent.DOM_DELTA_LINE ? 16
       : event.deltaMode === windowRef.WheelEvent.DOM_DELTA_PAGE ? windowRef.innerHeight : 1);
     if (Number.isFinite(pixels)) orbit.distance = clamp(orbit.distance * Math.exp(clamp(pixels, -240, 240) * .0012), 4.5, 27);

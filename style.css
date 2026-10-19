@@ -17,6 +17,18 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #story-dialogue article, #inventory-panel article { width: min(100%, 520px); max-height: min(52vh, 460px); overflow: auto; padding: 15px; border: 1px solid #fff0c5; border-radius: 17px; background: #463722f2; color: #fff4d8; box-shadow: 0 8px 24px #271a0b66; font: 14px/1.4 system-ui, sans-serif; pointer-events: auto; }
 #story-title, #inventory-panel article > strong { display: block; color: #ffe6a8; font-size: 16px; }
 #story-text { margin: 8px 0 12px; white-space: pre-line; }
+#story-dialogue { pointer-events: auto; padding-bottom: calc(18px + env(safe-area-inset-bottom)); background: #21190c66; }
+#story-dialogue article { width: min(100%, 760px); max-height: 64vh; display: grid; grid-template-columns: clamp(76px, 23vw, 170px) minmax(0, 1fr); gap: 16px; padding: 20px; border: 2px solid #e8c78a; }
+#story-portrait { width: 100%; max-height: 220px; object-fit: contain; object-position: center bottom; align-self: end; filter: drop-shadow(0 5px 3px #1c110655); }
+#story-portrait[hidden] { display: none; }
+#story-dialogue[data-speaker="narrator"] article { grid-template-columns: minmax(0, 1fr); }
+#story-copy { min-width: 0; }
+#story-title { color: #c6af83; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+#story-speaker { color: #ffe1a2; font-size: 17px; }
+#story-text { font-size: 16px; line-height: 1.5; margin: 9px 0 12px; }
+#story-progress { color: #cbb38d; font-size: 11px; }
+#story-dialogue button[hidden] { display: none; }
+@media (max-width: 460px) { #story-dialogue article { padding: 13px; gap: 10px; } #story-text { font-size: 14px; } #story-speaker { font-size: 15px; } }
 #story-options { display: grid; gap: 7px; }
 #story-options:empty { display: none; }
 #story-options button { width: 100%; text-align: left; }

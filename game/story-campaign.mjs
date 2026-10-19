@@ -77,7 +77,7 @@ export const CAMPAIGN = [
     { id: 'embrace', label: 'Обнять деда', text: 'Он наконец отпускает печать. Колокол отвечает его голосом, и трещина расползается по всей долине.', flags: { choseGoodbye: true } },
     { id: 'seal', label: 'Попытаться заменить его', text: 'Ты кладёшь руку на печать. Дед отталкивает тебя: «Ты ещё должен жить дальше». Колокол всё равно трескается.', flags: { triedToReplaceGrandpa: true } },
   ]),
-  node('grandpa', 'Последняя тишина', 'vault', 'Колокол замолкает. Дед лежит у твоих ног, а на дальнем склоне медленно рушится вода.', 'Деревня спасена, но домой ты возвращаешься один. На столе остывает вторая кружка. Хэппи-энда нет — только его резной свисток и история, которую теперь придётся рассказать.', [
+  node('grandpa', 'Последняя тишина', 'vault', 'Колокол замолкает. Дед лежит на своей шайбе. Вода медленно отступает, открывая крыши нижних домов.', 'Дед больше не ответит. Мальчик забирает свисток. Домой придётся вернуться одному — и рассказать всю правду, которую взрослые прятали друг от друга.', [
     { id: 'keep-whistle', label: 'Оставить свисток у окна', text: 'Каждое утро ты открываешь окно, чтобы услышать лес. Он молчит. Ты всё равно отвечаешь коротким свистом.', flags: { ending: 'quiet-morning' } },
     { id: 'tell-story', label: 'Записать историю деда', text: 'Ты записываешь всё — даже то, чего не понимаешь. На последней строке рука дрогнула, но рассказ не оборвался.', flags: { ending: 'the-story-remains' } },
   ]),
@@ -103,6 +103,10 @@ export function createCampaignState(raw = null) {
 }
 
 export function campaignLocation(id) { return CAMPAIGN_BY_ID.get(id) ?? null; }
+
+export function hasGrandpaDied(state) {
+  return Boolean(state.flags?.grandpaDead || state.flags?.ending || state.visited?.includes('grandpa'));
+}
 
 export function visitCampaignLocation(state, id) {
   const location = CAMPAIGN_BY_ID.get(id);
@@ -140,6 +144,9 @@ export function openCampaignCache(state, id) {
 export function inspectCampaignLocation(state, id = state.currentLocationId) {
   const location = CAMPAIGN_BY_ID.get(id);
   if (!location) return null;
+  if (id === 'bell-vault' && hasGrandpaDied(state)) return {
+    title: location.title, text: 'Колокол молчит. Дед больше не ответит.', options: [],
+  };
   if (location.options === 'secret') return {
     title: location.title, text: 'Ударь шайбой по сундуку, чтобы открыть его.', options: [],
   };
@@ -150,6 +157,7 @@ export function inspectCampaignLocation(state, id = state.currentLocationId) {
 
 export function chooseCampaignOption(state, id, optionId) {
   if (state.currentLocationId !== id || state.collected[id]) return null;
+  if (id === 'bell-vault' && hasGrandpaDied(state)) return null;
   const location = CAMPAIGN_BY_ID.get(id);
   const option = location?.options?.find(candidate => candidate.id === optionId);
   if (!option) return null;

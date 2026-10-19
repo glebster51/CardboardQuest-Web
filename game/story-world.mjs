@@ -1,4 +1,4 @@
-import { CAMPAIGN, CAMPAIGN_EDGES } from './story-campaign.mjs?v=3';
+import { CAMPAIGN, CAMPAIGN_EDGES } from './story-campaign.mjs?v=4';
 import { createLocationArt } from './location-art.mjs';
 import { createAuthoredLayout } from './location-layout.mjs';
 import { hazardAtPoint } from './world-hazards.mjs';
