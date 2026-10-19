@@ -95,6 +95,9 @@ async function start() {
   });
   const terrainScales = [1, 1.15, 1.32, 1.52, 1.76, 2.05, 2.4, 2.82, 3.3, 3.85, 4.45, 5.1, 5.8, 6.5];
   const terrainBoundaries = terrainScales.map(scale => makeNoisyBoundary(WALKABLE_POINTS, scale, terrainPeaks, 7));
+  const terrainCorrugation = corrugation.clone();
+  terrainCorrugation.wrapS = terrainCorrugation.wrapT = THREE.RepeatWrapping;
+  terrainCorrugation.repeat.set(1, 1);
   const terrainColors = [0x789456, 0x91a05b, 0xa2a063, 0xb1a36c, 0x9b8c66, 0x897858, 0x9f956f, 0xb2a878, 0x8b8369, 0x9d9477, 0xb4a983, 0x968e79, 0xb3aa91, 0x8b816e];
   const terrainLayers = terrainBoundaries.map((boundary, index) => ({
     outer: boundary, inner: index ? terrainBoundaries[index - 1] : null,
@@ -106,11 +109,25 @@ async function start() {
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   for (const layer of terrainLayers) {
-    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.outer, layer.inner), { depth: layer.depth, bevelEnabled: false, steps: 1 });
+    const terrainUvGenerator = {
+      generateTopUV(_geometry, vertices, a, b, c) {
+        return [a, b, c].map(index => new THREE.Vector2(vertices[index * 3], vertices[index * 3 + 1]));
+      },
+      generateSideWallUV(_geometry, vertices, a, b, c, d) {
+        const horizontal = Math.abs(vertices[b * 3] - vertices[a * 3]) >= Math.abs(vertices[b * 3 + 1] - vertices[a * 3 + 1]);
+        return [a, b, c, d].map(index => {
+          const alongEdge = horizontal ? vertices[index * 3] : vertices[index * 3 + 1];
+          return new THREE.Vector2(alongEdge * .25, vertices[index * 3 + 2] / layer.depth);
+        });
+      },
+    };
+    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.outer, layer.inner), {
+      depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: terrainUvGenerator,
+    });
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, [
       new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96, ...sceneStencil }),
-      new THREE.MeshStandardMaterial({ color: layer.sideColor, map: corrugation, roughness: 1, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ color: layer.sideColor, map: terrainCorrugation, roughness: 1, ...sceneStencil }),
     ]);
     mesh.position.y = layer.top - layer.depth;
     mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
