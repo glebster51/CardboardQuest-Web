@@ -1,9 +1,13 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advance, facingAngle, MAX_PULL } from './physics.mjs?v=3';
+import { clampPull, launch, advanceWorld, facingAngle, MAX_PULL } from './physics.mjs?v=4';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
-const state = { x: 0, z: 0, vx: 0, vz: 0 };
+const bodies = [
+  { x: -1.15, z: .7, vx: 0, vz: 0 },
+  { x: 1.15, z: -.7, vx: 0, vz: 0 },
+];
+let state = bodies[0];
 let selected = false;
 const pointers = new Map();
 let gesture = null;
@@ -21,7 +25,7 @@ async function start() {
   scene.fog = new THREE.Fog(0xc7b391, 24, 55);
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 80);
   const target = new THREE.Vector3(0, .65, 0);
-  let theta = .22, phi = .86, distance = innerWidth < 650 ? 10.5 : 9;
+  let theta = .22, phi = .86, distance = innerWidth < 650 ? 14 : 10.5;
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
@@ -89,19 +93,92 @@ async function start() {
       c.stroke();
     }
   });
-  const hero = new THREE.Group();
-  scene.add(hero);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
-    new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1 }),
-    new THREE.MeshStandardMaterial({ map: paper, roughness: 1 }),
-    new THREE.MeshStandardMaterial({ color: 0x97713e }),
-  ]);
-  base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
-  hero.add(base);
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
-  slot.position.y = .219; hero.add(slot);
+  async function createFigure(body, frontPath, backPath) {
+    const group = new THREE.Group();
+    scene.add(group);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
+      new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ map: paper, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0x97713e }),
+    ]);
+    base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
+    group.add(base);
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
+    slot.position.y = .219; group.add(slot);
 
-  const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.9, .93, 80), new THREE.MeshBasicMaterial({ color: 0x647b48, transparent: true, opacity: .65, side: THREE.DoubleSide, depthWrite: false }));
+    const loader = new THREE.TextureLoader();
+    const [tex, backTex] = await Promise.all([
+      loader.loadAsync(frontPath),
+      loader.loadAsync(backPath),
+    ]);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const image = tex.image;
+    const silhouette = document.createElement('canvas');
+    silhouette.width = image.width; silhouette.height = image.height;
+    const context = silhouette.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, image.width, image.height).data;
+    let x0 = image.width, y0 = image.height, x1 = 0, y1 = 0;
+    for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
+      if (pixels[(y * image.width + x) * 4 + 3] > 100) {
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+        y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+    }
+    const cut = document.createElement('canvas');
+    cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
+    const cutContext = cut.getContext('2d', { willReadFrequently: true });
+    cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
+    const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
+    const art = new THREE.CanvasTexture(cut); art.colorSpace = THREE.SRGBColorSpace;
+    art.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    const backCut = document.createElement('canvas');
+    backCut.width = cut.width; backCut.height = cut.height;
+    const backContext = backCut.getContext('2d');
+    // Both prints share the front's cutout and registration, even at different resolutions.
+    backContext.fillStyle = '#fff4d8';
+    backContext.fillRect(0, 0, cut.width, cut.height);
+    const backScaleX = backTex.image.width / image.width;
+    const backScaleY = backTex.image.height / image.height;
+    backContext.drawImage(backTex.image, x0 * backScaleX, y0 * backScaleY,
+      cut.width * backScaleX, cut.height * backScaleY, 0, 0, cut.width, cut.height);
+    backContext.globalCompositeOperation = 'destination-in';
+    backContext.drawImage(cut, 0, 0);
+    const backArt = new THREE.CanvasTexture(backCut); backArt.colorSpace = THREE.SRGBColorSpace;
+    backArt.anisotropy = art.anisotropy;
+    tex.dispose(); backTex.dispose();
+    const geometry = new THREE.PlaneGeometry(2.05 * cut.width / cut.height, 2.05);
+    const edgeMaterial = new THREE.MeshStandardMaterial({ alphaMap: art, alphaTest: .5, color: 0x9d7746, roughness: 1, side: THREE.DoubleSide });
+    // AlphaMap reads green rather than PNG alpha; use the same silhouette through map.
+    edgeMaterial.alphaMap = null;
+    edgeMaterial.map = art;
+    edgeMaterial.onBeforeCompile = shader => {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb = vec3(0.48, 0.31, 0.15);');
+    };
+    const printMaterial = new THREE.MeshStandardMaterial({ map: art, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
+    // Keep identical UVs: looking through the back of the card mirrors the print naturally.
+    const backMaterial = new THREE.MeshStandardMaterial({ map: backArt, alphaTest: .5, roughness: 1, side: THREE.BackSide });
+    for (let i = 0; i < 9; i++) {
+      const face = new THREE.Mesh(geometry, i === 8 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
+      face.position.set(0, .225 + 1.025, (i - 4) * .006);
+      face.castShadow = true;
+      face.userData.print = true;
+      group.add(face);
+    }
+
+    const figure = { group, body, alphaPixels, width: cut.width, height: cut.height };
+    group.userData.figure = figure;
+    group.position.set(body.x, 0, body.z);
+    return figure;
+  }
+  const figures = await Promise.all([
+    createFigure(bodies[0], 'assets/hero-a.png', 'assets/hero-back.png'),
+    createFigure(bodies[1], 'assets/goblin-front.png', 'assets/goblin-back.png'),
+  ]);
+  let activeFigure = figures[0];
+  let activeGroup = activeFigure.group;
+  let selectionAge = 0;
+  const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80), new THREE.MeshBasicMaterial({ color: 0x65d536, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
   selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = .012;
   selectionRing.visible = false; scene.add(selectionRing);
   const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
@@ -115,80 +192,33 @@ async function start() {
   arrow.rotation.x = Math.PI / 2;
   aiming.add(arrow);
 
-  const loader = new THREE.TextureLoader();
-  const [tex, backTex] = await Promise.all([
-    loader.loadAsync('assets/hero-a.png'),
-    loader.loadAsync('assets/hero-back.png'),
-  ]);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const image = tex.image;
-  const silhouette = document.createElement('canvas');
-  silhouette.width = image.width; silhouette.height = image.height;
-  const context = silhouette.getContext('2d', { willReadFrequently: true });
-  context.drawImage(image, 0, 0);
-  const pixels = context.getImageData(0, 0, image.width, image.height).data;
-  let x0 = image.width, y0 = image.height, x1 = 0, y1 = 0;
-  for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
-    if (pixels[(y * image.width + x) * 4 + 3] > 100) {
-      x0 = Math.min(x0, x); x1 = Math.max(x1, x);
-      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-    }
-  }
-  const cut = document.createElement('canvas');
-  cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
-  const cutContext = cut.getContext('2d', { willReadFrequently: true });
-  cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
-  const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
-  const art = new THREE.CanvasTexture(cut); art.colorSpace = THREE.SRGBColorSpace;
-  art.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  const backCut = document.createElement('canvas');
-  backCut.width = cut.width; backCut.height = cut.height;
-  const backContext = backCut.getContext('2d');
-  // Both prints share the front's cutout and registration, even at different resolutions.
-  backContext.fillStyle = '#fff4d8';
-  backContext.fillRect(0, 0, cut.width, cut.height);
-  const backScaleX = backTex.image.width / image.width;
-  const backScaleY = backTex.image.height / image.height;
-  backContext.drawImage(backTex.image, x0 * backScaleX, y0 * backScaleY,
-    cut.width * backScaleX, cut.height * backScaleY, 0, 0, cut.width, cut.height);
-  backContext.globalCompositeOperation = 'destination-in';
-  backContext.drawImage(cut, 0, 0);
-  const backArt = new THREE.CanvasTexture(backCut); backArt.colorSpace = THREE.SRGBColorSpace;
-  backArt.anisotropy = art.anisotropy;
-  tex.dispose(); backTex.dispose();
-  const geometry = new THREE.PlaneGeometry(2.05 * cut.width / cut.height, 2.05);
-  const edgeMaterial = new THREE.MeshStandardMaterial({ alphaMap: art, alphaTest: .5, color: 0x9d7746, roughness: 1, side: THREE.DoubleSide });
-  // AlphaMap reads green rather than PNG alpha; use the same silhouette through map.
-  edgeMaterial.alphaMap = null;
-  edgeMaterial.map = art;
-  edgeMaterial.onBeforeCompile = shader => {
-    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb = vec3(0.48, 0.31, 0.15);');
-  };
-  const printMaterial = new THREE.MeshStandardMaterial({ map: art, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
-  // Keep identical UVs: looking through the back of the card mirrors the print naturally.
-  const backMaterial = new THREE.MeshStandardMaterial({ map: backArt, alphaTest: .5, roughness: 1, side: THREE.BackSide });
-  for (let i = 0; i < 9; i++) {
-    const face = new THREE.Mesh(geometry, i === 8 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
-    face.position.set(0, .225 + 1.025, (i - 4) * .006);
-    face.castShadow = true;
-    face.userData.print = true;
-    hero.add(face);
-  }
-
   const raycaster = new THREE.Raycaster();
   function rayAt(x, y) {
     raycaster.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, 1 - y / innerHeight * 2), camera);
   }
-  function hitsHero(x, y) {
+  function hitFigure(x, y) {
     rayAt(x, y);
-    return raycaster.intersectObject(hero, true).some(hit => {
-      if (!hit.object.userData.print || !hit.uv) return true;
-      const px = Math.min(cut.width - 1, Math.max(0, Math.floor(hit.uv.x * cut.width)));
-      const py = Math.min(cut.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * cut.height)));
-      return alphaPixels[(py * cut.width + px) * 4 + 3] > 100;
-    });
+    for (const hit of raycaster.intersectObjects(figures.map(figure => figure.group), true)) {
+      let root = hit.object;
+      while (root && !root.userData.figure) root = root.parent;
+      const figure = root?.userData.figure;
+      if (!figure) continue;
+      if (!hit.object.userData.print || !hit.uv) return figure;
+      const px = Math.min(figure.width - 1, Math.max(0, Math.floor(hit.uv.x * figure.width)));
+      const py = Math.min(figure.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * figure.height)));
+      if (figure.alphaPixels[(py * figure.width + px) * 4 + 3] > 100) return figure;
+    }
+    return null;
   }
-  function choose(value) { selected = value; selectionRing.visible = value; }
+  function choose(figure) {
+    if (figure && (!selected || figure !== activeFigure)) {
+      activeFigure = figure; state = figure.body; activeGroup = figure.group;
+      selectionAge = 0;
+      selectionRing.scale.setScalar(.001);
+    }
+    selected = !!figure;
+    selectionRing.visible = selected;
+  }
   function stopAim() {
     aiming.visible = false;
     host.classList.remove('aiming');
@@ -211,9 +241,11 @@ async function start() {
     if (event.button === 2 || event.altKey) {
       gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
     } else {
+      const hit = hitFigure(event.clientX, event.clientY);
+      if (hit) choose(hit);
       state.vx = 0; state.vz = 0;
       gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
-        hit: hitsHero(event.clientX, event.clientY), startX: event.clientX, startY: event.clientY, moved: false };
+        hit, startX: event.clientX, startY: event.clientY, moved: false };
       host.classList.add('aiming');
     }
   });
@@ -235,7 +267,7 @@ async function start() {
     if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 7) gesture.moved = true;
     if (gesture.mode === 'aim') {
       if (!gesture.moved) return;
-      choose(true);
+      choose(activeFigure);
       // Use drag displacement, independent of where on the screen it started.
       const scale = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / innerHeight;
       const dx = (event.clientX - gesture.startX) * scale;
@@ -246,9 +278,9 @@ async function start() {
       const length = direction.length();
       aiming.visible = length > .06;
       if (length > .06) {
-        hero.rotation.y = facingAngle(direction.x, direction.z, hero.rotation.y);
+        activeGroup.rotation.y = facingAngle(direction.x, direction.z, activeGroup.rotation.y);
         aiming.position.set(state.x, .025, state.z);
-        aiming.rotation.y = hero.rotation.y;
+        aiming.rotation.y = activeGroup.rotation.y;
         arrow.scale.y = .8 + 3.6 * length / MAX_PULL;
         arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
       }
@@ -299,16 +331,26 @@ async function start() {
   renderer.setAnimationLoop(time => {
     const dt = previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
-    if (gesture?.mode !== 'aim') {
-      for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advance(state, Math.min(remaining, 1 / 120));
-      hero.rotation.y = facingAngle(state.vx, state.vz, hero.rotation.y);
+    const held = gesture?.mode === 'aim' ? state : null;
+    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held);
+    for (const figure of figures) {
+      const body = figure.body;
+      figure.group.position.set(body.x, 0, body.z);
+      if (body !== held) figure.group.rotation.y = facingAngle(body.vx, body.vz, figure.group.rotation.y);
+    }
+    if (!held) {
       if (selected) {
         const easing = 1 - Math.exp(-dt * 8);
         target.x += (state.x - target.x) * easing;
         target.z += (state.z - target.z) * easing;
       }
     }
-    hero.position.set(state.x, 0, state.z);
+    if (selected) {
+      selectionAge += dt;
+      const t = Math.min(1, selectionAge / .6);
+      const scale = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
+      selectionRing.scale.setScalar(Math.max(.001, scale));
+    }
     selectionRing.position.set(state.x, .012, state.z);
     updateCamera(); renderer.render(scene, camera);
   });
