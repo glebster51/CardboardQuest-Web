@@ -746,10 +746,9 @@ async function start() {
       const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
       const squash = figure.hitStrength * spring;
       if (visualState === 'dead') {
-        const lyingScale = .72;
-        figure.artGroup.scale.setScalar(lyingScale);
-        figure.artGroup.position.y = .215 + .144 * lyingScale / 2 + .002;
-        figure.artGroup.rotation.set(-Math.PI / 2, 0, 0);
+        figure.artGroup.scale.set(1, 1, 1);
+        figure.artGroup.position.y = .215 + 1.025;
+        figure.artGroup.rotation.set(0, 0, 0);
       } else {
         figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
         figure.artGroup.position.y = 1.25 + Math.max(0, squash) * .2;
