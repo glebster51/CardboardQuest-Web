@@ -26,8 +26,8 @@ const paper = new THREE.CanvasTexture(paperCanvas); paper.colorSpace = THREE.SRG
 const built = new Map(), cells = [];
 
 async function loadSubject(subject) {
-  const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png?sheet=1`)));
-  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?sheet=1`)));
+  const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png?sheet=2`)));
+  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?sheet=2`)));
   const frameWidth = textures[0].image.width, frameHeight = textures[0].image.height;
   if (textures.some(texture => texture.image.width !== frameWidth || texture.image.height !== frameHeight)
     || backTextures.some(texture => texture.image.width !== frameWidth || texture.image.height !== frameHeight)) {

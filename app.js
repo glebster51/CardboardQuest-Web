@@ -149,8 +149,8 @@ async function start() {
 
     const loader = new THREE.TextureLoader();
     const artStates = {};
-    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=1`)));
-    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=1`)));
+    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=2`)));
+    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=2`)));
     const frameWidth = sources[0].image.width, frameHeight = sources[0].image.height;
     if (sources.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)
       || backTextures.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)) {
