@@ -1,13 +1,15 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=6';
-import { createTerrainHeightMap, extractTerrainContours, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
+import { advanceEnemyAI } from './game/enemy-ai.mjs?v=1';
+import { createPointerInput } from './game/pointer-input.mjs?v=1';
+import { createFigureFactory } from './render/figure-factory.mjs?v=1';
+import { createGroundRenderer } from './render/ground-renderer.mjs?v=1';
+import { createScenerySystem } from './render/scenery-system.mjs?v=1';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=1';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
+import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
-import { makeScenerySprite } from './scenery-model-v4.mjs?v=4';
-import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
 import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=1';
 import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
@@ -22,14 +24,11 @@ const heroBody = { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0,
 let bodies = [heroBody];
 let state = heroBody;
 let selected = true;
-const pointers = new Map();
-let gesture = null;
 const GROUND_UI_Y = .026;
 const AIM_DRAG_SENSITIVITY = 1 / 3;
 const AIM_MARKER_LENGTH_SCALE = 1 / 1.3;
 const MAX_AIM_MARKER_EXTENSION = 5.4 * AIM_MARKER_LENGTH_SCALE;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
-const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
 document.querySelector('#restart').addEventListener('click', () => location.reload());
 
@@ -57,7 +56,7 @@ async function start() {
   }));
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   const target = new THREE.Vector3(0, .65, 0);
-  let theta = .22, phi = .86, distance = innerWidth < 650 ? 27 : 15.75;
+  const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
@@ -75,59 +74,6 @@ async function start() {
     const map = new THREE.CanvasTexture(canvas);
     map.colorSpace = THREE.SRGBColorSpace;
     return map;
-  }
-  function terrainShape(outerPoints, innerPoints = null) {
-    const shape = new THREE.Shape();
-    const outer = outerPoints.map(point => new THREE.Vector2(point.x, -point.z));
-    const orderedOuter = THREE.ShapeUtils.isClockWise(outer) ? [...outer].reverse() : outer;
-    shape.moveTo(orderedOuter[0].x, orderedOuter[0].y);
-    for (let i = 1; i < orderedOuter.length; i++) shape.lineTo(orderedOuter[i].x, orderedOuter[i].y);
-    shape.closePath();
-    if (innerPoints) {
-      const inner = innerPoints.map(point => new THREE.Vector2(point.x, -point.z));
-      const orderedInner = THREE.ShapeUtils.isClockWise(inner) ? inner : [...inner].reverse();
-      const hole = new THREE.Path();
-      hole.moveTo(orderedInner[0].x, orderedInner[0].y);
-      for (let i = 1; i < orderedInner.length; i++) hole.lineTo(orderedInner[i].x, orderedInner[i].y);
-      hole.closePath(); shape.holes.push(hole);
-    }
-    return shape;
-  }
-  function terrainShapesFromContours(contours) {
-    const records = contours.map(points => {
-      let area = 0;
-      for (let i = 0; i < points.length; i++) {
-        const a = points[i], b = points[(i + 1) % points.length];
-        area += a.x * b.z - b.x * a.z;
-      }
-      return { points, area: Math.abs(area), parent: null, depth: 0 };
-    });
-    const contains = (point, polygon) => {
-      let inside = false;
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const a = polygon[i], b = polygon[j];
-        if ((a.z > point.z) !== (b.z > point.z) && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
-      }
-      return inside;
-    };
-    for (const record of records) {
-      record.parent = records.filter(candidate => candidate.area > record.area && contains(record.points[0], candidate.points))
-        .sort((a, b) => a.area - b.area)[0] || null;
-    }
-    const depthOf = record => record.parent ? depthOf(record.parent) + 1 : 0;
-    records.forEach(record => { record.depth = depthOf(record); });
-    return records.filter(record => record.depth % 2 === 0).map(record => {
-      const shape = terrainShape(record.points);
-      for (const child of records) if (child.parent === record && child.depth === record.depth + 1) {
-        const holePoints = child.points.map(point => new THREE.Vector2(point.x, -point.z));
-        const orderedHole = THREE.ShapeUtils.isClockWise(holePoints) ? holePoints : [...holePoints].reverse();
-        const hole = new THREE.Path();
-        hole.moveTo(orderedHole[0].x, orderedHole[0].y);
-        for (let i = 1; i < orderedHole.length; i++) hole.lineTo(orderedHole[i].x, orderedHole[i].y);
-        hole.closePath(); shape.holes.push(hole);
-      }
-      return shape;
-    });
   }
   const paper = texture(256, 256, (c, w, h) => {
     c.fillStyle = '#e4d0a8'; c.fillRect(0, 0, w, h);
@@ -210,259 +156,19 @@ async function start() {
   terrainCorrugation.repeat.set(1, 1);
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
-  const terrainPalettes = {
-    home: { tops: [0x84964c, 0x9ca657, 0xb4a868, 0xc0a873], side: 0x805b39 },
-    forest: { tops: [0x647e43, 0x78884b, 0x9c975b, 0xb29d70], side: 0x67472e },
-    camp: { tops: [0x8a784e, 0x9e8953, 0xb2a067, 0xc1ad78], side: 0x775037 },
-  };
-  for (const location of Object.values(locations)) {
-    const map = createTerrainHeightMap(location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731,
-      location.walkablePoints, { cellSize: .85, step: .24, maxHeight: 3.6 });
-    location.terrainHeightMap = map;
-    location.sceneGroup.userData.terrainHeightMap = map;
-    const palette = terrainPalettes[location.id];
-    const layers = [{
-      shapes: [terrainShape(location.walkablePoints)], depth: .3, top: 0,
-      topColor: palette.tops[0], sideColor: palette.side,
-    }, {
-      shapes: terrainShapesFromContours(extractTerrainContours(map, .001)), depth: map.step, top: map.step,
-      topColor: palette.tops[1], sideColor: palette.side,
-    }, ...map.layers.filter(layer => layer.contours.length).map((layer, index) => ({
-      shapes: terrainShapesFromContours(layer.contours), depth: map.step, top: layer.height,
-      topColor: palette.tops[(index + 2) % palette.tops.length], sideColor: index % 2 ? palette.side : 0x9c7243,
-    }))];
-    for (const layer of layers) {
-      if (!layer.shapes.length) continue;
-      const terrainUvGenerator = {
-        generateTopUV(_geometry, vertices, a, b, c) {
-          return [a, b, c].map(index => new THREE.Vector2(vertices[index * 3], vertices[index * 3 + 1]));
-        },
-        generateSideWallUV(_geometry, vertices, a, b, c, d) {
-          const horizontal = Math.abs(vertices[b * 3] - vertices[a * 3]) >= Math.abs(vertices[b * 3 + 1] - vertices[a * 3 + 1]);
-          return [a, b, c, d].map(index => {
-            const alongEdge = horizontal ? vertices[index * 3] : vertices[index * 3 + 1];
-            return new THREE.Vector2(alongEdge * .25, vertices[index * 3 + 2] / layer.depth);
-          });
-        },
-      };
-      const geometry = new THREE.ExtrudeGeometry(layer.shapes, {
-        depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: terrainUvGenerator,
-      });
-      geometry.rotateX(-Math.PI / 2);
-      const mesh = new THREE.Mesh(geometry, [
-        new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96, ...sceneStencil }),
-        new THREE.MeshStandardMaterial({ color: layer.sideColor, map: terrainCorrugation, roughness: 1, ...sceneStencil }),
-      ]);
-      mesh.position.y = layer.top - layer.depth;
-      mesh.castShadow = true; mesh.receiveShadow = true; location.sceneGroup.add(mesh);
-    }
-  }
-  const figureArtCache = new Map();
-  const yieldFrameWork = () => new Promise(resolve => {
-    if (window.requestIdleCallback) window.requestIdleCallback(() => resolve(), { timeout: 120 });
-    else setTimeout(resolve, 16);
-  });
-  function cloneSpriteModel(model) {
-    const group = model.group.clone(true);
-    const frontFlashMesh = group.children.find(child => child.material === model.flashMaterial);
-    const backFlashMesh = group.children.find(child => child.material === model.backFlashMaterial);
-    const flashMaterial = model.flashMaterial.clone(), backFlashMaterial = model.backFlashMaterial.clone();
-    if (frontFlashMesh) frontFlashMesh.material = flashMaterial;
-    if (backFlashMesh) backFlashMesh.material = backFlashMaterial;
-    return { ...model, group, flashMaterial, backFlashMaterial };
-  }
-  async function createFigure(body, prefix) {
-    const group = new THREE.Group();
-    scene.add(group);
-    const ambientShadow = new THREE.Mesh(new THREE.CircleGeometry(1.02, 64), ambientShadowMaterial);
-    ambientShadow.rotation.x = -Math.PI / 2; ambientShadow.position.y = .008; ambientShadow.renderOrder = 1;
-    group.add(ambientShadow);
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
-      new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1, ...sceneStencil }),
-      new THREE.MeshStandardMaterial({ map: paper, roughness: 1, ...sceneStencil }),
-      new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
-    ]);
-    base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
-    group.add(base);
-    const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(.98, .34), contactShadowMaterial);
-    contactShadow.rotation.x = -Math.PI / 2; contactShadow.position.set(0, .218, .02); contactShadow.renderOrder = 5;
-    group.add(contactShadow);
-    const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
-    slot.position.y = .219; group.add(slot);
-
-    const cacheKey = `${prefix}:${body.team === 'player' ? 'player' : 'enemy'}`;
-    let templatePromise = figureArtCache.get(cacheKey);
-    if (!templatePromise) {
-      templatePromise = (async () => {
-        const loader = new THREE.TextureLoader();
-        const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=3`)));
-        const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=3`)));
-        const frameWidth = sources[0].image.width, frameHeight = sources[0].image.height;
-        if (sources.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)
-          || backTextures.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)) {
-          throw new Error(`Pose sheet cells must share one frame: ${prefix}`);
-        }
-        const prepareFace = (image, visualState, side) => {
-          const canvas = document.createElement('canvas');
-          canvas.width = frameWidth; canvas.height = frameHeight;
-          const context = canvas.getContext('2d', { willReadFrequently: true });
-          const flipIdlePlayerFront = body.team === 'player' && visualState === 'idle' && side === 'front';
-          if (flipIdlePlayerFront) { context.translate(frameWidth, 0); context.scale(-1, 1); }
-          context.drawImage(image, 0, 0, frameWidth, frameHeight);
-          if (flipIdlePlayerFront) context.setTransform(1, 0, 0, 1, 0, 0);
-          const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
-          if (!pixels.some((_value, index) => index % 4 === 3 && pixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}-${side}`);
-          const cleanedMask = unionSpriteAlpha(pixels, pixels, frameWidth, frameHeight);
-          const worldWidth = 2.05 * frameWidth / frameHeight;
-          const geometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
-          const alphaPixels = clipSpriteToAlphaMask(pixels, geometry.rasterMask);
-          context.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
-          const faceTexture = new THREE.CanvasTexture(canvas); faceTexture.colorSpace = THREE.SRGBColorSpace;
-          faceTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-          const model = buildExtrudedSprite(alphaPixels, frameWidth, frameHeight, faceTexture, faceTexture,
-            corrugation, body.team === 'player', geometry.shapes, alphaPixels);
-          model.group.rotation.y = side === 'back' ? Math.PI : 0;
-          return { ...model, texture: faceTexture };
-        };
-        const artStates = {};
-        for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
-          const visualState = VISUAL_STATES[stateIndex];
-          const frontArt = prepareFace(sources[stateIndex].image, visualState, 'front');
-          await yieldFrameWork();
-          const backArt = prepareFace(backTextures[stateIndex].image, visualState, 'back');
-          await yieldFrameWork();
-          const artGroup = new THREE.Group(); artGroup.position.y = 1.25;
-          artGroup.add(frontArt.group, backArt.group);
-          frontArt.group.visible = true; backArt.group.visible = false;
-          artStates[visualState] = { group: artGroup, frontArt, backArt,
-            alphaPixels: frontArt.alphaPixels, width: frameWidth, height: frameHeight };
-          sources[stateIndex].dispose(); backTextures[stateIndex].dispose();
-        }
-        let deadBottomRow = frameHeight - 1;
-        for (let y = frameHeight - 1; y >= 0; y--) {
-          let hasVisiblePixel = false;
-          for (let x = 0; x < frameWidth; x++) if (artStates.dead.alphaPixels[(y * frameWidth + x) * 4 + 3] > 80) {
-            hasVisiblePixel = true; break;
-          }
-          if (hasVisiblePixel) { deadBottomRow = y; break; }
-        }
-        const deadBottomLocalY = (.5 - deadBottomRow / frameHeight) * 2.05;
-        return { artStates, deadGroundedY: .215 - deadBottomLocalY };
-      })();
-      figureArtCache.set(cacheKey, templatePromise);
-      templatePromise.catch(() => figureArtCache.delete(cacheKey));
-    }
-    const figureAssets = await templatePromise;
-    const artStates = {};
-    for (const visualState of VISUAL_STATES) {
-      const template = figureAssets.artStates[visualState];
-      const frontArt = cloneSpriteModel(template.frontArt), backArt = cloneSpriteModel(template.backArt);
-      const artGroup = new THREE.Group(); artGroup.position.y = 1.25;
-      artGroup.add(frontArt.group, backArt.group);
-      artGroup.visible = false;
-      group.add(artGroup);
-      artStates[visualState] = { group: artGroup, frontArt, backArt,
-        alphaPixels: frontArt.alphaPixels, width: frontArt.width, height: frontArt.height };
-    }
-    const initialArt = artStates.idle;
-    initialArt.group.visible = true;
-    initialArt.frontArt.group.visible = true; initialArt.backArt.group.visible = false;
-    const deadGroundedY = figureAssets.deadGroundedY;
-
-    const healthHUD = new THREE.Group();
-    const initialHeartLevels = heartHealthLevels(body.health, body.maxHealth);
-    const heartIcons = initialHeartLevels.map((level, index) => {
-      const heart = new THREE.Mesh(new THREE.PlaneGeometry(.23, .23), heartMaterials[level]);
-      heart.renderOrder = 100;
-      heart.position.set((index - (initialHeartLevels.length - 1) / 2) * .245, 0, .01);
-      healthHUD.add(heart);
-      return { mesh: heart, level };
-    });
-    let chargePips = [];
-    if (body.team === 'player') {
-      chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
-        const pip = new THREE.Group();
-        const base = new THREE.Mesh(new THREE.CircleGeometry(.09, 32),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .4, side: THREE.DoubleSide, depthWrite: false }));
-        const fill = new THREE.Mesh(new THREE.CircleGeometry(.09, 32),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
-        base.material.depthTest = false;
-        base.renderOrder = 100; fill.renderOrder = 101;
-        fill.position.z = .012;
-        pip.position.set((index - (body.maxCharges - 1) / 2) * .32, .29, .02);
-        pip.add(base, fill); healthHUD.add(pip);
-        return { group: pip, base, fill };
-      });
-    }
-    healthHUD.position.set(body.x, 2.65, body.z);
-    scene.add(healthHUD);
-    let enemyMarker = null;
-    if (body.team === 'enemy') {
-      enemyMarker = createVectorMarker(0xdf3830, 0xff887d, true);
-      enemyMarker.group.rotation.y = body.aiAimAngle ?? 0;
-      enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
-      scene.add(enemyMarker.group);
-    }
-    const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
-      alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
-      healthHUD, heartIcons, chargePips, enemyMarker, deadGroundedY,
-      flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
-      viewBack: false, facing: 0, hitAge: 10, hitStrength: 0,
-      hurtAge: 10, dealDamageAge: 10 };
-    group.userData.figure = figure;
-    group.position.set(body.x, 0, body.z);
-    return figure;
-  }
-  const sceneryTemplates = new Map();
-  const sceneryFacePairs = [];
-  function loadSceneryTemplate(path) {
-    if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
-    const pending = (async () => {
-    const source = await new THREE.TextureLoader().loadAsync(`${path}?art=4`);
-    const art = makeScenerySprite(source.image, corrugation, renderer.capabilities.getMaxAnisotropy());
-    source.dispose();
-    return art.group;
-    })();
-    sceneryTemplates.set(path, pending);
-    return pending;
-  }
-  async function createScenery(path, x, z, size, parent = scene, allowFlat = false, options = {}) {
-    const template = await loadSceneryTemplate(path);
-    const art = template.clone(true);
-    // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
-    const layout = sceneryTokenLayout(size, options.base ? options.fixedRadius ?? 0 : 0);
-    art.scale.setScalar(layout.scale);
-    // The sprite's bottom rests on the ground or on top of its cardboard puck.
-    art.position.y = layout.artY;
-    const terrain = parent.userData.terrainHeightMap ?? locations.home.terrainHeightMap;
-    const elevation = terrain.sample(x, z);
-    if (elevation <= 0 && !allowFlat) return null;
-    const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
-    if (options.fixedRadius) {
-      const baseRadius = options.base ? options.fixedRadius : 0;
-      if (baseRadius) {
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(baseRadius, baseRadius, PUCK_HEIGHT, 64), [
-          new THREE.MeshStandardMaterial({ map: terrainCorrugation, roughness: 1, ...sceneStencil }),
-          new THREE.MeshStandardMaterial({ map: paper, roughness: .96, ...sceneStencil }),
-          new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
-        ]);
-        base.position.y = PUCK_CENTER_Y; base.castShadow = true; base.receiveShadow = true; prop.add(base);
-      }
-      const owner = Object.values(locations).find(location => location.sceneGroup === parent);
-      owner?.obstacles.push({ id: `obstacle-${owner.id}-${owner.obstacles.length + 1}`, x, z,
-        vx: 0, vz: 0, radius: options.fixedRadius, fixed: true, team: 'obstacle' });
-    }
-    const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);
-    prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
-    sceneryFacePairs.push({ prop, front: art.getObjectByName('scenery-front'), back: art.getObjectByName('scenery-back') });
-    parent.add(prop);
-    return prop;
-  }
+  createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
+    paper, terrainCorrugation, sceneStencil });
+  const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
+    corrugation, paper, sceneStencil, heartMaterials,
+    createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });
+  const scenerySystem = createScenerySystem({ THREE, renderer, scene, locations, corrugation,
+    paper, terrainCorrugation, sceneStencil });
+  const { create: createScenery, loadTemplate: loadSceneryTemplate, facePairs: sceneryFacePairs } = scenerySystem;
   const figures = [];
   const heroFigure = await createFigure(heroBody, 'hero');
   heroFigure.facing = 0;
   heroFigure.group.rotation.y = 0;
-  theta = Math.PI;
+  orbit.theta = Math.PI;
   target.set(heroBody.x, .65, heroBody.z);
   heroFigure.locationId = 'home'; figures.push(heroFigure);
   const enemyBody = (id, locationId, x, z, options = {}) => ({
@@ -527,53 +233,6 @@ async function start() {
     populateForestEdge(locations.camp, 18, 37),
   ];
   await Promise.all(sceneDetails);
-  const groundTextureCache = new Map();
-  const loadGroundTexture = path => {
-    if (!groundTextureCache.has(path)) {
-      groundTextureCache.set(path, new THREE.TextureLoader().loadAsync(path).then(texture => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        return texture;
-      }));
-    }
-    return groundTextureCache.get(path);
-  };
-  const groundMarkMaterial = (texture, opacity) => new THREE.MeshBasicMaterial({ map: texture, transparent: true,
-    alphaTest: .035, opacity, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 });
-  const groundAssets = [
-    'ground-pit', 'ground-grass-ring', 'ground-dirt-patch', 'ground-footprints',
-    'ground-footsteps', 'ground-scuff', 'ground-pebbles', 'ground-cracks',
-    ...Array.from({ length: 8 }, (_, index) => `grass-tuft-${index + 1}`),
-  ];
-  const groundTextures = new Map();
-  await Promise.all(groundAssets.map(async name => groundTextures.set(name, await loadGroundTexture(`assets/${name}.png`))));
-  const groundMaterials = new Map(groundAssets.map(name => [name,
-    groundMarkMaterial(groundTextures.get(name), name.startsWith('grass-tuft-') ? .94 : .8)]));
-  const addGroundInstances = (parent, kind, marks, upright = false) => {
-    if (!marks.length) return;
-    const multiplier = upright ? 2 : 1;
-    const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), groundMaterials.get(kind), marks.length * multiplier);
-    const position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3(), matrix = new THREE.Matrix4();
-    const euler = new THREE.Euler(0, 0, 0, 'XYZ');
-    let index = 0;
-    for (const mark of marks) for (let variant = 0; variant < multiplier; variant++) {
-      if (upright) {
-        position.set(mark.x, mark.height / 2 + .009, mark.z);
-        euler.set(0, mark.rotation + variant * Math.PI / 2, 0);
-      } else {
-        position.set(mark.x, .018, mark.z);
-        euler.set(-Math.PI / 2, 0, mark.rotation);
-      }
-      quaternion.setFromEuler(euler);
-      scale.set(mark.width, mark.height, 1);
-      matrix.compose(position, quaternion, scale);
-      mesh.setMatrixAt(index++, matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.renderOrder = upright ? 3 : 2;
-    mesh.frustumCulled = false;
-    parent.add(mesh);
-  };
   const decorationSpecs = {
     home: { seed: 1601, decalCount: 19, grassCount: 40,
       exclusions: [{ x: scaled(-2.4), z: scaled(-2.4), radius: 2.7 }, { x: 0, z: 0, radius: 1.55 }] },
@@ -583,22 +242,9 @@ async function start() {
       exclusions: [...campSpawns.map(point => ({ x: point.x, z: point.z, radius: 1.45 })),
         ...CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z), radius: 1.95 }))] },
   };
-  for (const location of Object.values(locations)) {
-    const specs = decorationSpecs[location.id];
-    const hutPaths = location.id === 'camp' ? CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) : [];
-    const paths = createLocationWalkPaths(location, hutPaths);
-    const details = scatterGroundDetails({ location, ...specs, paths });
-    const ground = new THREE.Group();
-    ground.name = `ground-details-${location.id}`;
-    ground.userData.walkPaths = paths;
-    location.sceneGroup.add(ground);
-    const groundMarks = [...details.decals, ...details.trail];
-    for (const kind of groundAssets.slice(0, 8)) addGroundInstances(ground, kind,
-      groundMarks.filter(mark => mark.kind === kind));
-    for (const kind of groundAssets.slice(8)) addGroundInstances(ground, kind,
-      details.grass.filter(mark => mark.kind === kind), true);
-    location.groundDetails = { ...details, paths };
-  }
+  await createGroundRenderer({ THREE, renderer, locations, specsByLocation: decorationSpecs,
+    pathTargets: { camp: CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) },
+    createLocationWalkPaths, scatterGroundDetails });
   refreshLocationInfo();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
@@ -693,8 +339,7 @@ async function start() {
   function beginVictorySequence() {
     if (victorySequenceActive) return;
     victorySequenceActive = true;
-    stopAim();
-    gesture = null; pointers.clear(); selected = false;
+    inputController.cancel(); selected = false;
     playerMarker.group.visible = false;
     heroBody.vx = 0; heroBody.vz = 0;
     for (const location of Object.values(locations)) settleEnemiesForVictory(location.enemies);
@@ -739,7 +384,7 @@ async function start() {
     const next = locations[locationId];
     if (!next) return;
     rememberExitPosition(activeLocation, locationId, heroBody);
-    stopAim(); gesture = null; pointers.clear();
+    inputController.cancel();
     activeLocation = next;
     protectedEntryFrom = fromLocationId;
     const arrival = lastExitPosition(activeLocation, fromLocationId) ?? locationArrival(activeLocation, fromLocationId);
@@ -747,7 +392,7 @@ async function start() {
     const direction = locationEntryDirection(activeLocation, fromLocationId);
     const heading = Math.atan2(direction.x, direction.z);
     heroFigure.facing = heading; heroFigure.group.rotation.y = heading;
-    theta = heading + Math.PI;
+    orbit.theta = heading + Math.PI;
     target.set(heroBody.x, .65, heroBody.z);
     transitionCooldown = .85;
     if (activeLocation.kind === 'camp' && !activeLocation.initialized) {
@@ -960,124 +605,20 @@ async function start() {
     playerMarker.setExtension(0);
     host.classList.remove('aiming');
   }
-  renderer.domElement.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
-    event.preventDefault();
-    try { event.target.setPointerCapture(event.pointerId); } catch { /* Window listeners still track the drag. */ }
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.size > 1) {
-      stopAim();
-      const points = [...pointers.values()];
-      const pinchStart = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-      gesture = { mode: 'touchOrbit', pinchStart, zoomStart: distance,
-        lastX: (points[0].x + points[1].x) / 2, lastY: (points[0].y + points[1].y) / 2 };
-      return;
-    }
-    if (event.button === 2 || event.altKey) {
-      gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
-    } else {
-      const hit = hitFigure(event.clientX, event.clientY);
-      if (hit?.body.team === 'player') choose(hit);
-      if (hit?.body.team === 'enemy') {
-        gesture = { mode: 'blocked', pointer: event.pointerId };
-      } else if (hit) {
-        if (state.charges > 0 && state.health > 0) {
-          gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
-            hit, startX: event.clientX, startY: event.clientY, moved: false };
-        } else {
-          gesture = { mode: 'blocked', pointer: event.pointerId };
-        }
-      } else {
-        gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
-      }
-    }
+  const inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
+    getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
+    groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
+    maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
+    onLaunch(body, pull) {
+      body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
+      launch(body, pull);
+      if (Math.hypot(body.vx, body.vz) > 1) burst(body.x, body.z, .55);
+    },
   });
-  addEventListener('pointermove', event => {
-    if (!pointers.has(event.pointerId) || !gesture) return;
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (gesture.mode === 'touchOrbit') {
-      if (pointers.size >= 2) {
-        const points = [...pointers.values()];
-        const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
-        const pinch = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-        distance = THREE.MathUtils.clamp(gesture.zoomStart * gesture.pinchStart / Math.max(1, pinch), 4.5, 27);
-        theta -= (x - gesture.lastX) * .007;
-        phi = THREE.MathUtils.clamp(phi - (y - gesture.lastY) * .005, .35, 1.3);
-        gesture.lastX = x; gesture.lastY = y;
-      }
-      return;
-    }
-    if (event.pointerId !== gesture.pointer) return;
-    if (gesture.mode === 'blocked') return;
-    if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 7) gesture.moved = true;
-    if (gesture.mode === 'aim') {
-      if (!gesture.moved) return;
-      if (!gesture.aimStarted) {
-        state.vx = 0; state.vz = 0;
-        gesture.aimStarted = true;
-        host.classList.add('aiming');
-      }
-      choose(activeFigure);
-      // Use drag displacement, independent of where on the screen it started.
-      const scale = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / innerHeight;
-      const dx = (event.clientX - gesture.startX) * scale;
-      const dz = (event.clientY - gesture.startY) * scale / Math.cos(phi);
-      gesture.pull = clampPull((Math.cos(theta) * dx + Math.sin(theta) * dz) * AIM_DRAG_SENSITIVITY,
-        (-Math.sin(theta) * dx + Math.cos(theta) * dz) * AIM_DRAG_SENSITIVITY);
-      const direction = new THREE.Vector3(-gesture.pull.x, 0, -gesture.pull.z);
-      const length = direction.length();
-      playerMarker.setExtension(length > .02 ? length / MAX_PULL * MAX_AIM_MARKER_EXTENSION : 0);
-      if (length > .06) {
-        activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
-        playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
-        playerMarker.group.rotation.y = activeFigure.facing;
-      }
-    } else {
-      const dx = event.clientX - gesture.lastX, dy = event.clientY - gesture.lastY;
-      theta -= dx * .007;
-      phi = THREE.MathUtils.clamp(phi - dy * .005, .35, 1.3);
-      gesture.lastX = event.clientX; gesture.lastY = event.clientY;
-    }
-  });
-  function release(event, cancelled) {
-    if (!pointers.has(event.pointerId)) return;
-    if (gesture?.pointer === event.pointerId) {
-      if (gesture.mode === 'aim') {
-        if (!cancelled && gesture.moved) {
-          if (state.team === 'player' && state.health > 0 && state.charges > 0) {
-            state.charges--;
-            state.chargePop[state.charges] = 0;
-            state.attackRicochets = 0;
-            launch(state, gesture.pull);
-            if (Math.hypot(state.vx, state.vz) > 1) burst(state.x, state.z, .55);
-          }
-        }
-        else if (!cancelled) choose(gesture.hit);
-        stopAim();
-      }
-      gesture = null;
-    }
-    if (gesture?.mode === 'touchOrbit') gesture = null;
-    pointers.delete(event.pointerId);
-    if (pointers.size === 0) gesture = null;
-  }
-  addEventListener('pointerup', event => release(event, false));
-  addEventListener('pointercancel', event => release(event, true));
-  addEventListener('lostpointercapture', event => release(event, true));
-  host.addEventListener('contextmenu', event => event.preventDefault());
-  host.addEventListener('wheel', event => {
-    event.preventDefault();
-    const deltaPixels = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
-      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? innerHeight : 1);
-    if (Number.isFinite(deltaPixels)) {
-      const comfortableDelta = THREE.MathUtils.clamp(deltaPixels, -240, 240);
-      distance = THREE.MathUtils.clamp(distance * Math.exp(comfortableDelta * .0012), 4.5, 27);
-    }
-  }, { passive: false });
-  addEventListener('blur', () => { stopAim(); gesture = null; pointers.clear(); });
 
   function updateCamera() {
-    camera.position.set(target.x + distance * Math.sin(phi) * Math.sin(theta), target.y + distance * Math.cos(phi), target.z + distance * Math.sin(phi) * Math.cos(theta));
+    camera.position.set(target.x + orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta),
+      target.y + orbit.distance * Math.cos(orbit.phi), target.z + orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta));
     camera.lookAt(target);
     camera.updateMatrixWorld();
   }
@@ -1124,51 +665,16 @@ async function start() {
       const living = activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length;
       if (takeDueReinforcement(activeLocation, elapsed, living)) startQueuedReinforcement();
     }
-    const held = gesture?.mode === 'aim' ? state : null;
+    const held = inputController.getHeldBody();
     for (const body of bodies) {
       if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
       advanceChargeRecharge(body, dt);
       if (body.team !== 'enemy') continue;
-      if (body.health <= 0) continue;
       if (victorySequenceActive) continue;
-      if (!body.combatAwake) {
-        const dx = state.x - body.x, dz = state.z - body.z;
-        const figure = figures.find(item => item.body === body);
-        if (figure && Math.hypot(body.vx, body.vz) < .05) figure.facing = facingAngle(dx, dz, figure.facing);
-        continue;
-      }
-      if (body.aiStunRemaining > 0) {
-        body.aiStunRemaining = Math.max(0, body.aiStunRemaining - dt);
-        continue;
-      }
-      if (body.aiPhase !== 'dash') body.aiTimer -= dt;
-      const dx = state.x - body.x, dz = state.z - body.z;
-      const distanceToPlayer = Math.hypot(dx, dz);
-      const speed = Math.hypot(body.vx, body.vz);
-      if (state.health > 0 && distanceToPlayer > .001 && speed < .05) {
-        const figure = figures.find(item => item.body === body);
-        figure.facing = facingAngle(dx, dz, figure.facing);
-      }
-      if (body.aiPhase === 'dash' && speed < .2) {
-        body.aiPhase = 'pause'; body.aiTimer = randomBetween(1, 4);
-      } else if (body.aiPhase === 'pause' && body.aiTimer <= 0) {
-        body.aiPhase = 'aim'; body.aiTargetX = state.x; body.aiTargetZ = state.z;
-        body.aiAimAngle = facingAngle(body.aiTargetX - body.x, body.aiTargetZ - body.z,
-          figures.find(item => item.body === body)?.facing ?? 0);
-        body.aiAimDuration = randomBetween(1.7, 2.7); body.aiTimer = body.aiAimDuration;
-        const figure = figures.find(item => item.body === body);
-        if (figure) figure.facing = body.aiAimAngle;
-      } else if (body.aiPhase === 'aim' && body.aiTimer <= 0 && body.charges > 0 && state.health > 0 && body.health > 0) {
-        const aimX = body.aiTargetX - body.x, aimZ = body.aiTargetZ - body.z;
-        const aimDistance = Math.hypot(aimX, aimZ);
-        const power = THREE.MathUtils.clamp(aimDistance * .12, .55, .95);
-        body.charges--; body.aiPhase = 'dash'; body.attackRicochets = 0;
-        launch(body, { x: -aimX / Math.max(.001, aimDistance) * power,
-          z: -aimZ / Math.max(.001, aimDistance) * power });
-        burst(body.x, body.z, .45);
-      }
-      if (body.health <= 0) body.vx = body.vz = 0;
+      const figure = figures.find(item => item.body === body);
+      const decision = advanceEnemyAI(body, state, figure, dt, randomBetween);
+      if (decision.launched) burst(body.x, body.z, .45);
     }
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
       advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints);
