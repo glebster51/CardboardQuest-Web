@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, MAX_PULL } from './physics.mjs?v=4';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=5';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -25,7 +25,7 @@ async function start() {
   scene.fog = new THREE.Fog(0xc7b391, 24, 55);
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 80);
   const target = new THREE.Vector3(0, .65, 0);
-  let theta = .22, phi = .86, distance = innerWidth < 650 ? 14 : 10.5;
+  let theta = .22, phi = .86, distance = innerWidth < 650 ? 18 : 10.5;
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
@@ -158,15 +158,23 @@ async function start() {
     const printMaterial = new THREE.MeshStandardMaterial({ map: art, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
     // Keep identical UVs: looking through the back of the card mirrors the print naturally.
     const backMaterial = new THREE.MeshStandardMaterial({ map: backArt, alphaTest: .5, roughness: 1, side: THREE.BackSide });
+    const artGroup = new THREE.Group();
+    artGroup.position.y = .225;
+    group.add(artGroup);
     for (let i = 0; i < 9; i++) {
       const face = new THREE.Mesh(geometry, i === 8 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
-      face.position.set(0, .225 + 1.025, (i - 4) * .006);
+      face.position.set(0, 1.025, (i - 4) * .006);
       face.castShadow = true;
       face.userData.print = true;
-      group.add(face);
+      artGroup.add(face);
     }
 
-    const figure = { group, body, alphaPixels, width: cut.width, height: cut.height };
+    const attackRing = new THREE.Mesh(new THREE.RingGeometry(1.18, 1.4, 80),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    attackRing.rotation.x = -Math.PI / 2;
+    attackRing.visible = false; scene.add(attackRing);
+    const figure = { group, artGroup, attackRing, body, alphaPixels, width: cut.width, height: cut.height,
+      facing: 0, hitAge: 10, hitStrength: 0 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
     return figure;
@@ -176,8 +184,32 @@ async function start() {
     createFigure(bodies[1], 'assets/goblin-front.png', 'assets/goblin-back.png'),
   ]);
   let activeFigure = figures[0];
-  let activeGroup = activeFigure.group;
   let selectionAge = 0;
+  let elapsed = 0;
+  const bursts = [];
+  const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
+  const dustGeometry = new THREE.SphereGeometry(.045, 5, 4);
+  function burst(x, z, strength = 1) {
+    if (bursts.length >= 12) return;
+    const group = new THREE.Group();
+    group.position.set(x, .035, z); scene.add(group);
+    const material = new THREE.MeshBasicMaterial({ color: 0xfff6dc, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+    const ring = new THREE.Mesh(burstGeometry, material);
+    ring.rotation.x = -Math.PI / 2; group.add(ring);
+    const dots = Array.from({ length: 6 }, () => {
+      const dot = new THREE.Mesh(dustGeometry, material); group.add(dot); return dot;
+    });
+    bursts.push({ group, ring, dots, material, age: 0, strength });
+  }
+  function onImpact(a, b, speed) {
+    for (const figure of figures) {
+      if (figure.body === a || figure.body === b) {
+        figure.hitAge = 0;
+        figure.hitStrength = THREE.MathUtils.clamp(speed / 28, .08, .3);
+      }
+    }
+    burst(b ? (a.x + b.x) / 2 : a.x, b ? (a.z + b.z) / 2 : a.z, Math.min(1.5, speed / 7));
+  }
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80), new THREE.MeshBasicMaterial({ color: 0x65d536, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
   selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = .012;
   selectionRing.visible = false; scene.add(selectionRing);
@@ -212,7 +244,7 @@ async function start() {
   }
   function choose(figure) {
     if (figure && (!selected || figure !== activeFigure)) {
-      activeFigure = figure; state = figure.body; activeGroup = figure.group;
+      activeFigure = figure; state = figure.body;
       selectionAge = 0;
       selectionRing.scale.setScalar(.001);
     }
@@ -278,9 +310,9 @@ async function start() {
       const length = direction.length();
       aiming.visible = length > .06;
       if (length > .06) {
-        activeGroup.rotation.y = facingAngle(direction.x, direction.z, activeGroup.rotation.y);
+        activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
         aiming.position.set(state.x, .025, state.z);
-        aiming.rotation.y = activeGroup.rotation.y;
+        aiming.rotation.y = activeFigure.facing;
         arrow.scale.y = .8 + 3.6 * length / MAX_PULL;
         arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
       }
@@ -295,7 +327,10 @@ async function start() {
     if (!pointers.has(event.pointerId)) return;
     if (gesture?.pointer === event.pointerId) {
       if (gesture.mode === 'aim') {
-        if (!cancelled && gesture.moved) launch(state, gesture.pull);
+        if (!cancelled && gesture.moved) {
+          launch(state, gesture.pull);
+          if (Math.hypot(state.vx, state.vz) > 1) burst(state.x, state.z, .55);
+        }
         else if (!cancelled) choose(gesture.hit);
         stopAim();
       }
@@ -331,12 +366,41 @@ async function start() {
   renderer.setAnimationLoop(time => {
     const dt = previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
+    elapsed += dt;
     const held = gesture?.mode === 'aim' ? state : null;
-    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held);
+    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact);
     for (const figure of figures) {
       const body = figure.body;
       figure.group.position.set(body.x, 0, body.z);
-      if (body !== held) figure.group.rotation.y = facingAngle(body.vx, body.vz, figure.group.rotation.y);
+      const speed = Math.hypot(body.vx, body.vz);
+      if (body !== held) figure.facing = facingAngle(body.vx, body.vz, figure.facing);
+      figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
+      figure.hitAge += dt;
+      const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
+      const squash = figure.hitStrength * spring;
+      figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
+      figure.artGroup.position.y = .225 + Math.max(0, squash) * .2;
+      figure.artGroup.rotation.z = squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012;
+      figure.attacking = isAttacking(body) && body !== held;
+      const opacity = figure.attackRing.material.opacity;
+      figure.attackRing.material.opacity += ((figure.attacking ? .95 : 0) - opacity) * (1 - Math.exp(-24 * dt));
+      figure.attackRing.visible = figure.attackRing.material.opacity > .02;
+      figure.attackRing.position.set(body.x, .016, body.z);
+      figure.attackRing.scale.setScalar(1 + .025 * Math.sin(elapsed * 18));
+    }
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const effect = bursts[i]; effect.age += dt;
+      const t = effect.age / .42;
+      if (t >= 1) {
+        scene.remove(effect.group); effect.material.dispose(); bursts.splice(i, 1); continue;
+      }
+      effect.material.opacity = (1 - t) ** 2 * .85;
+      effect.ring.scale.setScalar(.5 + t * 4 * effect.strength);
+      effect.dots.forEach((dot, index) => {
+        const angle = index * Math.PI / 3;
+        const radius = (.1 + t * .8) * effect.strength;
+        dot.position.set(Math.cos(angle) * radius, Math.sin(t * Math.PI) * .3, Math.sin(angle) * radius);
+      });
     }
     if (!held) {
       if (selected) {

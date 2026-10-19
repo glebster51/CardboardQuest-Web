@@ -8,6 +8,16 @@ export const LIMIT_X = 11.1;
 export const LIMIT_Z = 9.1;
 export const PUCK_RADIUS = .8;
 export const COLLISION_RESTITUTION = .82;
+export const ATTACK_SPEED = 5;
+
+export function isAttacking(body) {
+  return Math.hypot(body.vx, body.vz) >= ATTACK_SPEED;
+}
+
+export function turnToward(current, target, dt) {
+  const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + delta * (1 - Math.exp(-16 * Math.max(0, dt)));
+}
 
 // The printed front faces local +Z; retain the last direction when stopped.
 export function facingAngle(x, z, previous) {
@@ -28,7 +38,7 @@ export function launch(state, drag) {
 
 export function advance(state, dt) {
   const speed = Math.hypot(state.vx, state.vz);
-  if (speed === 0 || dt <= 0) return;
+  if (speed === 0 || dt <= 0) return 0;
   const travelTime = Math.min(dt, speed / FRICTION);
   const displacement = speed * travelTime - 0.5 * FRICTION * travelTime ** 2;
   const nx = state.vx / speed, nz = state.vz / speed;
@@ -37,18 +47,22 @@ export function advance(state, dt) {
   const nextSpeed = Math.max(0, speed - FRICTION * dt);
   state.vx = nx * nextSpeed;
   state.vz = nz * nextSpeed;
-  confine(state);
+  return confine(state);
 }
 
 function confine(state) {
+  let impact = 0;
   if (Math.abs(state.x) > LIMIT_X) {
+    if (state.vx * Math.sign(state.x) > 0) impact = Math.max(impact, Math.abs(state.vx));
     state.x = Math.sign(state.x) * LIMIT_X;
     state.vx = -Math.sign(state.x) * Math.abs(state.vx) * REBOUND;
   }
   if (Math.abs(state.z) > LIMIT_Z) {
+    if (state.vz * Math.sign(state.z) > 0) impact = Math.max(impact, Math.abs(state.vz));
     state.z = Math.sign(state.z) * LIMIT_Z;
     state.vz = -Math.sign(state.z) * Math.abs(state.vz) * REBOUND;
   }
+  return impact;
 }
 
 // Equal-mass discs. A disc held for aiming has zero inverse mass.
@@ -56,29 +70,39 @@ export function collide(a, b, held = null) {
   const dx = b.x - a.x, dz = b.z - a.z;
   const distance = Math.hypot(dx, dz);
   const diameter = PUCK_RADIUS * 2;
-  if (distance >= diameter) return;
+  if (distance >= diameter) return 0;
   const nx = distance > 1e-8 ? dx / distance : 1;
   const nz = distance > 1e-8 ? dz / distance : 0;
   const ia = a === held ? 0 : 1, ib = b === held ? 0 : 1;
   const inverseMass = ia + ib;
-  if (!inverseMass) return;
+  if (!inverseMass) return 0;
   const separation = (diameter - distance) / inverseMass;
   a.x -= nx * separation * ia; a.z -= nz * separation * ia;
   b.x += nx * separation * ib; b.z += nz * separation * ib;
   const closingSpeed = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
-  if (closingSpeed >= 0) return;
+  if (closingSpeed >= 0) return 0;
   const impulse = -(1 + COLLISION_RESTITUTION) * closingSpeed / inverseMass;
   a.vx -= nx * impulse * ia; a.vz -= nz * impulse * ia;
   b.vx += nx * impulse * ib; b.vz += nz * impulse * ib;
+  return -closingSpeed;
 }
 
-export function advanceWorld(bodies, dt, held = null) {
-  for (const body of bodies) if (body !== held) advance(body, dt);
+export function advanceWorld(bodies, dt, held = null, onImpact = null) {
+  for (const body of bodies) if (body !== held) {
+    const strength = advance(body, dt);
+    if (strength > .4) onImpact?.(body, null, strength);
+  }
   // Reconcile overlap with the table edges after each contact pass.
   for (let pass = 0; pass < 4; pass++) {
     for (let i = 0; i < bodies.length; i++) {
-      for (let j = i + 1; j < bodies.length; j++) collide(bodies[i], bodies[j], held);
+      for (let j = i + 1; j < bodies.length; j++) {
+        const strength = collide(bodies[i], bodies[j], held);
+        if (strength > .4) onImpact?.(bodies[i], bodies[j], strength);
+      }
     }
-    for (const body of bodies) if (body !== held) confine(body);
+    for (const body of bodies) if (body !== held) {
+      const strength = confine(body);
+      if (strength > .4) onImpact?.(body, null, strength);
+    }
   }
 }
