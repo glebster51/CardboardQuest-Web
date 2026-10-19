@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
-import { validateSpriteFrames, spriteAlphaBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=4';
+import { validateSpriteFrames, spriteAlphaBounds, fitSpriteBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
@@ -180,11 +180,12 @@ async function start() {
       const unregisteredBack = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
       const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frameWidth, frameHeight);
       const backBounds = spriteAlphaBounds(backMask, frameWidth, frameHeight);
+      const fittedBack = fitSpriteBounds(backBounds, neutralBounds);
       const registeredBackCanvas = document.createElement('canvas');
       registeredBackCanvas.width = frameWidth; registeredBackCanvas.height = frameHeight;
       const registeredBackContext = registeredBackCanvas.getContext('2d', { willReadFrequently: true });
       registeredBackContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
-        neutralBounds.x, neutralBounds.y, neutralBounds.width, neutralBounds.height);
+        fittedBack.x, fittedBack.y, fittedBack.width, fittedBack.height);
       const registeredBack = registeredBackContext.getImageData(0, 0, frameWidth, frameHeight).data;
       const clippedBack = clipSpriteToAlphaMask(registeredBack, spriteGeometry.rasterMask);
       backContext.setTransform(1, 0, 0, 1, 0, 0); backContext.clearRect(0, 0, frameWidth, frameHeight);

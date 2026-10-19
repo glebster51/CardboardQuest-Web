@@ -211,6 +211,13 @@ export function spriteAlphaBounds(rgba, width, height, threshold = 128) {
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
+export function fitSpriteBounds(source, target) {
+  if (!(source.width > 0 && source.height > 0 && target.width > 0 && target.height > 0)) throw new RangeError('Sprite bounds must have positive dimensions');
+  const scale = Math.min(target.width / source.width, target.height / source.height);
+  const width = source.width * scale, height = source.height * scale;
+  return { x: target.x + (target.width - width) / 2, y: target.y + (target.height - height) / 2, width, height };
+}
+
 export function unionSpriteAlpha(frontRGBA, backRGBA, width, height, minimumIslandPixels = 12) {
   if (frontRGBA.length !== backRGBA.length || frontRGBA.length % 4 !== 0) throw new RangeError('Front and back textures must share a frame');
   const pixelCount = frontRGBA.length / 4;

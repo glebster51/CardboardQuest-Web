@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=3';
-import { validateSpriteFrames, spriteAlphaBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=4';
+import { validateSpriteFrames, spriteAlphaBounds, fitSpriteBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const subjects = [{ id: 'hero', label: 'Игрок', back: 'hero-back.png' }, { id: 'goblin', label: 'Гоблин', back: 'goblin-back.png' }];
@@ -48,10 +48,11 @@ async function loadSubject(subject) {
     const unregisteredBack = backCtx.getImageData(0, 0, frame.width, frame.height).data;
     const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frame.width, frame.height);
     const backBounds = spriteAlphaBounds(backMask, frame.width, frame.height), registeredBack = document.createElement('canvas');
+    const fittedBack = fitSpriteBounds(backBounds, neutralBounds);
     registeredBack.width = frame.width; registeredBack.height = frame.height;
     const registeredContext = registeredBack.getContext('2d', { willReadFrequently: true });
     registeredContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
-      neutralBounds.x, neutralBounds.y, neutralBounds.width, neutralBounds.height);
+      fittedBack.x, fittedBack.y, fittedBack.width, fittedBack.height);
     const backPixels = clipSpriteToAlphaMask(registeredContext.getImageData(0, 0, frame.width, frame.height).data, outline.rasterMask);
     backCtx.setTransform(1, 0, 0, 1, 0, 0); backCtx.clearRect(0, 0, frame.width, frame.height);
     backCtx.putImageData(new ImageData(backPixels, frame.width, frame.height), 0, 0);
