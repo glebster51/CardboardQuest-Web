@@ -25,7 +25,7 @@ function pointInsidePolygon(x, z, points) {
   return inside;
 }
 
-/** Marching squares also traces the zero-height playable floor as a contour; it must stay a hole. */
+/** Keep the level interior clear when marching squares traces its zero-height boundary. */
 export function removeContoursCoveringPlayableArea(contours, walkablePoints) {
   if (!Array.isArray(contours) || !Array.isArray(walkablePoints) || walkablePoints.length < 3) return [];
   const probe = walkablePoints.reduce((center, point) => ({ x: center.x + point.x / walkablePoints.length,

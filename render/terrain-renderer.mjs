@@ -48,22 +48,6 @@ function shapesFromContours(THREE, contours) {
   });
 }
 
-function containsPoint(point, polygon) {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[i], b = polygon[j];
-    if ((a.z > point.z) !== (b.z > point.z)
-      && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
-  }
-  return inside;
-}
-
-export function filterTerrainContours(contours, walkablePoints) {
-  const center = walkablePoints.reduce((sum, point) => ({ x: sum.x + point.x / walkablePoints.length,
-    z: sum.z + point.z / walkablePoints.length }), { x: 0, z: 0 });
-  return contours.filter(contour => contour.length >= 3 && !containsPoint(center, contour));
-}
-
 const TERRAIN_PALETTES = {
   home: { tops: [0x84964c, 0x9ca657, 0xb4a868, 0xc0a873], side: 0x805b39 },
   forest: { tops: [0x647e43, 0x78884b, 0x9c975b, 0xb29d70], side: 0x67472e },
@@ -120,7 +104,7 @@ function addArenaCliff(THREE, location, palette, corrugation, sceneStencil) {
   location.sceneGroup.add(mesh);
 }
 
-export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
+export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, removeContoursCoveringPlayableArea,
   paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6 }) {
   for (const location of Object.values(locations)) {
     const seed = location.heightSeed ?? (location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731);
@@ -140,7 +124,7 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       shapes: [terrainShape(THREE, location.walkablePoints)], depth: .3, top: 0,
       topColor: palette.tops[0], sideColor: palette.side,
     }, ...heightMap.layers.filter(layer => layer.contours.length).map((layer, index) => ({
-      shapes: shapesFromContours(THREE, filterTerrainContours(layer.contours, location.walkablePoints)),
+      shapes: shapesFromContours(THREE, removeContoursCoveringPlayableArea(layer.contours, location.walkablePoints)),
       depth: heightMap.step, top: layer.height,
       topColor: palette.tops[(index + 2) % palette.tops.length],
       sideColor: index % 2 ? palette.side : 0x9c7243,
