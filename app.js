@@ -735,7 +735,8 @@ async function start() {
       const cameraDx = camera.position.x - figure.group.position.x, cameraDz = camera.position.z - figure.group.position.z;
       const cameraDistance = Math.max(.001, Math.hypot(cameraDx, cameraDz));
       const facingDot = (cameraDx * Math.sin(figure.group.rotation.y) + cameraDz * Math.cos(figure.group.rotation.y)) / cameraDistance;
-      if (figure.viewBack ? facingDot > .025 : facingDot < -.025) figure.viewBack = !figure.viewBack;
+      if (body.health <= 0) figure.viewBack = false;
+      else if (figure.viewBack ? facingDot > .025 : facingDot < -.025) figure.viewBack = !figure.viewBack;
       for (const art of Object.values(figure.artStates)) {
         art.frontArt.group.visible = !figure.viewBack;
         art.backArt.group.visible = figure.viewBack;
@@ -754,9 +755,16 @@ async function start() {
       figure.backFlashMaterial.opacity = figure.viewBack ? flashOpacity : 0;
       const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
       const squash = figure.hitStrength * spring;
-      figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
-      figure.artGroup.position.y = 1.25 + Math.max(0, squash) * .2;
-      figure.artGroup.rotation.z = squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012;
+      if (visualState === 'dead') {
+        const lyingScale = .72;
+        figure.artGroup.scale.setScalar(lyingScale);
+        figure.artGroup.position.y = .215 + .144 * lyingScale / 2 + .002;
+        figure.artGroup.rotation.set(-Math.PI / 2, 0, 0);
+      } else {
+        figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
+        figure.artGroup.position.y = 1.25 + Math.max(0, squash) * .2;
+        figure.artGroup.rotation.set(0, 0, squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012);
+      }
       figure.attacking = isAttacking(body) && body !== held;
       const healthRatio = Math.max(0, body.health / body.maxHealth);
       figure.healthFill.scale.x = healthRatio;
