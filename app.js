@@ -257,6 +257,16 @@ async function start() {
       backTextures[stateIndex].dispose();
     }
     const initialArt = artStates.idle;
+    let deadBottomRow = frameHeight - 1;
+    for (let y = frameHeight - 1; y >= 0; y--) {
+      let hasVisiblePixel = false;
+      for (let x = 0; x < frameWidth; x++) if (artStates.dead.alphaPixels[(y * frameWidth + x) * 4 + 3] > 80) {
+        hasVisiblePixel = true; break;
+      }
+      if (hasVisiblePixel) { deadBottomRow = y; break; }
+    }
+    const deadBottomLocalY = (.5 - deadBottomRow / frameHeight) * 2.05;
+    const deadGroundedY = .215 - deadBottomLocalY;
 
     const healthHUD = new THREE.Group();
     const initialHeartLevels = heartHealthLevels(body.health, body.maxHealth);
@@ -291,7 +301,7 @@ async function start() {
     }
     const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
-      healthHUD, heartIcons, chargePips, enemyMarker,
+      healthHUD, heartIcons, chargePips, enemyMarker, deadGroundedY,
       flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
       viewBack: false, facing: 0, hitAge: 10, hitStrength: 0,
       hurtAge: 10, dealDamageAge: 10 };
@@ -811,7 +821,7 @@ async function start() {
       const squash = figure.hitStrength * spring;
       if (visualState === 'dead') {
         figure.artGroup.scale.set(1, 1, 1);
-        figure.artGroup.position.y = .215 + 1.025;
+        figure.artGroup.position.y = figure.deadGroundedY;
         figure.artGroup.rotation.set(0, 0, 0);
       } else {
         figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
