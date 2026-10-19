@@ -77,7 +77,8 @@ function render() {
     const r = cell.getBoundingClientRect(), x = Math.round((r.left - bounds.left) * ratio), y = Math.round((bounds.bottom - r.bottom) * ratio);
     const w = Math.round(r.width * ratio), h = Math.round(r.height * ratio);
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, true);
-    const model = built.get(`${subject.id}:${state}`); scene.add(model.group); model.group.rotation.y = view.angle;
+    const model = built.get(`${subject.id}:${state}`); scene.add(model.group);
+    model.group.rotation.set(0, view.angle, 0); model.group.updateMatrix(); model.group.updateMatrixWorld(true);
     const aspect = r.width / r.height, halfHeight = 1.58;
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect; camera.top = halfHeight; camera.bottom = -halfHeight;
     camera.position.set(0, 2.5, 8); camera.lookAt(0, 1.16, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
