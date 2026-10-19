@@ -1,13 +1,13 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=7';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=8';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
 const bodies = [
   { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0 },
-  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() },
-  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() },
-  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() },
+  { id: 'goblin-1', team: 'enemy', x: -3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
+  { id: 'goblin-2', team: 'enemy', x: 3.1, z: 2.8, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
+  { id: 'goblin-3', team: 'enemy', x: 0, z: 5.7, vx: 0, vz: 0, health: 100, maxHealth: 100, charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: 1 + Math.random() * 3 },
 ];
 let state = bodies[0];
 let selected = true;
@@ -184,14 +184,16 @@ async function start() {
     if (body.team === 'player') {
       chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
         const pip = new THREE.Group();
-        const outline = new THREE.Mesh(new THREE.RingGeometry(.045, .07, 28),
+        const halo = new THREE.Mesh(new THREE.CircleGeometry(.12, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .12, side: THREE.DoubleSide, depthWrite: false }));
+        const outline = new THREE.Mesh(new THREE.RingGeometry(.06, .09, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
+        const fill = new THREE.Mesh(new THREE.CircleGeometry(.057, 28),
           new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-        const fill = new THREE.Mesh(new THREE.CircleGeometry(.043, 28),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-        fill.position.z = .012;
-        pip.position.set((index - (body.maxCharges - 1) / 2) * .24, .24, .02);
-        pip.add(outline, fill); healthHUD.add(pip);
-        return { group: pip, fill };
+        outline.position.z = .01; fill.position.z = .02;
+        pip.position.set((index - (body.maxCharges - 1) / 2) * .32, .29, .02);
+        pip.add(halo, outline, fill); healthHUD.add(pip);
+        return { group: pip, fill, halo };
       });
     }
     healthHUD.position.set(body.x, 2.65, body.z);
@@ -204,18 +206,10 @@ async function start() {
         new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
       enemyRing.rotation.x = -Math.PI / 2; scene.add(enemyRing);
       attackIndicator = new THREE.Group();
-      const warningShape = new THREE.Shape([
-        new THREE.Vector2(-.18, 0), new THREE.Vector2(.18, 0), new THREE.Vector2(.18, .68),
-        new THREE.Vector2(.48, .68), new THREE.Vector2(0, 1), new THREE.Vector2(-.48, .68), new THREE.Vector2(-.18, .68),
-      ]);
-      const warningArrow = new THREE.Mesh(new THREE.ShapeGeometry(warningShape),
-        new THREE.MeshBasicMaterial({ color: 0xa52d27, transparent: true, opacity: .76, side: THREE.DoubleSide, depthWrite: false }));
-      warningArrow.rotation.x = Math.PI / 2; warningArrow.scale.set(.9, 2.35, 1);
-      attackIndicator.add(warningArrow);
-      attackProgress = new THREE.Mesh(new THREE.PlaneGeometry(.13, 1.8),
-        new THREE.MeshBasicMaterial({ color: 0xfff0ad, transparent: true, opacity: .98, side: THREE.DoubleSide, depthWrite: false }));
-      attackProgress.rotation.x = Math.PI / 2; attackProgress.position.z = -.025; attackProgress.visible = false;
-      attackIndicator.add(attackProgress);
+      const warning = createArrowSkin(0xd82932, 0xff5b50, true);
+      warning.group.scale.set(1.6, 2.4, 1);
+      attackIndicator.add(warning.group);
+      attackProgress = warning.progress;
       attackIndicator.visible = false; scene.add(attackIndicator);
     }
     const figure = { group, artGroup, body, alphaPixels, width: cut.width, height: cut.height,
@@ -290,15 +284,35 @@ async function start() {
   selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = .012;
   selectionRing.visible = true; scene.add(selectionRing);
   const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
-  const arrowShape = new THREE.Shape([
-    new THREE.Vector2(-.5, 0), new THREE.Vector2(.5, 0),
-    new THREE.Vector2(.5, .68), new THREE.Vector2(.8, .68),
-    new THREE.Vector2(0, 1), new THREE.Vector2(-.8, .68), new THREE.Vector2(-.5, .68),
-  ]);
-  const arrow = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape),
-    new THREE.MeshBasicMaterial({ color: 0x607948, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
-  arrow.rotation.x = Math.PI / 2;
-  aiming.add(arrow);
+  const playerArrow = createArrowSkin(0x65d536, 0xd8ff91, false);
+  playerArrow.group.scale.x = 1.6;
+  aiming.add(playerArrow.group);
+  const arrow = playerArrow.arrow;
+  function createArrowSkin(color, glowColor, showProgress) {
+    const shape = new THREE.Shape([
+      new THREE.Vector2(-.5, 0), new THREE.Vector2(.5, 0), new THREE.Vector2(.5, .76),
+      new THREE.Vector2(0, 1.25), new THREE.Vector2(-.5, .76),
+    ]);
+    const geometry = new THREE.ShapeGeometry(shape);
+    const group = new THREE.Group();
+    const glow = new THREE.Mesh(geometry,
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: .32, side: THREE.DoubleSide, depthWrite: false }));
+    glow.rotation.x = Math.PI / 2; glow.scale.set(1.14, 1, 1); glow.position.z = -.01; group.add(glow);
+    const arrow = new THREE.Mesh(geometry,
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
+    arrow.rotation.x = Math.PI / 2; group.add(arrow);
+    const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry),
+      new THREE.LineBasicMaterial({ color: 0xfff4d4, transparent: true, opacity: .9, depthTest: false }));
+    outline.rotation.x = Math.PI / 2; outline.position.z = -.02; group.add(outline);
+    let progress = null;
+    if (showProgress) {
+      progress = new THREE.Mesh(new THREE.PlaneGeometry(.38, .68),
+        new THREE.MeshBasicMaterial({ color: 0xffe8a0, transparent: true, opacity: .98, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+      progress.rotation.x = Math.PI / 2; progress.position.z = -.035; progress.visible = false;
+      group.add(progress);
+    }
+    return { group, arrow, progress };
+  }
 
   const raycaster = new THREE.Raycaster();
   function rayAt(x, y) {
@@ -352,10 +366,18 @@ async function start() {
     } else {
       const hit = hitFigure(event.clientX, event.clientY);
       if (hit) choose(hit);
-      state.vx = 0; state.vz = 0;
-      gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
-        hit, startX: event.clientX, startY: event.clientY, moved: false };
-      host.classList.add('aiming');
+      if (hit?.body.team === 'player') {
+        if (state.charges > 0 && state.health > 0) {
+          state.vx = 0; state.vz = 0;
+          gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
+            hit, startX: event.clientX, startY: event.clientY, moved: false };
+          host.classList.add('aiming');
+        } else {
+          gesture = { mode: 'blocked', pointer: event.pointerId };
+        }
+      } else {
+        gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
+      }
     }
   });
   host.addEventListener('pointermove', event => {
@@ -372,6 +394,7 @@ async function start() {
       return;
     }
     if (event.pointerId !== gesture.pointer) return;
+    if (gesture.mode === 'blocked') return;
     if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 7) gesture.moved = true;
     if (gesture.mode === 'aim') {
       if (!gesture.moved) return;
@@ -389,7 +412,7 @@ async function start() {
         activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
         aiming.position.set(state.x, .025, state.z);
         aiming.rotation.y = activeFigure.facing;
-        arrow.scale.y = .8 + 3.6 * length / MAX_PULL;
+        playerArrow.group.scale.y = .8 + 3.6 * length / MAX_PULL;
         if (state.charges > 0 && state.health > 0) arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
         else arrow.material.color.setHex(0x77736b);
       }
@@ -467,9 +490,9 @@ async function start() {
         figure.facing = facingAngle(dx, dz, figure.facing);
       }
       if (body.aiPhase === 'dash' && speed < .2) {
-        body.aiPhase = 'pause'; body.aiTimer = randomBetween(1, 2);
+        body.aiPhase = 'pause'; body.aiTimer = randomBetween(1, 4);
       } else if (body.aiPhase === 'pause' && body.aiTimer <= 0) {
-        body.aiPhase = 'aim'; body.aiAimDuration = randomBetween(.85, 1.35); body.aiTimer = body.aiAimDuration;
+        body.aiPhase = 'aim'; body.aiAimDuration = randomBetween(1.7, 2.7); body.aiTimer = body.aiAimDuration;
       } else if (body.aiPhase === 'aim' && body.aiTimer <= 0 && body.charges > 0 && state.health > 0 && body.health > 0) {
         const power = THREE.MathUtils.clamp(distanceToPlayer * .12, .55, .95);
         body.charges--; body.rechargeTimer = 0; body.aiPhase = 'dash';
@@ -499,10 +522,11 @@ async function start() {
       figure.healthFill.position.x = -.04 - .71 * (1 - healthRatio);
       figure.healthFill.material.color.setHex(body.health <= 25 ? 0xf2a33b : body.team === 'player' ? 0x65d536 : 0xd84a38);
       const rechargeProgress = body.charges < body.maxCharges ? body.rechargeTimer / 3 : 0;
-      figure.chargePips.forEach(({ group, fill }, index) => {
+      figure.chargePips.forEach(({ group, fill, halo }, index) => {
         const amount = index < body.charges ? 1 : index === body.charges ? rechargeProgress : 0;
-        group.visible = true;
+        group.visible = body.team === 'player';
         fill.scale.setScalar(Math.max(.001, amount));
+        halo.material.opacity = index < body.charges ? .42 : index === body.charges ? .1 + rechargeProgress * .32 : .08;
       });
       if (figure.enemyRing) {
         figure.markerAge += dt;
@@ -518,7 +542,7 @@ async function start() {
           figure.attackIndicator.rotation.y = facingAngle(state.x - body.x, state.z - body.z, figure.facing);
           const progress = 1 - body.aiTimer / body.aiAimDuration;
           figure.attackProgress.scale.y = progress;
-          figure.attackProgress.position.y = .9 * progress;
+          figure.attackProgress.position.y = .34 * progress;
           figure.attackProgress.visible = progress > .005;
         }
       }
