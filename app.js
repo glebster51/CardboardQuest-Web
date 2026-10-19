@@ -15,7 +15,7 @@ import { createLocationWalkPaths, scatterGroundDetails } from './ground-decorati
 import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
   consumeFood, createCampaignState, inspectCampaignLocation, visitCampaignLocation } from './game/story-campaign.mjs?v=1';
-import { createCampaignLocations } from './game/story-world.mjs?v=1';
+import { createCampaignLocations, resolveCampaignPlayerStart } from './game/story-world.mjs?v=2';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=6';
@@ -61,10 +61,11 @@ async function start() {
     location.lastExitPositions = stored.lastExitPositions ?? location.lastExitPositions;
   }
   heroBody.maxHealth = 20 + campaignState.maxHealthBonus;
-  heroBody.health = Math.min(savedCampaign?.playerHealth ?? heroBody.maxHealth, heroBody.maxHealth);
-  if (savedCampaign?.playerPosition && Number.isFinite(savedCampaign.playerPosition.x) && Number.isFinite(savedCampaign.playerPosition.z)) {
-    heroBody.x = savedCampaign.playerPosition.x; heroBody.z = savedCampaign.playerPosition.z;
-  }
+  const playerStart = resolveCampaignPlayerStart(locations[campaignState.currentLocationId], {
+    health: savedCampaign?.playerHealth, maxHealth: heroBody.maxHealth, position: savedCampaign?.playerPosition,
+  });
+  heroBody.health = playerStart.health;
+  heroBody.x = playerStart.position.x; heroBody.z = playerStart.position.z;
   for (const location of Object.values(locations)) location.obstacles = [];
   let activeLocation = locations[campaignState.currentLocationId];
   const locationTitle = document.querySelector('#location-title');
@@ -465,6 +466,7 @@ async function start() {
       console.warn('Не удалось сохранить поход', error);
     }
   }
+  if (savedCampaign && playerStart.recovered) persistCampaign();
   document.querySelector('#story-close').addEventListener('click', () => { dialoguePanel.hidden = true; });
   document.querySelector('#inventory-toggle').addEventListener('click', () => {
     renderInventory(); inventoryPanel.hidden = false;

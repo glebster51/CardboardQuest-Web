@@ -96,6 +96,7 @@ export function createCampaignState(raw = null) {
   state.collected = state.collected && typeof state.collected === 'object' ? state.collected : {};
   state.flags = state.flags && typeof state.flags === 'object' ? state.flags : {};
   state.items = state.items && typeof state.items === 'object' ? state.items : {};
+  state.maxHealthBonus = Math.max(0, Math.min(8, Math.trunc(Number(state.maxHealthBonus) || 0)));
   state.defenseBonus = Math.max(0, Math.min(2, Math.trunc(state.defenseBonus || 0)));
   state.damageBonus = Math.max(0, Math.min(2, Math.trunc(state.damageBonus || 0)));
   return state;
