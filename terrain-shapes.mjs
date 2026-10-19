@@ -25,14 +25,6 @@ function pointInsidePolygon(x, z, points) {
   return inside;
 }
 
-/** Keep the level interior clear when marching squares traces its zero-height boundary. */
-export function removeContoursCoveringPlayableArea(contours, walkablePoints) {
-  if (!Array.isArray(contours) || !Array.isArray(walkablePoints) || walkablePoints.length < 3) return [];
-  const probe = walkablePoints.reduce((center, point) => ({ x: center.x + point.x / walkablePoints.length,
-    z: center.z + point.z / walkablePoints.length }), { x: 0, z: 0 });
-  return contours.filter(contour => contour.length >= 3 && !pointInsidePolygon(probe.x, probe.z, contour));
-}
-
 function latticeNoise(x, z, seed) {
   const hash = (ix, iz) => {
     let value = Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + seed;
@@ -150,22 +142,31 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
     value ^= value + Math.imul(value ^ value >>> 7, value | 61);
     return ((value ^ value >>> 14) >>> 0) / 4294967296;
   };
+  const center = walkablePoints.reduce((sum, point) => ({ x: sum.x + point.x / walkablePoints.length,
+    z: sum.z + point.z / walkablePoints.length }), { x: 0, z: 0 });
   const peaks = Array.from({ length: options.peakCount ?? 30 }, () => {
-    const angle = random() * Math.PI * 2, radius = 1.05 + random() * 5.25;
+    const angle = random() * Math.PI * 2, radius = 3.8 + random() * 15.5;
     return {
-      x: Math.cos(angle) * radius * 10.8, z: Math.sin(angle) * radius * 8.2,
-      radialWidth: (0.18 + random() * .42) * 10.8,
-      tangentWidth: radius * (.10 + random() * .30) * 10.8,
-      angle, amplitude: .9 + random() * 3.1,
+      x: center.x + Math.cos(angle) * radius, z: center.z + Math.sin(angle) * radius,
+      radialWidth: 2.8 + random() * 5.5,
+      tangentWidth: 2.8 + random() * 6.5,
+      angle, amplitude: .25 + random() * 2.4,
     };
   });
+  const exits = options.exits ?? [];
+  const dropZones = options.dropZones ?? [];
+  const corridors = exits.map(exit => {
+    const length = Math.hypot(exit.x - center.x, exit.z - center.z) || 1;
+    return { x: (exit.x - center.x) / length, z: (exit.z - center.z) / length,
+      start: length - 2.8, width: options.exitCorridorHalfWidth ?? 2.55 };
+  });
+  const distanceToBounds = (x, z) => Math.min(x - minX, maxX - x, z - minZ, maxZ - z);
   const rawHeight = (x, z) => {
     if (pointInsidePolygon(x, z, walkablePoints)) return 0;
-    const radius = Math.hypot(x / 10.8, z / 8.2);
-    const mask = 1 - smoothStep(6.05, 6.65, radius);
-    if (mask <= 0) return 0;
-    const warpX = latticeNoise(x / 17, z / 17, seed + 11) * 2.2;
-    const warpZ = latticeNoise((x + 27) / 17, (z - 13) / 17, seed + 23) * 2.2;
+    const edge = nearestPointOnPath(x, z, walkablePoints);
+    const distance = Math.hypot(x - edge.x, z - edge.z);
+    const warpX = latticeNoise(x / 14, z / 14, seed + 11) * 2.8;
+    const warpZ = latticeNoise((x + 27) / 14, (z - 13) / 14, seed + 23) * 2.8;
     const noise = smoothNoise(x + warpX, z + warpZ, seed);
     let peakHeight = 0;
     for (const peak of peaks) {
@@ -175,8 +176,21 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
       const mound = peak.amplitude * Math.exp(-.5 * ((radial / peak.radialWidth) ** 2 + (tangent / peak.tangentWidth) ** 2));
       peakHeight = Math.max(peakHeight, mound);
     }
-    const lowland = .35 + noise * .19;
-    const height = (lowland + peakHeight * (.82 + .18 * noise)) * mask;
+    const crestDistance = 3.6 + noise * 2.1;
+    const ridge = Math.exp(-.5 * ((distance - crestDistance) / 4.6) ** 2);
+    const outerFade = 1 - smoothStep(19, 28, distance);
+    const edgeFade = smoothStep(0, 5.5, distanceToBounds(x, z));
+    let height = (.38 + ridge * (1.35 + Math.max(0, noise) * .95) + peakHeight * .78) * outerFade * edgeFade;
+    for (const corridor of corridors) {
+      const along = (x - center.x) * corridor.x + (z - center.z) * corridor.z;
+      if (along < corridor.start) continue;
+      const across = Math.abs((x - center.x) * corridor.z - (z - center.z) * corridor.x);
+      height *= smoothStep(corridor.width * .72, corridor.width, across);
+    }
+    for (const zone of dropZones) {
+      const distanceToDrop = Math.hypot(x - zone.x, z - zone.z);
+      height *= smoothStep(Math.max(.4, zone.radius * .72), zone.radius + .9, distanceToDrop);
+    }
     return Math.max(0, Math.min(maxHeight, height));
   };
   for (let z = 0; z < rows; z++) for (let x = 0; x < columns; x++) {
