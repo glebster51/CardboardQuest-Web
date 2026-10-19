@@ -9,6 +9,11 @@ export const LIMIT_Z = 9.1;
 export const PUCK_RADIUS = .8;
 export const COLLISION_RESTITUTION = .82;
 export const ATTACK_SPEED = 5;
+export const ARENA_POINTS = Array.from({ length: 48 }, (_, index) => {
+  const angle = index / 48 * Math.PI * 2;
+  const radius = 1 + .035 * Math.sin(angle * 3 + .4) + .02 * Math.sin(angle * 7);
+  return { x: Math.cos(angle) * 10.8 * radius, z: Math.sin(angle) * 8.55 * radius };
+});
 
 export function isAttacking(body) {
   return Math.hypot(body.vx, body.vz) >= ATTACK_SPEED;
@@ -51,18 +56,33 @@ export function advance(state, dt) {
 }
 
 function confine(state) {
-  let impact = 0;
-  if (Math.abs(state.x) > LIMIT_X) {
-    if (state.vx * Math.sign(state.x) > 0) impact = Math.max(impact, Math.abs(state.vx));
-    state.x = Math.sign(state.x) * LIMIT_X;
-    state.vx = -Math.sign(state.x) * Math.abs(state.vx) * REBOUND;
+  let inside = false;
+  for (let i = 0, j = ARENA_POINTS.length - 1; i < ARENA_POINTS.length; j = i++) {
+    const a = ARENA_POINTS[i], b = ARENA_POINTS[j];
+    if ((a.z > state.z) !== (b.z > state.z) && state.x < (b.x - a.x) * (state.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
   }
-  if (Math.abs(state.z) > LIMIT_Z) {
-    if (state.vz * Math.sign(state.z) > 0) impact = Math.max(impact, Math.abs(state.vz));
-    state.z = Math.sign(state.z) * LIMIT_Z;
-    state.vz = -Math.sign(state.z) * Math.abs(state.vz) * REBOUND;
+  let nearestX = 0, nearestZ = 0, nearestDistance = Infinity;
+  for (let i = 0; i < ARENA_POINTS.length; i++) {
+    const a = ARENA_POINTS[i], b = ARENA_POINTS[(i + 1) % ARENA_POINTS.length];
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const t = clamp(((state.x - a.x) * dx + (state.z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
+    const x = a.x + dx * t, z = a.z + dz * t;
+    const distance = (state.x - x) ** 2 + (state.z - z) ** 2;
+    if (distance < nearestDistance) { nearestDistance = distance; nearestX = x; nearestZ = z; }
   }
-  return impact;
+  if (inside && nearestDistance >= PUCK_RADIUS ** 2) return 0;
+  let inX = inside ? state.x - nearestX : nearestX - state.x;
+  let inZ = inside ? state.z - nearestZ : nearestZ - state.z;
+  const length = Math.hypot(inX, inZ) || 1;
+  inX /= length; inZ /= length;
+  state.x = nearestX + inX * (PUCK_RADIUS - .001);
+  state.z = nearestZ + inZ * (PUCK_RADIUS - .001);
+  const outX = -inX, outZ = -inZ;
+  const outwardSpeed = state.vx * outX + state.vz * outZ;
+  if (outwardSpeed <= 0) return 0;
+  state.vx -= (1 + REBOUND) * outwardSpeed * outX;
+  state.vz -= (1 + REBOUND) * outwardSpeed * outZ;
+  return outwardSpeed;
 }
 
 // Equal-mass discs. A disc held for aiming has zero inverse mass.

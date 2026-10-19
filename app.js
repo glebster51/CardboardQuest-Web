@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=10';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS } from './physics.mjs?v=11';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -15,6 +15,154 @@ const pointers = new Map();
 let gesture = null;
 const GROUND_UI_Y = .026;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
+const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
+
+function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
+  const scale = Math.min(1, 128 / Math.max(width, height));
+  const gridWidth = Math.max(2, Math.round(width * scale));
+  const gridHeight = Math.max(2, Math.round(height * scale));
+  const mask = new Uint8Array(gridWidth * gridHeight);
+  for (let y = 0; y < gridHeight; y++) for (let x = 0; x < gridWidth; x++) {
+    const sx = Math.min(width - 1, Math.floor((x + .5) * width / gridWidth));
+    const sy = Math.min(height - 1, Math.floor((y + .5) * height / gridHeight));
+    mask[y * gridWidth + x] = alphaPixels[(sy * width + sx) * 4 + 3] > 80 ? 1 : 0;
+  }
+  const edges = [];
+  const addEdge = (ax, ay, bx, by) => edges.push({ ax, ay, bx, by, used: false });
+  const filled = (x, y) => x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && mask[y * gridWidth + x] === 1;
+  for (let y = 0; y < gridHeight; y++) for (let x = 0; x < gridWidth; x++) if (filled(x, y)) {
+    if (!filled(x, y - 1)) addEdge(x, y, x + 1, y);
+    if (!filled(x + 1, y)) addEdge(x + 1, y, x + 1, y + 1);
+    if (!filled(x, y + 1)) addEdge(x + 1, y + 1, x, y + 1);
+    if (!filled(x - 1, y)) addEdge(x, y + 1, x, y);
+  }
+  const starts = new Map();
+  edges.forEach((edge, index) => {
+    const key = `${edge.ax},${edge.ay}`;
+    if (!starts.has(key)) starts.set(key, []);
+    starts.get(key).push(index);
+  });
+  const loops = [];
+  for (let start = 0; start < edges.length; start++) {
+    if (edges[start].used) continue;
+    const points = [];
+    let index = start;
+    for (let guard = 0; guard <= edges.length; guard++) {
+      const edge = edges[index];
+      if (edge.used) break;
+      edge.used = true;
+      points.push(new THREE.Vector2((edge.ax / gridWidth - .5) * worldWidth,
+        (.5 - edge.ay / gridHeight) * worldHeight));
+      const key = `${edge.bx},${edge.by}`;
+      if (key === `${edges[start].ax},${edges[start].ay}`) break;
+      const candidates = (starts.get(key) || []).filter(candidate => !edges[candidate].used);
+      if (!candidates.length) break;
+      const incomingX = edge.bx - edge.ax, incomingY = edge.by - edge.ay;
+      candidates.sort((a, b) => {
+        const rank = candidate => {
+          const next = edges[candidate];
+          const cross = incomingX * (next.by - next.ay) - incomingY * (next.bx - next.ax);
+          const dot = incomingX * (next.bx - next.ax) + incomingY * (next.by - next.ay);
+          const angle = (Math.atan2(cross, dot) + Math.PI * 2) % (Math.PI * 2);
+          return angle < .01 ? 1 : angle < Math.PI ? 0 : 2;
+        };
+        return rank(a) - rank(b);
+      });
+      index = candidates[0];
+    }
+    if (points.length >= 3) loops.push(points);
+  }
+  const area = points => points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return sum + point.x * next.y - next.x * point.y;
+  }, 0) / 2;
+  const contains = (point, polygon) => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i], b = polygon[j];
+      if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  };
+  const entries = loops.map(points => ({ points, area: Math.abs(area(points)), parent: null, depth: 0 }))
+    .sort((a, b) => b.area - a.area);
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = 0; j < i; j++) if (contains(entries[i].points[0], entries[j].points)) {
+      entries[i].parent = entries[j]; entries[i].depth = entries[j].depth + 1; break;
+    }
+  }
+  const pathFrom = (points, clockwise) => {
+    const ordered = THREE.ShapeUtils.isClockWise(points) === clockwise ? points : [...points].reverse();
+    const path = new THREE.Path();
+    path.moveTo(ordered[0].x, ordered[0].y);
+    for (let i = 1; i < ordered.length; i++) path.lineTo(ordered[i].x, ordered[i].y);
+    path.closePath();
+    return path;
+  };
+  const shapes = [];
+  for (const entry of entries) if (entry.depth % 2 === 0) {
+    const shape = new THREE.Shape();
+    const outer = pathFrom(entry.points, false);
+    shape.moveTo(outer.curves[0].v1.x, outer.curves[0].v1.y);
+    for (const curve of outer.curves) shape.lineTo(curve.v2.x, curve.v2.y);
+    shape.closePath();
+    for (const hole of entries) if (hole.parent === entry && hole.depth % 2 === 1) shape.holes.push(pathFrom(hole.points, true));
+    shapes.push(shape);
+  }
+  return shapes;
+}
+
+function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation) {
+  const worldWidth = 2.05 * width / height;
+  const worldHeight = 2.05;
+  const depth = .144;
+  const shapes = silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight);
+  const uv = (vertices, index) => {
+    const x = vertices[index * 3], y = vertices[index * 3 + 1];
+    return new THREE.Vector2(x / worldWidth + .5, y / worldHeight + .5);
+  };
+  const uvGenerator = {
+    generateTopUV(_geometry, vertices, a, b, c) { return [uv(vertices, a), uv(vertices, b), uv(vertices, c)]; },
+    generateSideWallUV(_geometry, vertices, a, b, c, d) {
+      const horizontal = Math.abs(vertices[b * 3] - vertices[a * 3]) >= Math.abs(vertices[b * 3 + 1] - vertices[a * 3 + 1]);
+      return [a, b, c, d].map(index => new THREE.Vector2(
+        horizontal ? vertices[index * 3] / worldWidth + .5 : vertices[index * 3 + 1] / worldHeight + .5,
+        vertices[index * 3 + 2] / depth));
+    },
+  };
+  const geometry = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, steps: 1, UVGenerator: uvGenerator });
+  geometry.translate(0, 0, -depth / 2);
+  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
+  const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.FrontSide });
+  const body = new THREE.Mesh(geometry, [frontMaterial, sideMaterial]);
+  body.castShadow = true;
+  body.userData.print = true;
+  const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight),
+    new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide }));
+  backPlane.position.z = -depth / 2 - .002;
+  backPlane.userData.print = true;
+  const flashGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight);
+  const whiteMask = document.createElement('canvas');
+  whiteMask.width = width; whiteMask.height = height;
+  const whiteContext = whiteMask.getContext('2d');
+  whiteContext.fillStyle = '#fff'; whiteContext.fillRect(0, 0, width, height);
+  const alphaCanvas = document.createElement('canvas'); alphaCanvas.width = width; alphaCanvas.height = height;
+  const imageData = alphaCanvas.getContext('2d').createImageData(width, height);
+  for (let i = 0; i < width * height; i++) imageData.data[i * 4 + 3] = alphaPixels[i * 4 + 3];
+  alphaCanvas.getContext('2d').putImageData(imageData, 0, 0);
+  whiteContext.globalCompositeOperation = 'destination-in'; whiteContext.drawImage(alphaCanvas, 0, 0);
+  const flashTexture = new THREE.CanvasTexture(whiteMask);
+  const flashMaterial = new THREE.MeshBasicMaterial({ map: flashTexture, transparent: true, opacity: 0, alphaTest: .1,
+    side: THREE.DoubleSide, depthWrite: false });
+  const frontFlash = new THREE.Mesh(flashGeometry, flashMaterial);
+  const backFlash = new THREE.Mesh(flashGeometry, flashMaterial);
+  frontFlash.position.z = depth / 2 + .004; backFlash.position.z = -depth / 2 - .004;
+  frontFlash.userData.print = backFlash.userData.print = true;
+  const group = new THREE.Group();
+  group.add(body, backPlane, frontFlash, backFlash);
+  return { group, body, geometry, frontMaterial, sideMaterial, backPlane, flashMaterial, flashTexture, alphaPixels, width, height };
+}
+
 document.querySelector('#restart').addEventListener('click', () => location.reload());
 
 async function start() {
@@ -31,6 +179,7 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 80);
   const target = new THREE.Vector3(0, .65, 0);
   let theta = .22, phi = .86, distance = innerWidth < 650 ? 18 : 10.5;
+  const environmentSprites = [];
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
@@ -49,36 +198,13 @@ async function start() {
     map.colorSpace = THREE.SRGBColorSpace;
     return map;
   }
-  const wood = texture(1024, 1024, (c, w, h) => {
-    c.fillStyle = '#cbb795'; c.fillRect(0, 0, w, h);
-    let seed = 31;
-    const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    for (let i = 0; i < 4200; i++) {
-      const x = random() * w, y = random() * h;
-      c.strokeStyle = `rgba(104,77,40,${random() * .075})`;
-      c.lineWidth = random() + .3;
-      c.beginPath(); c.moveTo(x, y);
-      c.bezierCurveTo(x + 40, y - 1, x + 90, y + 1, x + random() * 300, y);
-      c.stroke();
-    }
-    for (let y = 0; y < h; y += 256) {
-      c.fillStyle = '#76573514'; c.fillRect(0, y, w, 2);
-    }
-  });
-  wood.wrapS = wood.wrapT = THREE.RepeatWrapping;
-  wood.repeat.set(3, 3);
-  const tabletop = new THREE.Mesh(new THREE.BoxGeometry(24, .4, 20), [
-    new THREE.MeshStandardMaterial({ color: 0x9a7850, roughness: .95 }),
-    new THREE.MeshStandardMaterial({ color: 0x9a7850, roughness: .95 }),
-    new THREE.MeshStandardMaterial({ map: wood, roughness: .94 }),
-    new THREE.MeshStandardMaterial({ color: 0x9a7850 }),
-    new THREE.MeshStandardMaterial({ color: 0x9a7850, roughness: .95 }),
-    new THREE.MeshStandardMaterial({ color: 0x9a7850, roughness: .95 }),
-  ]);
-  tabletop.position.y = -.2;
-  tabletop.receiveShadow = true;
-  scene.add(tabletop);
-
+  function terrainShape(scale = 1) {
+    const shape = new THREE.Shape();
+    shape.moveTo(ARENA_POINTS[0].x * scale, -ARENA_POINTS[0].z * scale);
+    for (let i = 1; i < ARENA_POINTS.length; i++) shape.lineTo(ARENA_POINTS[i].x * scale, -ARENA_POINTS[i].z * scale);
+    shape.closePath();
+    return shape;
+  }
   const paper = texture(256, 256, (c, w, h) => {
     c.fillStyle = '#e4d0a8'; c.fillRect(0, 0, w, h);
     for (let i = 0; i < 4000; i++) {
@@ -98,7 +224,23 @@ async function start() {
       c.stroke();
     }
   });
-  async function createFigure(body, frontPath, backPath) {
+  const terrainLayers = [
+    { scale: 1.2, depth: .46, top: -.88, topColor: 0x755535, sideColor: 0x65472c },
+    { scale: 1.12, depth: .34, top: -.54, topColor: 0x987044, sideColor: 0x78542f },
+    { scale: 1.055, depth: .26, top: -.28, topColor: 0xb28b56, sideColor: 0x8e6338 },
+    { scale: 1, depth: .28, top: 0, topColor: 0x789456, sideColor: 0x9c7243 },
+  ];
+  for (const layer of terrainLayers) {
+    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.scale), { depth: layer.depth, bevelEnabled: false, steps: 1 });
+    geometry.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geometry, [
+      new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96 }),
+      new THREE.MeshStandardMaterial({ color: layer.sideColor, map: corrugation, roughness: 1 }),
+    ]);
+    mesh.position.y = layer.top - layer.depth;
+    mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
+  }
+  async function createFigure(body, prefix, backPath) {
     const group = new THREE.Group();
     scene.add(group);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
@@ -112,79 +254,47 @@ async function start() {
     slot.position.y = .219; group.add(slot);
 
     const loader = new THREE.TextureLoader();
-    const [tex, backTex] = await Promise.all([
-      loader.loadAsync(frontPath),
-      loader.loadAsync(backPath),
-    ]);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const image = tex.image;
-    const silhouette = document.createElement('canvas');
-    silhouette.width = image.width; silhouette.height = image.height;
-    const context = silhouette.getContext('2d', { willReadFrequently: true });
-    context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, image.width, image.height).data;
-    let x0 = image.width, y0 = image.height, x1 = 0, y1 = 0;
-    for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
-      if (pixels[(y * image.width + x) * 4 + 3] > 100) {
-        x0 = Math.min(x0, x); x1 = Math.max(x1, x);
-        y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    const backTexture = await loader.loadAsync(backPath);
+    const artStates = {};
+    for (const visualState of VISUAL_STATES) {
+      const source = await loader.loadAsync(`assets/${prefix}-${visualState}.png`);
+      const image = source.image;
+      const sourceCanvas = document.createElement('canvas');
+      sourceCanvas.width = image.width; sourceCanvas.height = image.height;
+      const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      sourceContext.drawImage(image, 0, 0);
+      const sourcePixels = sourceContext.getImageData(0, 0, image.width, image.height).data;
+      let x0 = image.width, y0 = image.height, x1 = -1, y1 = -1;
+      for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
+        if (sourcePixels[(y * image.width + x) * 4 + 3] > 80) {
+          x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+          y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+        }
       }
+      if (x1 < x0 || y1 < y0) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
+      const cut = document.createElement('canvas');
+      cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
+      const cutContext = cut.getContext('2d', { willReadFrequently: true });
+      cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
+      const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
+      const front = new THREE.CanvasTexture(cut); front.colorSpace = THREE.SRGBColorSpace;
+      front.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      const backCanvas = document.createElement('canvas'); backCanvas.width = cut.width; backCanvas.height = cut.height;
+      const backContext = backCanvas.getContext('2d');
+      backContext.fillStyle = '#fff4d8'; backContext.fillRect(0, 0, cut.width, cut.height);
+      backContext.drawImage(backTexture.image, 0, 0, cut.width, cut.height);
+      backContext.globalCompositeOperation = 'destination-in'; backContext.drawImage(cut, 0, 0);
+      const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
+      back.anisotropy = front.anisotropy;
+      const art = makeExtrudedSprite(alphaPixels, cut.width, cut.height, front, back, corrugation);
+      art.group.position.y = 1.25;
+      art.group.visible = visualState === 'idle';
+      group.add(art.group);
+      artStates[visualState] = art;
+      source.dispose();
     }
-    const cut = document.createElement('canvas');
-    cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
-    const cutContext = cut.getContext('2d', { willReadFrequently: true });
-    cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
-    const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
-    const art = new THREE.CanvasTexture(cut); art.colorSpace = THREE.SRGBColorSpace;
-    art.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    const backCut = document.createElement('canvas');
-    backCut.width = cut.width; backCut.height = cut.height;
-    const backContext = backCut.getContext('2d');
-    // Both prints share the front's cutout and registration, even at different resolutions.
-    backContext.fillStyle = '#fff4d8';
-    backContext.fillRect(0, 0, cut.width, cut.height);
-    const backScaleX = backTex.image.width / image.width;
-    const backScaleY = backTex.image.height / image.height;
-    backContext.drawImage(backTex.image, x0 * backScaleX, y0 * backScaleY,
-      cut.width * backScaleX, cut.height * backScaleY, 0, 0, cut.width, cut.height);
-    backContext.globalCompositeOperation = 'destination-in';
-    backContext.drawImage(cut, 0, 0);
-    const backArt = new THREE.CanvasTexture(backCut); backArt.colorSpace = THREE.SRGBColorSpace;
-    backArt.anisotropy = art.anisotropy;
-    tex.dispose(); backTex.dispose();
-    const geometry = new THREE.PlaneGeometry(2.05 * cut.width / cut.height, 2.05);
-    const edgeMaterial = new THREE.MeshStandardMaterial({ alphaMap: art, alphaTest: .5, color: 0x9d7746, roughness: 1, side: THREE.DoubleSide });
-    // AlphaMap reads green rather than PNG alpha; use the same silhouette through map.
-    edgeMaterial.alphaMap = null;
-    edgeMaterial.map = art;
-    edgeMaterial.onBeforeCompile = shader => {
-      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb = vec3(0.48, 0.31, 0.15);');
-    };
-    const printMaterial = new THREE.MeshStandardMaterial({ map: art, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
-    // Keep identical UVs: looking through the back of the card mirrors the print naturally.
-    const backMaterial = new THREE.MeshStandardMaterial({ map: backArt, alphaTest: .5, roughness: 1, side: THREE.BackSide });
-    const artGroup = new THREE.Group();
-    artGroup.position.y = .225;
-    group.add(artGroup);
-    for (let i = 0; i < 25; i++) {
-      const face = new THREE.Mesh(geometry, i === 24 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
-      face.position.set(0, 1.025, (i - 12) * .006);
-      face.castShadow = true;
-      face.userData.print = true;
-      artGroup.add(face);
-    }
-    const whiteMask = document.createElement('canvas');
-    whiteMask.width = cut.width; whiteMask.height = cut.height;
-    const whiteContext = whiteMask.getContext('2d');
-    whiteContext.fillStyle = '#fff'; whiteContext.fillRect(0, 0, cut.width, cut.height);
-    whiteContext.globalCompositeOperation = 'destination-in'; whiteContext.drawImage(cut, 0, 0);
-    const whiteTexture = new THREE.CanvasTexture(whiteMask);
-    const flashMaterial = new THREE.MeshBasicMaterial({ map: whiteTexture, transparent: true, opacity: 0,
-      alphaTest: .1, side: THREE.DoubleSide, depthWrite: false });
-    const frontFlash = new THREE.Mesh(geometry, flashMaterial);
-    const backFlash = new THREE.Mesh(geometry, flashMaterial);
-    frontFlash.position.set(0, 1.025, .08); backFlash.position.set(0, 1.025, -.08);
-    artGroup.add(frontFlash, backFlash);
+    backTexture.dispose();
+    const initialArt = artStates.idle;
 
     const healthHUD = new THREE.Group();
     const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .14),
@@ -223,19 +333,67 @@ async function start() {
       attackProgress = warning.progress;
       attackIndicator.visible = false; scene.add(attackIndicator);
     }
-    const figure = { group, artGroup, body, alphaPixels, width: cut.width, height: cut.height,
+    const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
+      alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
       healthHUD, healthFill, chargePips, enemyRing, attackIndicator, attackProgress,
-      flashMaterial, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0, hurtAge: 10 };
+      flashMaterial: initialArt.flashMaterial, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0,
+      hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
     return figure;
   }
+  async function createScenery(path, x, z, size) {
+    const source = await new THREE.TextureLoader().loadAsync(path);
+    const image = source.image;
+    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, image.width, image.height).data;
+    let x0 = image.width, y0 = image.height, x1 = -1, y1 = -1;
+    for (let py = 0; py < image.height; py++) for (let px = 0; px < image.width; px++) {
+      if (pixels[(py * image.width + px) * 4 + 3] > 80) {
+        x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+      }
+    }
+    const cut = document.createElement('canvas'); cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
+    const cutContext = cut.getContext('2d', { willReadFrequently: true });
+    cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
+    const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
+    const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
+    artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    const art = makeExtrudedSprite(alphaPixels, cut.width, cut.height, artTexture, artTexture, corrugation);
+    art.group.position.y = 1.025; art.group.scale.setScalar(size / 2.05);
+    const radius = Math.hypot(x / 10.8, z / 8.55);
+    const elevation = radius <= 1 ? 0 : radius <= 1.055 ? -.28 : radius <= 1.12 ? -.54 : radius <= 1.2 ? -.88 : -1.34;
+    const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art.group);
+    prop.userData.billboard = true; scene.add(prop); environmentSprites.push(prop);
+    source.dispose();
+  }
   const figures = await Promise.all([
-    createFigure(bodies[0], 'assets/hero-a.png', 'assets/hero-back.png'),
-    createFigure(bodies[1], 'assets/goblin-front.png', 'assets/goblin-back.png'),
-    createFigure(bodies[2], 'assets/goblin-front.png', 'assets/goblin-back.png'),
-    createFigure(bodies[3], 'assets/goblin-front.png', 'assets/goblin-back.png'),
+    createFigure(bodies[0], 'hero', 'assets/hero-back.png'),
+    createFigure(bodies[1], 'goblin', 'assets/goblin-back.png'),
+    createFigure(bodies[2], 'goblin', 'assets/goblin-back.png'),
+    createFigure(bodies[3], 'goblin', 'assets/goblin-back.png'),
   ]);
+  await Promise.all([
+    createScenery('assets/env-tree.png', -10.5, -4.2, 3.8),
+    createScenery('assets/env-bushes.png', -8, -7.5, 2.6),
+    createScenery('assets/env-troll-hut.png', 0, -9.75, 3.9),
+    createScenery('assets/env-moss-rocks.png', 8.3, -6.8, 2.8),
+    createScenery('assets/env-fortress.png', 11.9, .3, 3.8),
+    createScenery('assets/env-evergreen.png', 6.2, 8.4, 3.7),
+  ]);
+  function setVisualState(figure, visualState) {
+    if (figure.visualState === visualState) return;
+    figure.artGroup.visible = false;
+    const art = figure.artStates[visualState];
+    art.group.visible = true;
+    figure.artGroup = art.group;
+    figure.alphaPixels = art.alphaPixels;
+    figure.width = art.width;
+    figure.height = art.height;
+    figure.flashMaterial = art.flashMaterial;
+    figure.visualState = visualState;
+  }
   let activeFigure = figures[0];
   let selectionAge = 0;
   let elapsed = 0;
@@ -257,10 +415,11 @@ async function start() {
     });
     bursts.push({ group, ring, dots, material, age: 0, strength });
   }
-  function damage(target, speed) {
-    if (target.hitCooldown > 0 || target.health <= 0) return;
-    target.health = Math.max(0, target.health - THREE.MathUtils.clamp(Math.round(speed * 2.3), 8, 24));
+  function damage(target, speed, multiplier = 1) {
+    if (target.hitCooldown > 0 || target.health <= 0) return false;
+    target.health = Math.max(0, target.health - THREE.MathUtils.clamp(Math.round(speed * 2.3), 8, 24) * multiplier);
     target.hitCooldown = .65;
+    if (target.team === 'enemy') target.aiStunRemaining = Math.max(target.aiStunRemaining || 0, .55);
     const figure = figures.find(item => item.body === target);
     if (figure) {
       figure.hitAge = 0;
@@ -268,6 +427,7 @@ async function start() {
       figure.hurtAge = 0;
       figure.flashMaterial.opacity = 1;
     }
+    return true;
   }
   let lastVibration = 0;
   function vibrate(pattern) {
@@ -283,11 +443,19 @@ async function start() {
         figure.hitStrength = THREE.MathUtils.clamp(speed / 28, .08, .3);
       }
     }
-    if (b && a.team !== b.team) {
-      if (attackingA) damage(b, speed);
-      if (attackingB) damage(a, speed);
-      const playerDealtDamage = (attackingA && a.team === 'player') || (attackingB && b.team === 'player');
-      const playerTookDamage = (attackingA && b.team === 'player') || (attackingB && a.team === 'player');
+    if (b) {
+      let playerDealtDamage = false, playerTookDamage = false;
+      const attackHit = (attacker, target) => {
+        if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
+        if (!damage(target, speed, Math.pow(.5, attacker.attackRicochets || 0))) return;
+        attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
+        const attackerFigure = figures.find(item => item.body === attacker);
+        if (attackerFigure) attackerFigure.dealDamageAge = 0;
+        if (attacker.team === 'player') playerDealtDamage = true;
+        if (target.team === 'player') playerTookDamage = true;
+      };
+      if (attackingA) attackHit(a, b);
+      if (attackingB) attackHit(b, a);
       if (playerDealtDamage && playerTookDamage) vibrate([32, 18, 48]);
       else if (playerTookDamage) vibrate([48, 24, 70]);
       else if (playerDealtDamage) vibrate(28);
@@ -340,7 +508,7 @@ async function start() {
       while (root && !root.userData.figure) root = root.parent;
       const figure = root?.userData.figure;
       if (!figure) continue;
-      if (!hit.object.userData.print || !hit.uv) return figure;
+      if (!hit.object.userData.print || !hit.uv || hit.face?.materialIndex === 1) return figure;
       const px = Math.min(figure.width - 1, Math.max(0, Math.floor(hit.uv.x * figure.width)));
       const py = Math.min(figure.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * figure.height)));
       if (figure.alphaPixels[(py * figure.width + px) * 4 + 3] > 100) return figure;
@@ -449,6 +617,7 @@ async function start() {
           if (state.team === 'player' && state.health > 0 && state.charges > 0) {
             state.charges--; state.rechargeTimer = 0;
             state.chargePop[state.charges] = 0;
+            state.attackRicochets = 0;
             launch(state, gesture.pull);
             if (Math.hypot(state.vx, state.vz) > 1) burst(state.x, state.z, .55);
           }
@@ -474,6 +643,9 @@ async function start() {
   function updateCamera() {
     camera.position.set(target.x + distance * Math.sin(phi) * Math.sin(theta), target.y + distance * Math.cos(phi), target.z + distance * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(target);
+    for (const sprite of environmentSprites) {
+      sprite.rotation.y = Math.atan2(camera.position.x - sprite.position.x, camera.position.z - sprite.position.z);
+    }
     camera.updateMatrixWorld();
   }
   function resize() {
@@ -502,6 +674,11 @@ async function start() {
         if (body.charges === body.maxCharges) body.rechargeTimer = 0;
       }
       if (body.team !== 'enemy') continue;
+      if (body.health <= 0) continue;
+      if (body.aiStunRemaining > 0) {
+        body.aiStunRemaining = Math.max(0, body.aiStunRemaining - dt);
+        continue;
+      }
       if (body.aiPhase !== 'dash') body.aiTimer -= dt;
       const dx = state.x - body.x, dz = state.z - body.z;
       const distanceToPlayer = Math.hypot(dx, dz);
@@ -523,30 +700,36 @@ async function start() {
         const aimX = body.aiTargetX - body.x, aimZ = body.aiTargetZ - body.z;
         const aimDistance = Math.hypot(aimX, aimZ);
         const power = THREE.MathUtils.clamp(aimDistance * .12, .55, .95);
-        body.charges--; body.rechargeTimer = 0; body.aiPhase = 'dash';
+        body.charges--; body.rechargeTimer = 0; body.aiPhase = 'dash'; body.attackRicochets = 0;
         launch(body, { x: -aimX / Math.max(.001, aimDistance) * power,
           z: -aimZ / Math.max(.001, aimDistance) * power });
         burst(body.x, body.z, .45);
       }
       if (body.health <= 0) body.vx = body.vz = 0;
     }
-    if (state.health <= 0) state.vx = state.vz = 0;
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact);
     for (const figure of figures) {
       const body = figure.body;
       figure.group.position.set(body.x, 0, body.z);
       const speed = Math.hypot(body.vx, body.vz);
-      if (body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
+      if (body.health > 0 && body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
         figure.facing = facingAngle(body.vx, body.vz, figure.facing);
       }
-      figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
+      if (body.health > 0) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
       figure.hitAge += dt;
       figure.hurtAge += dt;
+      figure.dealDamageAge += dt;
+      const visualState = body.health <= 0 ? 'dead'
+        : figure.hurtAge < .55 ? 'on-hit'
+          : figure.dealDamageAge < .32 ? 'deal-damage'
+            : body === held || (body.team === 'enemy' && body.aiPhase === 'aim') ? 'aiming'
+              : isAttacking(body) && body !== held ? 'attack' : 'idle';
+      setVisualState(figure, visualState);
       figure.flashMaterial.opacity = figure.hurtAge < .42 && Math.floor(figure.hurtAge / .055) % 2 === 0 ? 1 : 0;
       const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
       const squash = figure.hitStrength * spring;
       figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
-      figure.artGroup.position.y = .225 + Math.max(0, squash) * .2;
+      figure.artGroup.position.y = 1.25 + Math.max(0, squash) * .2;
       figure.artGroup.rotation.z = squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012;
       figure.attacking = isAttacking(body) && body !== held;
       const healthRatio = Math.max(0, body.health / body.maxHealth);
