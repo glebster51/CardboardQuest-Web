@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advance, facingAngle, LIMIT_X, LIMIT_Z, MAX_PULL } from './physics.mjs?v=2';
+import { clampPull, launch, advance, facingAngle, MAX_PULL } from './physics.mjs?v=3';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -104,18 +104,16 @@ async function start() {
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.9, .93, 80), new THREE.MeshBasicMaterial({ color: 0x647b48, transparent: true, opacity: .65, side: THREE.DoubleSide, depthWrite: false }));
   selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = .012;
   selectionRing.visible = false; scene.add(selectionRing);
-  const anchorRing = new THREE.Mesh(new THREE.RingGeometry(.81, .85, 80), new THREE.MeshBasicMaterial({ color: 0xfff6dd, transparent: true, opacity: .65, side: THREE.DoubleSide, depthWrite: false }));
-  anchorRing.rotation.x = -Math.PI / 2; anchorRing.position.y = .015;
-  anchorRing.visible = false; scene.add(anchorRing);
-
   const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
-  const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 1, 0x607948, .35, .25);
+  const arrowShape = new THREE.Shape([
+    new THREE.Vector2(-.5, 0), new THREE.Vector2(.5, 0),
+    new THREE.Vector2(.5, .68), new THREE.Vector2(.8, .68),
+    new THREE.Vector2(0, 1), new THREE.Vector2(-.8, .68), new THREE.Vector2(-.5, .68),
+  ]);
+  const arrow = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape),
+    new THREE.MeshBasicMaterial({ color: 0x607948, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
+  arrow.rotation.x = Math.PI / 2;
   aiming.add(arrow);
-  const elasticPositions = new Float32Array(6);
-  const elasticGeometry = new THREE.BufferGeometry();
-  elasticGeometry.setAttribute('position', new THREE.BufferAttribute(elasticPositions, 3));
-  const elastic = new THREE.Line(elasticGeometry, new THREE.LineBasicMaterial({ color: 0xfff1cd, transparent: true, opacity: .8 }));
-  elastic.frustumCulled = false; aiming.add(elastic);
 
   const loader = new THREE.TextureLoader();
   const [tex, backTex] = await Promise.all([
@@ -178,13 +176,8 @@ async function start() {
   }
 
   const raycaster = new THREE.Raycaster();
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -.12);
   function rayAt(x, y) {
     raycaster.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, 1 - y / innerHeight * 2), camera);
-  }
-  function pointAt(x, y) {
-    rayAt(x, y);
-    return raycaster.ray.intersectPlane(plane, new THREE.Vector3());
   }
   function hitsHero(x, y) {
     rayAt(x, y);
@@ -196,11 +189,8 @@ async function start() {
     });
   }
   function choose(value) { selected = value; selectionRing.visible = value; }
-  function stopAim(restore = true) {
-    if (gesture?.mode === 'aim' && restore) {
-      state.x = gesture.anchor.x; state.z = gesture.anchor.z;
-    }
-    aiming.visible = false; anchorRing.visible = false;
+  function stopAim() {
+    aiming.visible = false;
     host.classList.remove('aiming');
   }
   function pinchDistance() {
@@ -208,65 +198,64 @@ async function start() {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
   host.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
     host.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size > 1) {
       stopAim();
-      gesture = { mode: 'pinch', distance: pinchDistance(), zoom: distance };
+      const points = [...pointers.values()];
+      gesture = { mode: 'pinch', distance: pinchDistance(), zoom: distance,
+        lastX: (points[0].x + points[1].x) / 2, lastY: (points[0].y + points[1].y) / 2 };
       return;
     }
-    const hit = hitsHero(event.clientX, event.clientY);
-    if (hit) {
-      state.vx = 0; state.vz = 0;
-      choose(true);
-      gesture = { mode: 'aim', pointer: event.pointerId, anchor: { x: state.x, z: state.z }, startWorld: pointAt(event.clientX, event.clientY), startX: event.clientX, startY: event.clientY, moved: false };
-      host.classList.add('aiming');
+    if (event.button === 2 || event.altKey) {
+      gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
     } else {
-      gesture = { mode: selected ? 'orbit' : 'pan', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
+      state.vx = 0; state.vz = 0;
+      gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
+        hit: hitsHero(event.clientX, event.clientY), startX: event.clientX, startY: event.clientY, moved: false };
+      host.classList.add('aiming');
     }
   });
   host.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId) || !gesture) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (gesture.mode === 'pinch') {
-      if (pointers.size >= 2) distance = THREE.MathUtils.clamp(gesture.zoom * gesture.distance / Math.max(1, pinchDistance()), 4.5, 18);
+      if (pointers.size >= 2) {
+        distance = THREE.MathUtils.clamp(gesture.zoom * gesture.distance / Math.max(1, pinchDistance()), 4.5, 18);
+        const points = [...pointers.values()];
+        const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
+        theta -= (x - gesture.lastX) * .007;
+        phi = THREE.MathUtils.clamp(phi - (y - gesture.lastY) * .005, .35, 1.3);
+        gesture.lastX = x; gesture.lastY = y;
+      }
       return;
     }
     if (event.pointerId !== gesture.pointer) return;
     if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 7) gesture.moved = true;
     if (gesture.mode === 'aim') {
-      if (!gesture.moved || !gesture.startWorld) return;
-      const point = pointAt(event.clientX, event.clientY);
-      if (!point) return;
-      const pull = clampPull(point.x - gesture.startWorld.x, point.z - gesture.startWorld.z);
-      state.x = THREE.MathUtils.clamp(gesture.anchor.x + pull.x, -LIMIT_X, LIMIT_X);
-      state.z = THREE.MathUtils.clamp(gesture.anchor.z + pull.z, -LIMIT_Z, LIMIT_Z);
-      const direction = new THREE.Vector3(gesture.anchor.x - state.x, 0, gesture.anchor.z - state.z);
+      if (!gesture.moved) return;
+      choose(true);
+      // Use drag displacement, independent of where on the screen it started.
+      const scale = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / innerHeight;
+      const dx = (event.clientX - gesture.startX) * scale;
+      const dz = (event.clientY - gesture.startY) * scale / Math.cos(phi);
+      gesture.pull = clampPull(Math.cos(theta) * dx + Math.sin(theta) * dz,
+        -Math.sin(theta) * dx + Math.cos(theta) * dz);
+      const direction = new THREE.Vector3(-gesture.pull.x, 0, -gesture.pull.z);
       const length = direction.length();
-      aiming.visible = length > .06; anchorRing.visible = aiming.visible;
-      anchorRing.position.set(gesture.anchor.x, .015, gesture.anchor.z);
+      aiming.visible = length > .06;
       if (length > .06) {
         hero.rotation.y = facingAngle(direction.x, direction.z, hero.rotation.y);
-        arrow.position.set(state.x, .08, state.z);
-        arrow.setDirection(direction.normalize());
-        arrow.setLength(.8 + length * 1.4, .28 + length * .12, .2 + length * .08);
-        arrow.setColor(new THREE.Color().setHSL(.25 - .18 * length / MAX_PULL, .42, .36));
-        elasticPositions.set([state.x, .05, state.z, gesture.anchor.x, .05, gesture.anchor.z]);
-        elasticGeometry.attributes.position.needsUpdate = true;
+        aiming.position.set(state.x, .025, state.z);
+        aiming.rotation.y = hero.rotation.y;
+        arrow.scale.y = .8 + 3.6 * length / MAX_PULL;
+        arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
       }
     } else {
       const dx = event.clientX - gesture.lastX, dy = event.clientY - gesture.lastY;
-      if (gesture.mode === 'orbit') {
-        theta -= dx * .007;
-        phi = THREE.MathUtils.clamp(phi - dy * .005, .35, 1.3);
-      } else {
-        const scale = distance * .0015;
-        target.x -= (Math.cos(theta) * dx + Math.sin(theta) * dy) * scale;
-        target.z += (Math.sin(theta) * dx - Math.cos(theta) * dy) * scale;
-        target.x = THREE.MathUtils.clamp(target.x, -10, 10);
-        target.z = THREE.MathUtils.clamp(target.z, -8, 8);
-      }
+      theta -= dx * .007;
+      phi = THREE.MathUtils.clamp(phi - dy * .005, .35, 1.3);
       gesture.lastX = event.clientX; gesture.lastY = event.clientY;
     }
   });
@@ -274,10 +263,10 @@ async function start() {
     if (!pointers.has(event.pointerId)) return;
     if (gesture?.pointer === event.pointerId) {
       if (gesture.mode === 'aim') {
-        if (!cancelled && gesture.moved) launch(state, gesture.anchor);
-        else { state.x = gesture.anchor.x; state.z = gesture.anchor.z; }
-        stopAim(false);
-      } else if (!cancelled && !gesture.moved) choose(false);
+        if (!cancelled && gesture.moved) launch(state, gesture.pull);
+        else if (!cancelled) choose(gesture.hit);
+        stopAim();
+      }
       gesture = null;
     }
     pointers.delete(event.pointerId);

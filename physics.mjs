@@ -1,6 +1,7 @@
 // World-space XZ motion. Constant friction gives a finite, frame-independent stop.
 export const MAX_PULL = 1.8;
-export const LAUNCH_GAIN = 8.5;
+// Distance under constant friction is proportional to speed squared.
+export const LAUNCH_GAIN = 8.5 * Math.SQRT2;
 export const FRICTION = 6.5;
 export const REBOUND = 0.55;
 export const LIMIT_X = 11.1;
@@ -17,10 +18,10 @@ export function clampPull(x, z) {
   return { x: x * scale, z: z * scale };
 }
 
-export function launch(state, anchor) {
-  const pull = clampPull(anchor.x - state.x, anchor.z - state.z);
-  state.vx = pull.x * LAUNCH_GAIN;
-  state.vz = pull.z * LAUNCH_GAIN;
+export function launch(state, drag) {
+  const pull = clampPull(drag.x, drag.z);
+  state.vx = -pull.x * LAUNCH_GAIN || 0;
+  state.vz = -pull.z * LAUNCH_GAIN || 0;
 }
 
 export function advance(state, dt) {
