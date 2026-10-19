@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { makeScenerySprite } from './scenery-model.mjs?v=1';
+import { makeScenerySprite } from './scenery-model.mjs?v=2';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
 
 const assets = [
@@ -47,16 +47,6 @@ function addCards() {
   }
 }
 
-function alphaMatchesHorizontalFlip(front, back, width, height) {
-  const frontPixels = front.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
-  const backPixels = back.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const a = (y * width + x) * 4, b = (y * width + width - 1 - x) * 4;
-    for (let channel = 0; channel < 4; channel++) if (frontPixels[a + channel] !== backPixels[b + channel]) return false;
-  }
-  return true;
-}
-
 async function loadAssets() {
   const loader = new THREE.TextureLoader();
   for (const asset of assets) {
@@ -81,7 +71,7 @@ async function loadAssets() {
     models.set(asset.id, { root, model });
     const baseTop = layout.baseTop;
     const artBottom = model.group.position.y - asset.height / 2;
-    const flipMatches = alphaMatchesHorizontalFlip(model.frontTexture.image, model.backTexture.image, model.width, model.height);
+    const flipMatches = model.backFlipMatches;
     audit.push({ id: asset.id, views: 4, extrusionDepth: depth * layout.scale,
       baseRadius: asset.radius ?? 0, baseTop, artBottom, groundGap: artBottom - baseTop, backFlipMatches: flipMatches });
     if (!flipMatches) throw new Error(`${asset.label}: задняя сторона не совпадает со спрайтом, отражённым по X`);

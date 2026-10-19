@@ -55,7 +55,17 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
   const backContext = backCanvas.getContext('2d');
   const frontPixels = sprite.cut.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, sprite.width, sprite.height);
   const backPixels = backContext.createImageData(sprite.width, sprite.height);
-  backPixels.data.set(flipSpriteRgbaX(frontPixels.data, sprite.width, sprite.height));
+  const mirroredPixels = flipSpriteRgbaX(frontPixels.data, sprite.width, sprite.height);
+  backPixels.data.set(mirroredPixels);
+  let backFlipMatches = true;
+  for (let y = 0; y < sprite.height && backFlipMatches; y++) for (let x = 0; x < sprite.width; x++) {
+    const pixel = (y * sprite.width + x) * 4;
+    const sourcePixel = (y * sprite.width + sprite.width - 1 - x) * 4;
+    for (let channel = 0; channel < 4; channel++) {
+      if (backPixels.data[pixel + channel] !== frontPixels.data[sourcePixel + channel]) { backFlipMatches = false; break; }
+    }
+    if (!backFlipMatches) break;
+  }
   backContext.putImageData(backPixels, 0, 0);
   const backTexture = new THREE.CanvasTexture(backCanvas); backTexture.colorSpace = THREE.SRGBColorSpace;
   const anisotropy = Math.min(4, maxAnisotropy);
@@ -70,5 +80,5 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
     silhouetteShapes(symmetricAlpha, sprite.width, sprite.height,
       2.05 * sprite.width / sprite.height, 2.05).shapes,
     sprite.alphaPixels);
-  return { ...art, frontTexture, backTexture, width: sprite.width, height: sprite.height };
+  return { ...art, frontTexture, backTexture, width: sprite.width, height: sprite.height, backFlipMatches };
 }
