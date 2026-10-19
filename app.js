@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS, PUCK_RADIUS } from './physics.mjs?v=15';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=16';
+import { traceSpriteContours, validateSpriteFrames, clipBackAlphaToFront } from './sprite-geometry.mjs?v=1';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -18,132 +19,9 @@ const randomBetween = (min, max) => min + Math.random() * (max - min);
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
 function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
-  const scale = Math.min(1, 128 / Math.max(width, height));
-  const gridWidth = Math.max(2, Math.round(width * scale));
-  const gridHeight = Math.max(2, Math.round(height * scale));
-  const mask = new Uint8Array(gridWidth * gridHeight);
-  for (let y = 0; y < gridHeight; y++) for (let x = 0; x < gridWidth; x++) {
-    const sx = Math.min(width - 1, Math.floor((x + .5) * width / gridWidth));
-    const sy = Math.min(height - 1, Math.floor((y + .5) * height / gridHeight));
-    mask[y * gridWidth + x] = alphaPixels[(sy * width + sx) * 4 + 3] > 80 ? 1 : 0;
-  }
-  const edges = [];
-  const addEdge = (ax, ay, bx, by) => edges.push({ ax, ay, bx, by, used: false });
-  const filled = (x, y) => x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && mask[y * gridWidth + x] === 1;
-  for (let y = 0; y < gridHeight; y++) for (let x = 0; x < gridWidth; x++) if (filled(x, y)) {
-    if (!filled(x, y - 1)) addEdge(x, y, x + 1, y);
-    if (!filled(x + 1, y)) addEdge(x + 1, y, x + 1, y + 1);
-    if (!filled(x, y + 1)) addEdge(x + 1, y + 1, x, y + 1);
-    if (!filled(x - 1, y)) addEdge(x, y + 1, x, y);
-  }
-  const starts = new Map();
-  edges.forEach((edge, index) => {
-    const key = `${edge.ax},${edge.ay}`;
-    if (!starts.has(key)) starts.set(key, []);
-    starts.get(key).push(index);
-  });
-  const loops = [];
-  for (let start = 0; start < edges.length; start++) {
-    if (edges[start].used) continue;
-    const points = [];
-    let index = start;
-    for (let guard = 0; guard <= edges.length; guard++) {
-      const edge = edges[index];
-      if (edge.used) break;
-      edge.used = true;
-      points.push(new THREE.Vector2((edge.ax / gridWidth - .5) * worldWidth,
-        (.5 - edge.ay / gridHeight) * worldHeight));
-      const key = `${edge.bx},${edge.by}`;
-      if (key === `${edges[start].ax},${edges[start].ay}`) break;
-      const candidates = (starts.get(key) || []).filter(candidate => !edges[candidate].used);
-      if (!candidates.length) break;
-      const incomingX = edge.bx - edge.ax, incomingY = edge.by - edge.ay;
-      candidates.sort((a, b) => {
-        const rank = candidate => {
-          const next = edges[candidate];
-          const cross = incomingX * (next.by - next.ay) - incomingY * (next.bx - next.ax);
-          const dot = incomingX * (next.bx - next.ax) + incomingY * (next.by - next.ay);
-          const angle = (Math.atan2(cross, dot) + Math.PI * 2) % (Math.PI * 2);
-          return angle < .01 ? 1 : angle < Math.PI ? 0 : 2;
-        };
-        return rank(a) - rank(b);
-      });
-      index = candidates[0];
-    }
-    if (points.length >= 3) loops.push(points);
-  }
-  const area = points => points.reduce((sum, point, index) => {
-    const next = points[(index + 1) % points.length];
-    return sum + point.x * next.y - next.x * point.y;
-  }, 0) / 2;
-  const simplifyOpen = (path, tolerance) => {
-    if (path.length <= 2) return path;
-    const keep = new Uint8Array(path.length);
-    keep[0] = keep[path.length - 1] = 1;
-    const stack = [[0, path.length - 1]];
-    const toleranceSquared = tolerance * tolerance;
-    while (stack.length) {
-      const [first, last] = stack.pop();
-      const a = path[first], b = path[last];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const lengthSquared = dx * dx + dy * dy;
-      let furthest = toleranceSquared, furthestIndex = -1;
-      for (let i = first + 1; i < last; i++) {
-        const point = path[i];
-        const t = lengthSquared > 1e-12
-          ? THREE.MathUtils.clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1) : 0;
-        const distanceSquared = (point.x - (a.x + dx * t)) ** 2 + (point.y - (a.y + dy * t)) ** 2;
-        if (distanceSquared > furthest) { furthest = distanceSquared; furthestIndex = i; }
-      }
-      if (furthestIndex >= 0) {
-        keep[furthestIndex] = 1;
-        stack.push([first, furthestIndex], [furthestIndex, last]);
-      }
-    }
-    return path.filter((_point, index) => keep[index]);
-  };
-  const simplifyClosed = (points, tolerance) => {
-    if (points.length <= 8) return points;
-    const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector2()).multiplyScalar(1 / points.length);
-    let start = 0, farthest = 0;
-    for (let i = 0; i < points.length; i++) {
-      if (points[i].distanceToSquared(center) > farthest) { farthest = points[i].distanceToSquared(center); start = i; }
-    }
-    let end = start, diameterSquared = 0;
-    for (let i = 0; i < points.length; i++) {
-      const distanceSquared = points[i].distanceToSquared(points[start]);
-      if (distanceSquared > diameterSquared) { diameterSquared = distanceSquared; end = i; }
-    }
-    const arc = (from, to) => {
-      const result = [];
-      for (let i = from; ; i = (i + 1) % points.length) {
-        result.push(points[i]);
-        if (i === to) return result;
-      }
-    };
-    const first = simplifyOpen(arc(start, end), tolerance);
-    const second = simplifyOpen(arc(end, start), tolerance);
-    const result = [...first.slice(0, -1), ...second.slice(0, -1)];
-    return result.length >= 3 ? result : points;
-  };
-  // Keep each printed contour near 3.2x the puck's 80-segment rim budget.
-  const contourPointBudget = 256;
-  let tolerance = Math.max(worldWidth, worldHeight) / 128 * .75;
-  let simplifiedLoops = loops;
-  for (let attempt = 0; attempt < 16; attempt++) {
-    simplifiedLoops = loops.map(points => simplifyClosed(points, tolerance));
-    if (simplifiedLoops.reduce((total, points) => total + points.length, 0) <= contourPointBudget) break;
-    tolerance *= 1.4;
-  }
-  if (simplifiedLoops.reduce((total, points) => total + points.length, 0) > contourPointBudget) {
-    const kept = [];
-    let usedPoints = 0;
-    for (const points of [...simplifiedLoops].sort((a, b) => Math.abs(area(b)) - Math.abs(area(a)))) {
-      if (usedPoints + points.length > contourPointBudget) continue;
-      kept.push(points); usedPoints += points.length;
-    }
-    simplifiedLoops = kept;
-  }
+  const alpha = new Uint8Array(width * height);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = alphaPixels[i * 4 + 3];
+  const contours = traceSpriteContours(alpha, width, height, worldWidth, worldHeight);
   const contains = (point, polygon) => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -152,35 +30,29 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
     }
     return inside;
   };
-  const entries = simplifiedLoops.map(points => ({ points, area: Math.abs(area(points)), parent: null, depth: 0 }))
-    .sort((a, b) => b.area - a.area);
-  for (let i = 0; i < entries.length; i++) {
-    for (let j = 0; j < i; j++) if (contains(entries[i].points[0], entries[j].points)) {
-      entries[i].parent = entries[j]; entries[i].depth = entries[j].depth + 1; break;
-    }
-  }
-  const pathFrom = (points, clockwise) => {
-    const ordered = THREE.ShapeUtils.isClockWise(points) === clockwise ? points : [...points].reverse();
+  const pathFrom = (contour, clockwise) => {
+    const points = THREE.ShapeUtils.isClockWise(contour.points) === clockwise
+      ? contour.points : [...contour.points].reverse();
     const path = new THREE.Path();
-    path.moveTo(ordered[0].x, ordered[0].y);
-    for (let i = 1; i < ordered.length; i++) path.lineTo(ordered[i].x, ordered[i].y);
+    path.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) path.lineTo(points[i].x, points[i].y);
     path.closePath();
     return path;
   };
-  const shapes = [];
-  for (const entry of entries) if (entry.depth % 2 === 0) {
+  return contours.filter(contour => contour.depth % 2 === 0).map(contour => {
     const shape = new THREE.Shape();
-    const outer = pathFrom(entry.points, false);
-    shape.moveTo(outer.curves[0].v1.x, outer.curves[0].v1.y);
-    for (const curve of outer.curves) shape.lineTo(curve.v2.x, curve.v2.y);
+    const path = pathFrom(contour, false);
+    shape.moveTo(path.curves[0].v1.x, path.curves[0].v1.y);
+    for (const curve of path.curves) shape.lineTo(curve.v2.x, curve.v2.y);
     shape.closePath();
-    for (const hole of entries) if (hole.parent === entry && hole.depth % 2 === 1) shape.holes.push(pathFrom(hole.points, true));
-    shapes.push(shape);
-  }
-  return shapes;
+    for (const hole of contours) {
+      if (hole.depth === contour.depth + 1 && contains(hole.points[0], contour.points)) shape.holes.push(pathFrom(hole, true));
+    }
+    return shape;
+  });
 }
 
-function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation) {
+function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false) {
   const worldWidth = 2.05 * width / height;
   const worldHeight = 2.05;
   const depth = .144;
@@ -200,13 +72,15 @@ function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation
   };
   const geometry = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, steps: 1, UVGenerator: uvGenerator });
   geometry.translate(0, 0, -depth / 2);
-  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
-  const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.FrontSide });
+  const stencil = { stencilWrite: true, stencilRef: stencilPlayer ? 1 : 0, stencilFunc: THREE.AlwaysStencilFunc,
+    stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
+  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide, ...stencil });
+  const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.FrontSide, ...stencil });
   const body = new THREE.Mesh(geometry, [frontMaterial, sideMaterial]);
   body.castShadow = true;
   body.userData.print = true;
   const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight),
-    new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide }));
+    new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, ...stencil }));
   backPlane.position.z = -depth / 2 - .002;
   backPlane.userData.print = true;
   const flashGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight);
@@ -221,7 +95,7 @@ function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation
   whiteContext.globalCompositeOperation = 'destination-in'; whiteContext.drawImage(alphaCanvas, 0, 0);
   const flashTexture = new THREE.CanvasTexture(whiteMask);
   const flashMaterial = new THREE.MeshBasicMaterial({ map: flashTexture, transparent: true, opacity: 0, alphaTest: .1,
-    side: THREE.DoubleSide, depthWrite: false });
+    side: THREE.DoubleSide, depthWrite: false, ...stencil });
   const frontFlash = new THREE.Mesh(flashGeometry, flashMaterial);
   const backFlash = new THREE.Mesh(flashGeometry, flashMaterial);
   frontFlash.position.z = depth / 2 + .004; backFlash.position.z = -depth / 2 - .004;
@@ -234,7 +108,7 @@ function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation
 document.querySelector('#restart').addEventListener('click', () => location.reload());
 
 async function start() {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setClearColor(0xc7b391);
   renderer.shadowMap.enabled = true;
@@ -247,7 +121,6 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 80);
   const target = new THREE.Vector3(0, .65, 0);
   let theta = .22, phi = .86, distance = innerWidth < 650 ? 18 : 10.5;
-  const environmentSprites = [];
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
@@ -266,11 +139,21 @@ async function start() {
     map.colorSpace = THREE.SRGBColorSpace;
     return map;
   }
-  function terrainShape(scale = 1) {
+  function terrainShape(scale = 1, holeScale = 0) {
     const shape = new THREE.Shape();
-    shape.moveTo(ARENA_POINTS[0].x * scale, -ARENA_POINTS[0].z * scale);
-    for (let i = 1; i < ARENA_POINTS.length; i++) shape.lineTo(ARENA_POINTS[i].x * scale, -ARENA_POINTS[i].z * scale);
+    const outer = WALKABLE_POINTS.map(point => new THREE.Vector2(point.x * scale, -point.z * scale));
+    const orderedOuter = THREE.ShapeUtils.isClockWise(outer) ? [...outer].reverse() : outer;
+    shape.moveTo(orderedOuter[0].x, orderedOuter[0].y);
+    for (let i = 1; i < orderedOuter.length; i++) shape.lineTo(orderedOuter[i].x, orderedOuter[i].y);
     shape.closePath();
+    if (holeScale > 0) {
+      const inner = WALKABLE_POINTS.map(point => new THREE.Vector2(point.x * holeScale, -point.z * holeScale));
+      const orderedInner = THREE.ShapeUtils.isClockWise(inner) ? inner : [...inner].reverse();
+      const hole = new THREE.Path();
+      hole.moveTo(orderedInner[0].x, orderedInner[0].y);
+      for (let i = 1; i < orderedInner.length; i++) hole.lineTo(orderedInner[i].x, orderedInner[i].y);
+      hole.closePath(); shape.holes.push(hole);
+    }
     return shape;
   }
   const paper = texture(256, 256, (c, w, h) => {
@@ -293,17 +176,19 @@ async function start() {
     }
   });
   const terrainLayers = [
-    { scale: 1.2, depth: .46, top: -.88, topColor: 0x755535, sideColor: 0x65472c },
-    { scale: 1.12, depth: .34, top: -.54, topColor: 0x987044, sideColor: 0x78542f },
-    { scale: 1.055, depth: .26, top: -.28, topColor: 0xb28b56, sideColor: 0x8e6338 },
-    { scale: 1, depth: .28, top: 0, topColor: 0x789456, sideColor: 0x9c7243 },
+    { scale: 1, holeScale: 0, depth: .3, top: 0, topColor: 0x789456, sideColor: 0x9c7243 },
+    { scale: 1.18, holeScale: 1, depth: .3, top: .3, topColor: 0x9eaa61, sideColor: 0x8e683d },
+    { scale: 1.4, holeScale: 1.18, depth: .34, top: .64, topColor: 0xb4a365, sideColor: 0x795630 },
+    { scale: 1.66, holeScale: 1.4, depth: .4, top: 1.04, topColor: 0x938260, sideColor: 0x65472c },
   ];
+  const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
+    stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   for (const layer of terrainLayers) {
-    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.scale), { depth: layer.depth, bevelEnabled: false, steps: 1 });
+    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.scale, layer.holeScale), { depth: layer.depth, bevelEnabled: false, steps: 1 });
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, [
-      new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96 }),
-      new THREE.MeshStandardMaterial({ color: layer.sideColor, map: corrugation, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ color: layer.sideColor, map: corrugation, roughness: 1, ...sceneStencil }),
     ]);
     mesh.position.y = layer.top - layer.depth;
     mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
@@ -312,9 +197,9 @@ async function start() {
     const group = new THREE.Group();
     scene.add(group);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
-      new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1 }),
-      new THREE.MeshStandardMaterial({ map: paper, roughness: 1 }),
-      new THREE.MeshStandardMaterial({ color: 0x97713e }),
+      new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ map: paper, roughness: 1, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
     ]);
     base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
     group.add(base);
@@ -324,37 +209,30 @@ async function start() {
     const loader = new THREE.TextureLoader();
     const backTexture = await loader.loadAsync(backPath);
     const artStates = {};
-    for (const visualState of VISUAL_STATES) {
-      const source = await loader.loadAsync(`assets/${prefix}-${visualState}.png`);
-      const image = source.image;
+    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png`)));
+    const frame = validateSpriteFrames(sources.map(source => source.image), backTexture.image);
+    const frameWidth = frame.width, frameHeight = frame.height;
+    for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
+      const visualState = VISUAL_STATES[stateIndex], source = sources[stateIndex], image = source.image;
       const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = image.width; sourceCanvas.height = image.height;
+      sourceCanvas.width = frameWidth; sourceCanvas.height = frameHeight;
       const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
-      sourceContext.drawImage(image, 0, 0);
+      sourceContext.drawImage(image, 0, 0, frameWidth, frameHeight);
       const sourcePixels = sourceContext.getImageData(0, 0, image.width, image.height).data;
-      let x0 = image.width, y0 = image.height, x1 = -1, y1 = -1;
-      for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
-        if (sourcePixels[(y * image.width + x) * 4 + 3] > 80) {
-          x0 = Math.min(x0, x); x1 = Math.max(x1, x);
-          y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-        }
-      }
-      if (x1 < x0 || y1 < y0) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
-      const cut = document.createElement('canvas');
-      cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
-      const cutContext = cut.getContext('2d', { willReadFrequently: true });
-      cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
-      const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
-      const front = new THREE.CanvasTexture(cut); front.colorSpace = THREE.SRGBColorSpace;
+      if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
+      const alphaPixels = sourcePixels;
+      const front = new THREE.CanvasTexture(sourceCanvas); front.colorSpace = THREE.SRGBColorSpace;
       front.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      const backCanvas = document.createElement('canvas'); backCanvas.width = cut.width; backCanvas.height = cut.height;
+      const backCanvas = document.createElement('canvas'); backCanvas.width = frameWidth; backCanvas.height = frameHeight;
       const backContext = backCanvas.getContext('2d');
-      backContext.fillStyle = '#fff4d8'; backContext.fillRect(0, 0, cut.width, cut.height);
-      backContext.drawImage(backTexture.image, 0, 0, cut.width, cut.height);
-      backContext.globalCompositeOperation = 'destination-in'; backContext.drawImage(cut, 0, 0);
+      backContext.fillStyle = '#fff4d8'; backContext.fillRect(0, 0, frameWidth, frameHeight);
+      backContext.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
+      const backImage = backContext.getImageData(0, 0, frameWidth, frameHeight);
+      backImage.data.set(clipBackAlphaToFront(sourcePixels, backImage.data));
+      backContext.putImageData(backImage, 0, 0);
       const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
       back.anisotropy = front.anisotropy;
-      const art = makeExtrudedSprite(alphaPixels, cut.width, cut.height, front, back, corrugation);
+      const art = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player');
       art.group.position.y = 1.25;
       art.group.visible = visualState === 'idle';
       group.add(art.group);
@@ -392,11 +270,11 @@ async function start() {
     let attackProgress = null;
     if (body.team === 'enemy') {
       enemyRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80),
-        new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+        new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
       enemyRing.rotation.x = -Math.PI / 2; enemyRing.renderOrder = 1; scene.add(enemyRing);
       attackIndicator = new THREE.Group();
       const warning = createArrowSkin(0xd82932, 0xff5b50, true);
-      warning.group.scale.set(1.6, 12, 1);
+      warning.group.scale.set(1.6, 36, 1);
       attackIndicator.add(warning.group);
       attackProgress = warning.progress;
       attackIndicator.visible = false; scene.add(attackIndicator);
@@ -431,9 +309,9 @@ async function start() {
     const art = makeExtrudedSprite(alphaPixels, cut.width, cut.height, artTexture, artTexture, corrugation);
     art.group.position.y = 1.025; art.group.scale.setScalar(size / 2.05);
     const radius = Math.hypot(x / 10.8, z / 8.55);
-    const elevation = radius <= 1 ? 0 : radius <= 1.055 ? -.28 : radius <= 1.12 ? -.54 : radius <= 1.2 ? -.88 : -1.34;
+    const elevation = radius <= 1.18 ? .3 : radius <= 1.4 ? .64 : 1.04;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art.group);
-    prop.userData.billboard = true; scene.add(prop); environmentSprites.push(prop);
+    scene.add(prop);
     source.dispose();
   }
   const figures = await Promise.all([
@@ -443,12 +321,12 @@ async function start() {
     createFigure(bodies[3], 'goblin', 'assets/goblin-back.png'),
   ]);
   await Promise.all([
-    createScenery('assets/env-tree.png', -10.5, -4.2, 3.8),
-    createScenery('assets/env-bushes.png', -8, -7.5, 2.6),
-    createScenery('assets/env-troll-hut.png', 0, -9.75, 3.9),
-    createScenery('assets/env-moss-rocks.png', 8.3, -6.8, 2.8),
-    createScenery('assets/env-fortress.png', 11.9, .3, 3.8),
-    createScenery('assets/env-evergreen.png', 6.2, 8.4, 3.7),
+    createScenery('assets/env-tree.png', -13, -3.5, 3.8),
+    createScenery('assets/env-bushes.png', -10.5, -9.3, 2.6),
+    createScenery('assets/env-troll-hut.png', 0, -14, 3.9),
+    createScenery('assets/env-moss-rocks.png', 12.2, -8.8, 2.8),
+    createScenery('assets/env-fortress.png', 14, 1.4, 3.8),
+    createScenery('assets/env-evergreen.png', 5.5, 13.2, 3.7),
   ]);
   function setVisualState(figure, visualState) {
     if (figure.visualState === visualState) return;
@@ -532,11 +410,12 @@ async function start() {
   }
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80), new THREE.MeshBasicMaterial({ color: 0x65d536, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
   selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = GROUND_UI_Y;
-  selectionRing.material.depthTest = false; selectionRing.renderOrder = 1;
+  selectionRing.material.depthTest = true; selectionRing.renderOrder = 1;
   selectionRing.visible = true; scene.add(selectionRing);
   const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
   const playerArrow = createArrowSkin(0x65d536, 0xd8ff91, false);
   playerArrow.group.scale.x = 1.6;
+  playerArrow.group.add(playerArrow.overlap);
   aiming.add(playerArrow.group);
   const arrow = playerArrow.arrow;
   function createArrowSkin(color, glowColor, showProgress) {
@@ -547,22 +426,30 @@ async function start() {
     const geometry = new THREE.ShapeGeometry(shape);
     const group = new THREE.Group();
     const glow = new THREE.Mesh(geometry,
-      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: showProgress ? .18 : .42, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: showProgress ? .18 : .42, side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
     glow.rotation.x = Math.PI / 2; glow.scale.set(1.14, 1, 1); glow.renderOrder = 2; group.add(glow);
     const arrow = new THREE.Mesh(geometry,
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: showProgress ? .4 : .96, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: showProgress ? .4 : .96, side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
     arrow.rotation.x = Math.PI / 2; arrow.renderOrder = 3; group.add(arrow);
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry),
-      new THREE.LineBasicMaterial({ color: 0xfff4d4, transparent: true, opacity: showProgress ? .4 : .96, depthTest: false }));
+      new THREE.LineBasicMaterial({ color: 0xfff4d4, transparent: true, opacity: showProgress ? .4 : .96, depthTest: true }));
     outline.rotation.x = Math.PI / 2; outline.renderOrder = 4; group.add(outline);
     let progress = null;
     if (showProgress) {
       progress = new THREE.Mesh(geometry,
-        new THREE.MeshBasicMaterial({ color: 0xff5148, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+        new THREE.MeshBasicMaterial({ color: 0xff5148, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: true, depthWrite: false }));
       progress.rotation.x = Math.PI / 2; progress.scale.y = .001; progress.visible = false; progress.renderOrder = 5;
       group.add(progress);
     }
-    return { group, arrow, progress };
+    const overlap = new THREE.Group();
+    if (!showProgress) for (const source of [glow, arrow, outline]) {
+      const copy = source.clone();
+      copy.material = source.material.clone();
+      Object.assign(copy.material, { opacity: .5, transparent: true, depthTest: false, depthWrite: false,
+        stencilWrite: false, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc });
+      copy.renderOrder = 20; overlap.add(copy);
+    }
+    return { group, arrow, progress, overlap };
   }
 
   const raycaster = new THREE.Raycaster();
@@ -676,7 +563,7 @@ async function start() {
         activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
         aiming.position.set(state.x, GROUND_UI_Y, state.z);
         aiming.rotation.y = activeFigure.facing;
-        playerArrow.group.scale.y = 88 * length / MAX_PULL;
+        playerArrow.group.scale.y = 264 * length / MAX_PULL;
         if (state.charges > 0 && state.health > 0) arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
         else arrow.material.color.setHex(0x77736b);
       }
@@ -721,9 +608,6 @@ async function start() {
   function updateCamera() {
     camera.position.set(target.x + distance * Math.sin(phi) * Math.sin(theta), target.y + distance * Math.cos(phi), target.z + distance * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(target);
-    for (const sprite of environmentSprites) {
-      sprite.rotation.y = Math.atan2(camera.position.x - sprite.position.x, camera.position.z - sprite.position.z);
-    }
     camera.updateMatrixWorld();
   }
   function resize() {

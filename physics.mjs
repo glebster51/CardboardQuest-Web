@@ -10,11 +10,19 @@ export const PUCK_RADIUS = .8;
 export const COLLISION_RESTITUTION = .82;
 export const ATTACK_SPEED = 5;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-export const ARENA_POINTS = Array.from({ length: 48 }, (_, index) => {
-  const angle = index / 48 * Math.PI * 2;
-  const radius = 1 + .035 * Math.sin(angle * 3 + .4) + .02 * Math.sin(angle * 7);
-  return { x: Math.cos(angle) * 10.8 * radius, z: Math.sin(angle) * 8.55 * radius };
-});
+// Authored walkable footprint. The same polygon drives puck collision and the
+// tabletop top face; the surrounding cardboard terraces occupy its exterior.
+export const WALKABLE_POINTS = [
+  { x: -8.4, z: -6.4 }, { x: -5.8, z: -7.7 }, { x: -2.9, z: -7.5 },
+  { x: -.1, z: -8.1 }, { x: 2.7, z: -7.4 }, { x: 5.8, z: -7.7 },
+  { x: 8.5, z: -6.1 }, { x: 10.3, z: -3.7 }, { x: 10.7, z: -.8 },
+  { x: 9.8, z: 1.8 }, { x: 10.4, z: 4.5 }, { x: 8.2, z: 6.8 },
+  { x: 5.5, z: 7.5 }, { x: 2.9, z: 7.2 }, { x: .1, z: 8.15 },
+  { x: -2.6, z: 7.6 }, { x: -5.7, z: 7.8 }, { x: -8.6, z: 6.2 },
+  { x: -10.2, z: 3.8 }, { x: -10.7, z: .7 }, { x: -9.8, z: -2.1 },
+  { x: -10.5, z: -4.7 },
+];
+export const ARENA_POINTS = WALKABLE_POINTS;
 
 export function isAttacking(body) {
   return Math.hypot(body.vx, body.vz) >= ATTACK_SPEED;
