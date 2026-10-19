@@ -134,7 +134,7 @@ async function start() {
     mesh.position.y = layer.top - layer.depth;
     mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
   }
-  async function createFigure(body, prefix, backPath) {
+  async function createFigure(body, prefix) {
     const group = new THREE.Group();
     scene.add(group);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
@@ -148,18 +148,13 @@ async function start() {
     slot.position.y = .219; group.add(slot);
 
     const loader = new THREE.TextureLoader();
-    const backTexture = await loader.loadAsync(`${backPath}?v=2`);
     const artStates = {};
     const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png`)));
-    const frame = validateSpriteFrames(sources.map(source => source.image), backTexture.image);
+    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?v=1`)));
+    const frame = validateSpriteFrames(sources.map(source => source.image), backTextures[0].image);
     const frameWidth = frame.width, frameHeight = frame.height;
-    const neutralCanvas = document.createElement('canvas'); neutralCanvas.width = frameWidth; neutralCanvas.height = frameHeight;
-    const neutralContext = neutralCanvas.getContext('2d', { willReadFrequently: true });
-    neutralContext.drawImage(sources[VISUAL_STATES.indexOf('idle')].image, 0, 0, frameWidth, frameHeight);
-    const neutralPixels = neutralContext.getImageData(0, 0, frameWidth, frameHeight).data;
-    const neutralBounds = spriteAlphaBounds(unionSpriteAlpha(neutralPixels, neutralPixels, frameWidth, frameHeight), frameWidth, frameHeight);
     for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
-      const visualState = VISUAL_STATES[stateIndex], source = sources[stateIndex], image = source.image;
+      const visualState = VISUAL_STATES[stateIndex], source = sources[stateIndex], image = source.image, backTexture = backTextures[stateIndex];
       const sourceCanvas = document.createElement('canvas');
       sourceCanvas.width = frameWidth; sourceCanvas.height = frameHeight;
       const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
@@ -167,6 +162,7 @@ async function start() {
       const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
       const cleanedMask = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
+      const frontBounds = spriteAlphaBounds(cleanedMask, frameWidth, frameHeight);
       const worldWidth = 2.05 * frameWidth / frameHeight;
       const spriteGeometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
       const alphaPixels = clipSpriteToAlphaMask(sourcePixels, spriteGeometry.rasterMask);
@@ -183,7 +179,7 @@ async function start() {
       const cleanedBackPixels = clipSpriteToAlphaMask(unregisteredBack, backMask), cleanBackCanvas = document.createElement('canvas');
       cleanBackCanvas.width = frameWidth; cleanBackCanvas.height = frameHeight;
       cleanBackCanvas.getContext('2d').putImageData(new ImageData(cleanedBackPixels, frameWidth, frameHeight), 0, 0);
-      const fittedBack = fitSpriteBounds(backBounds, neutralBounds);
+      const fittedBack = fitSpriteBounds(backBounds, frontBounds);
       const registeredBackCanvas = document.createElement('canvas');
       registeredBackCanvas.width = frameWidth; registeredBackCanvas.height = frameHeight;
       const registeredBackContext = registeredBackCanvas.getContext('2d', { willReadFrequently: true });
@@ -201,8 +197,8 @@ async function start() {
       group.add(art.group);
       artStates[visualState] = art;
       source.dispose();
+      backTexture.dispose();
     }
-    backTexture.dispose();
     const initialArt = artStates.idle;
 
     const healthHUD = new THREE.Group();
@@ -287,10 +283,10 @@ async function start() {
     scene.add(prop);
   }
   const figures = await Promise.all([
-    createFigure(bodies[0], 'hero', 'assets/hero-back.png'),
-    createFigure(bodies[1], 'goblin', 'assets/goblin-back.png'),
-    createFigure(bodies[2], 'goblin', 'assets/goblin-back.png'),
-    createFigure(bodies[3], 'goblin', 'assets/goblin-back.png'),
+    createFigure(bodies[0], 'hero'),
+    createFigure(bodies[1], 'goblin'),
+    createFigure(bodies[2], 'goblin'),
+    createFigure(bodies[3], 'goblin'),
   ]);
   const sceneryPaths = [
     createScenery('assets/env-tree.png', -13, -3.5, 3.8),

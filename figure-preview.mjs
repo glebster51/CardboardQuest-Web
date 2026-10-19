@@ -3,7 +3,7 @@ import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=3';
 import { validateSpriteFrames, spriteAlphaBounds, fitSpriteBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
-const subjects = [{ id: 'hero', label: 'Игрок', back: 'hero-back.png' }, { id: 'goblin', label: 'Гоблин', back: 'goblin-back.png' }];
+const subjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }];
 const views = [{ id: 'front', label: 'Спереди', angle: 0 }, { id: 'three-quarter', label: '¾', angle: Math.PI / 4 }, { id: 'back', label: 'Сзади', angle: Math.PI }];
 const status = document.querySelector('#status'), sheet = document.querySelector('#sheet');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: true, preserveDrawingBuffer: true });
@@ -26,19 +26,15 @@ const paper = new THREE.CanvasTexture(paperCanvas); paper.colorSpace = THREE.SRG
 const built = new Map(), cells = [];
 
 async function loadSubject(subject) {
-  const backTexture = await loader.loadAsync(`assets/${subject.back}?v=2`);
   const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png`)));
-  const frame = validateSpriteFrames(textures.map(texture => texture.image), backTexture.image);
-  const neutralCanvas = document.createElement('canvas'); neutralCanvas.width = frame.width; neutralCanvas.height = frame.height;
-  const neutralCtx = neutralCanvas.getContext('2d', { willReadFrequently: true });
-  neutralCtx.drawImage(textures[states.indexOf('idle')].image, 0, 0, frame.width, frame.height);
-  const neutralPixels = neutralCtx.getImageData(0, 0, frame.width, frame.height).data;
-  const neutralBounds = spriteAlphaBounds(unionSpriteAlpha(neutralPixels, neutralPixels, frame.width, frame.height), frame.width, frame.height);
+  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?v=1`)));
+  const frame = validateSpriteFrames(textures.map(texture => texture.image), backTextures[0].image);
   for (let si = 0; si < states.length; si++) {
-    const source = textures[si], canvas = document.createElement('canvas'); canvas.width = frame.width; canvas.height = frame.height;
+    const source = textures[si], backTexture = backTextures[si], canvas = document.createElement('canvas'); canvas.width = frame.width; canvas.height = frame.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source.image, 0, 0, frame.width, frame.height);
     const pixels = ctx.getImageData(0, 0, frame.width, frame.height).data;
     const cleaned = unionSpriteAlpha(pixels, pixels, frame.width, frame.height);
+    const frontBounds = spriteAlphaBounds(cleaned, frame.width, frame.height);
     const worldWidth = 2.05 * frame.width / frame.height;
     const outline = silhouetteShapes(cleaned, frame.width, frame.height, worldWidth, 2.05), frontPixels = clipSpriteToAlphaMask(pixels, outline.rasterMask);
     ctx.putImageData(new ImageData(frontPixels, frame.width, frame.height), 0, 0);
@@ -51,7 +47,7 @@ async function loadSubject(subject) {
     const cleanedBack = clipSpriteToAlphaMask(unregisteredBack, backMask), cleanBack = document.createElement('canvas');
     cleanBack.width = frame.width; cleanBack.height = frame.height;
     cleanBack.getContext('2d').putImageData(new ImageData(cleanedBack, frame.width, frame.height), 0, 0);
-    const fittedBack = fitSpriteBounds(backBounds, neutralBounds);
+    const fittedBack = fitSpriteBounds(backBounds, frontBounds);
     registeredBack.width = frame.width; registeredBack.height = frame.height;
     const registeredContext = registeredBack.getContext('2d', { willReadFrequently: true });
     registeredContext.drawImage(cleanBack, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
@@ -70,8 +66,8 @@ async function loadSubject(subject) {
     ]);
     base.position.y = .115; group.add(base); art.group.position.y = 1.25; group.add(art.group);
     built.set(`${subject.id}:${states[si]}`, { group, art, source, front, back });
+    backTexture.dispose();
   }
-  backTexture.dispose();
 }
 
 function addCards() {
