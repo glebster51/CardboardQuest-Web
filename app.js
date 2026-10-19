@@ -157,6 +157,25 @@ async function start() {
   }));
   const heartMaterials = heartTextures.map(map => new THREE.MeshBasicMaterial({ map, transparent: true,
     side: THREE.DoubleSide, depthWrite: false }));
+  const puckAmbientShadow = texture(256, 256, (context, width, height) => {
+    const gradient = context.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 2);
+    gradient.addColorStop(0, 'rgba(35, 24, 12, .12)');
+    gradient.addColorStop(.62, 'rgba(35, 24, 12, .28)');
+    gradient.addColorStop(.84, 'rgba(35, 24, 12, .16)');
+    gradient.addColorStop(1, 'rgba(35, 24, 12, 0)');
+    context.fillStyle = gradient; context.fillRect(0, 0, width, height);
+  });
+  const figureContactShadow = texture(256, 256, (context, width, height) => {
+    const gradient = context.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 2);
+    gradient.addColorStop(0, 'rgba(41, 25, 12, .44)');
+    gradient.addColorStop(.48, 'rgba(41, 25, 12, .32)');
+    gradient.addColorStop(1, 'rgba(41, 25, 12, 0)');
+    context.fillStyle = gradient; context.fillRect(0, 0, width, height);
+  });
+  const ambientShadowMaterial = new THREE.MeshBasicMaterial({ map: puckAmbientShadow, transparent: true,
+    opacity: .9, depthWrite: false, side: THREE.DoubleSide });
+  const contactShadowMaterial = new THREE.MeshBasicMaterial({ map: figureContactShadow, transparent: true,
+    opacity: .9, depthWrite: false, side: THREE.DoubleSide });
   const terrainCorrugation = corrugation.clone();
   terrainCorrugation.wrapS = terrainCorrugation.wrapT = THREE.RepeatWrapping;
   terrainCorrugation.repeat.set(1, 1);
@@ -201,6 +220,9 @@ async function start() {
   async function createFigure(body, prefix) {
     const group = new THREE.Group();
     scene.add(group);
+    const ambientShadow = new THREE.Mesh(new THREE.CircleGeometry(1.02, 64), ambientShadowMaterial);
+    ambientShadow.rotation.x = -Math.PI / 2; ambientShadow.position.y = .008; ambientShadow.renderOrder = 1;
+    group.add(ambientShadow);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 80), [
       new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1, ...sceneStencil }),
       new THREE.MeshStandardMaterial({ map: paper, roughness: 1, ...sceneStencil }),
@@ -208,6 +230,9 @@ async function start() {
     ]);
     base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
     group.add(base);
+    const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(.98, .34), contactShadowMaterial);
+    contactShadow.rotation.x = -Math.PI / 2; contactShadow.position.set(0, .218, .02); contactShadow.renderOrder = 5;
+    group.add(contactShadow);
     const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
     slot.position.y = .219; group.add(slot);
 
