@@ -138,7 +138,7 @@ async function start() {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error('Не удалось загрузить атлас сердечек.'));
-    image.src = new URL('./assets/health-hearts-atlas.png', import.meta.url).href;
+    image.src = new URL('./assets/health-hearts-atlas.png?v=52', import.meta.url).href;
   });
   const heartAtlasCanvas = document.createElement('canvas');
   heartAtlasCanvas.width = heartAtlasImage.naturalWidth;
