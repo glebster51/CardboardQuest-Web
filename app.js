@@ -160,7 +160,10 @@ async function start() {
       const canvas = document.createElement('canvas');
       canvas.width = frameWidth; canvas.height = frameHeight;
       const context = canvas.getContext('2d', { willReadFrequently: true });
+      const flipIdlePlayerFront = body.team === 'player' && visualState === 'idle' && side === 'front';
+      if (flipIdlePlayerFront) { context.translate(frameWidth, 0); context.scale(-1, 1); }
       context.drawImage(image, 0, 0, frameWidth, frameHeight);
+      if (flipIdlePlayerFront) context.setTransform(1, 0, 0, 1, 0, 0);
       const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!pixels.some((_value, index) => index % 4 === 3 && pixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}-${side}`);
       const cleanedMask = unionSpriteAlpha(pixels, pixels, frameWidth, frameHeight);
