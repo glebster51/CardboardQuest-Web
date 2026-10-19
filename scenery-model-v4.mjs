@@ -80,6 +80,15 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
     frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
   const backArt = makeExtrudedSprite(backAlphaPixels, sprite.width, sprite.height,
     backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels);
+  // The selected artwork face depends on the camera, while the sun stays fixed.
+  // Render and cast shadows from either side so the inactive rear face is not needed for lighting.
+  for (const face of [frontArt, backArt]) {
+    for (const material of [face.frontMaterial, face.sideMaterial, face.backPlane.material]) {
+      material.side = THREE.DoubleSide;
+      material.shadowSide = THREE.DoubleSide;
+      material.needsUpdate = true;
+    }
+  }
   const group = new THREE.Group();
   frontArt.group.name = 'scenery-front';
   backArt.group.name = 'scenery-back';
