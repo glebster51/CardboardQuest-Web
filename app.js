@@ -659,6 +659,12 @@ async function start() {
   host.addEventListener('contextmenu', event => event.preventDefault());
   host.addEventListener('wheel', event => {
     event.preventDefault();
+    const deltaPixels = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? innerHeight : 1);
+    if (Number.isFinite(deltaPixels)) {
+      const comfortableDelta = THREE.MathUtils.clamp(deltaPixels, -240, 240);
+      distance = THREE.MathUtils.clamp(distance * Math.exp(comfortableDelta * .0012), 4.5, 18);
+    }
   }, { passive: false });
   addEventListener('blur', () => { stopAim(); gesture = null; pointers.clear(); });
 
