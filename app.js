@@ -42,7 +42,7 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
     path.closePath();
     return path;
   };
-  return contours.filter(contour => contour.depth % 2 === 0).map(contour => {
+  const shapes = contours.filter(contour => contour.depth % 2 === 0).map(contour => {
     const shape = new THREE.Shape();
     const path = pathFrom(contour, false);
     shape.moveTo(path.curves[0].v1.x, path.curves[0].v1.y);
@@ -53,13 +53,28 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
     }
     return shape;
   });
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = width; maskCanvas.height = height;
+  const maskContext = maskCanvas.getContext('2d');
+  maskContext.fillStyle = '#fff';
+  maskContext.beginPath();
+  for (const contour of contours) {
+    const first = contour.points[0];
+    maskContext.moveTo((first.x / worldWidth + .5) * width, (.5 - first.y / worldHeight) * height);
+    for (let i = 1; i < contour.points.length; i++) {
+      const point = contour.points[i];
+      maskContext.lineTo((point.x / worldWidth + .5) * width, (.5 - point.y / worldHeight) * height);
+    }
+    maskContext.closePath();
+  }
+  maskContext.fill('evenodd');
+  return { shapes, rasterMask: maskContext.getImageData(0, 0, width, height).data };
 }
 
-function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, geometryPixels = alphaPixels, backAlphaPixels = alphaPixels) {
+function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
   const worldWidth = 2.05 * width / height;
   const worldHeight = 2.05;
   const depth = .144;
-  const shapes = silhouetteShapes(geometryPixels, width, height, worldWidth, worldHeight);
   const uv = (vertices, index) => {
     const x = vertices[index * 3], y = vertices[index * 3 + 1];
     return new THREE.Vector2(x / worldWidth + .5, y / worldHeight + .5);
@@ -257,8 +272,10 @@ async function start() {
       sourceContext.drawImage(image, 0, 0, frameWidth, frameHeight);
       const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
-      const geometryPixels = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
-      const alphaPixels = clipSpriteToAlphaMask(sourcePixels, geometryPixels);
+      const cleanedMask = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
+      const worldWidth = 2.05 * frameWidth / frameHeight;
+      const spriteGeometry = silhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
+      const alphaPixels = clipSpriteToAlphaMask(sourcePixels, spriteGeometry.rasterMask);
       sourceContext.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
       const front = new THREE.CanvasTexture(sourceCanvas); front.colorSpace = THREE.SRGBColorSpace;
       front.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
@@ -267,11 +284,11 @@ async function start() {
       backContext.translate(frameWidth, 0); backContext.scale(-1, 1);
       backContext.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
       const backPixels = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
-      const clippedBack = clipSpriteToAlphaMask(backPixels, geometryPixels);
+      const clippedBack = clipSpriteToAlphaMask(backPixels, spriteGeometry.rasterMask);
       backContext.putImageData(new ImageData(clippedBack, frameWidth, frameHeight), 0, 0);
       const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
       back.anisotropy = front.anisotropy;
-      const art = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player', geometryPixels, clippedBack);
+      const art = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player', spriteGeometry.shapes, clippedBack);
       art.group.position.y = 1.25;
       art.group.visible = visualState === 'idle';
       group.add(art.group);
