@@ -300,7 +300,7 @@ async function start() {
     const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
       healthHUD, healthFill, chargePips, enemyRing, attackIndicator, attackProgress,
-      flashMaterial: initialArt.flashMaterial, backFlashMaterial: initialArt.backFlashMaterial, markerAge: 10, facing: 0, hitAge: 10, hitStrength: 0,
+      flashMaterial: initialArt.flashMaterial, backFlashMaterial: initialArt.backFlashMaterial, facing: 0, hitAge: 10, hitStrength: 0,
       hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
@@ -539,11 +539,7 @@ async function start() {
     return closest;
   }
   function choose(figure) {
-    if (!figure) return;
-    if (figure.body.team === 'enemy') {
-      figure.markerAge = 0;
-      return;
-    }
+    if (!figure || figure.body.team !== 'player') return;
     if (figure !== activeFigure) {
       activeFigure = figure; state = figure.body;
       selectionAge = 0;
@@ -573,13 +569,11 @@ async function start() {
       gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false };
     } else {
       const hit = hitFigure(event.clientX, event.clientY);
-      if (hit) choose(hit);
+      if (hit?.body.team === 'player') choose(hit);
       if (hit) {
         if (state.charges > 0 && state.health > 0) {
-          state.vx = 0; state.vz = 0;
           gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
             hit, startX: event.clientX, startY: event.clientY, moved: false };
-          host.classList.add('aiming');
         } else {
           gesture = { mode: 'blocked', pointer: event.pointerId };
         }
@@ -608,6 +602,11 @@ async function start() {
     if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 7) gesture.moved = true;
     if (gesture.mode === 'aim') {
       if (!gesture.moved) return;
+      if (!gesture.aimStarted) {
+        state.vx = 0; state.vz = 0;
+        gesture.aimStarted = true;
+        host.classList.add('aiming');
+      }
       choose(activeFigure);
       // Use drag displacement, independent of where on the screen it started.
       const scale = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / innerHeight;
@@ -776,11 +775,8 @@ async function start() {
         base.material.opacity = .4;
       });
       if (figure.enemyRing) {
-        figure.markerAge += dt;
-        const t = Math.min(1, figure.markerAge / .55);
-        const bounce = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
         figure.enemyRing.position.set(body.x, GROUND_UI_Y, body.z);
-        figure.enemyRing.scale.setScalar(Math.max(.001, bounce) * (body.health > 0 ? 1 : .88));
+        figure.enemyRing.scale.setScalar(body.health > 0 ? 1 : .88);
         figure.enemyRing.material.opacity = body.health > 0 ? .9 : .35;
         figure.enemyRing.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
         const aimingAtPlayer = body.health > 0 && body.aiPhase === 'aim';
