@@ -3,7 +3,7 @@ import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=4';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
-const subjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }];
+const subjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }, { id: 'ogre', label: 'Огр' }];
 const views = [{ id: 'front', label: 'Спереди', angle: 0 }, { id: 'three-quarter', label: '¾', angle: Math.PI / 4 }, { id: 'back', label: 'Сзади', angle: Math.PI }];
 const status = document.querySelector('#status'), sheet = document.querySelector('#sheet');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: true, preserveDrawingBuffer: true });
@@ -26,8 +26,8 @@ const paper = new THREE.CanvasTexture(paperCanvas); paper.colorSpace = THREE.SRG
 const built = new Map(), cells = [];
 
 async function loadSubject(subject) {
-  const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png?sheet=2`)));
-  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?sheet=2`)));
+  const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png?sheet=3`)));
+  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?sheet=3`)));
   const frameWidth = textures[0].image.width, frameHeight = textures[0].image.height;
   if (textures.some(texture => texture.image.width !== frameWidth || texture.image.height !== frameHeight)
     || backTextures.some(texture => texture.image.width !== frameWidth || texture.image.height !== frameHeight)) {

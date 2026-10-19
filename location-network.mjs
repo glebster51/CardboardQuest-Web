@@ -3,7 +3,16 @@ export const LOCATION_SCALE = 1.5;
 export const FOREST_WAKE_RADIUS = 3.1 * LOCATION_SCALE;
 export const CAMP_REINFORCEMENT_DELAY = 2;
 export const CAMP_LIVING_CAP = 4;
-export const CAMP_BOSS_DEFEATS = 8;
+export const CAMP_GOBLIN_TOTAL = 8;
+export const CAMP_BOSS_DEFEATS = 5;
+export const CAMP_HUT_ANCHORS = [
+  { x: -5.8, z: -4.4 }, { x: 5.8, z: -4.4 },
+  { x: -5.8, z: 4.4 }, { x: 5.8, z: 4.4 },
+];
+export const CAMP_GOBLIN_SPAWNS = [
+  { x: -3.7, z: -2.3 }, { x: 3.7, z: -2.3 },
+  { x: -3.7, z: 2.3 }, { x: 3.7, z: 2.3 },
+];
 
 const point = (x, z) => ({ x, z });
 
@@ -41,8 +50,9 @@ function scaleLocationFootprint(walkablePoints, arrivals, exits, entry, scale) {
 
 export function createLocationNetwork(scale = LOCATION_SCALE) {
   if (!Number.isFinite(scale) || scale <= 0) throw new RangeError('Location scale must be a positive number');
-  const home = scaleLocationFootprint(homeWalkable, { forest: point(0, 4.6) },
-    [{ x: 0, z: -8.55, to: 'forest', label: 'Проход между холмами' }], point(1.8, .7), scale);
+  const homePoints = homeWalkable.map(value => point(value.x, -value.z));
+  const home = scaleLocationFootprint(homePoints, { forest: point(0, 4.6) },
+    [{ x: 0, z: 8.55, to: 'forest', label: 'Проход между холмами' }], point(0, 0), scale);
   const forest = scaleLocationFootprint(forestWalkable, { home: point(0, -7), camp: point(0, 7) }, [
     { x: 0, z: -9.55, to: 'home', label: 'Домой' },
     { x: 0, z: 9.55, to: 'camp', label: 'Лагерь гоблинов' },
@@ -52,16 +62,17 @@ export function createLocationNetwork(scale = LOCATION_SCALE) {
   return {
     home: {
       id: 'home', title: 'Хижина в лесу', kind: 'home', enemies: [], scenery: [], combatTriggered: false,
-      ...home,
+      lastExitPositions: {}, ...home,
     },
     forest: {
       id: 'forest', title: 'Лес', kind: 'forest', enemies: [], scenery: [], combatTriggered: false,
-      ...forest,
+      lastExitPositions: {}, ...forest,
     },
     camp: {
       id: 'camp', title: 'Лагерь гоблинов', kind: 'camp', enemies: [], scenery: [], combatTriggered: true,
       ...camp,
-      defeats: 0, reinforcementQueue: [], pendingSpawns: 0, bossSpawned: false, initialized: false,
+      defeats: 0, goblinsSpawned: CAMP_LIVING_CAP, reinforcementQueue: [], pendingSpawns: 0,
+      bossSpawned: false, initialized: false, lastExitPositions: {},
     },
   };
 }
@@ -72,6 +83,29 @@ export function findNearbyExit(location, body, radius = EXIT_ZONE_RADIUS) {
 
 export function locationArrival(location, fromLocationId) {
   return location.arrivals?.[fromLocationId] ?? location.entry ?? point(0, 0);
+}
+
+export function locationEntryDirection(location, fromLocationId) {
+  const entrance = location.exits?.find(exit => exit.to === fromLocationId);
+  const center = location.entry ?? point(0, 0);
+  if (!entrance) return point(0, 1);
+  const dx = center.x - entrance.x, dz = center.z - entrance.z;
+  const length = Math.hypot(dx, dz) || 1;
+  return point(dx / length, dz / length);
+}
+
+export function rememberExitPosition(location, destinationId, position) {
+  if (!location.lastExitPositions) location.lastExitPositions = {};
+  location.lastExitPositions[destinationId] = point(position.x, position.z);
+}
+
+export function lastExitPosition(location, fromLocationId) {
+  return location.lastExitPositions?.[fromLocationId] ?? null;
+}
+
+export function shouldIgnoreEntryExit(location, fromLocationId, body, radius = EXIT_ZONE_RADIUS * 1.5) {
+  const entrance = location.exits?.find(exit => exit.to === fromLocationId);
+  return Boolean(entrance && Math.hypot(body.x - entrance.x, body.z - entrance.z) <= radius);
 }
 
 export function wakeForestCombat(location, player, radius = FOREST_WAKE_RADIUS) {
@@ -86,7 +120,9 @@ export function wakeForestCombat(location, player, radius = FOREST_WAKE_RADIUS) 
 export function recordCampDefeat(location, now) {
   if (location.kind !== 'camp') return false;
   location.defeats++;
-  location.reinforcementQueue.push(now + CAMP_REINFORCEMENT_DELAY);
+  if ((location.goblinsSpawned ?? 0) + (location.pendingSpawns ?? 0) < CAMP_GOBLIN_TOTAL) {
+    location.reinforcementQueue.push(now + CAMP_REINFORCEMENT_DELAY);
+  }
   if (location.defeats >= CAMP_BOSS_DEFEATS && !location.bossSpawned) {
     location.bossSpawned = true;
     return true;
@@ -96,7 +132,8 @@ export function recordCampDefeat(location, now) {
 
 export function takeDueReinforcement(location, now, livingCount) {
   if (location.kind !== 'camp' || !location.reinforcementQueue.length
-    || location.reinforcementQueue[0] > now || livingCount + location.pendingSpawns >= CAMP_LIVING_CAP) return false;
+    || location.reinforcementQueue[0] > now || livingCount + location.pendingSpawns >= CAMP_LIVING_CAP
+    || (location.goblinsSpawned ?? 0) + location.pendingSpawns >= CAMP_GOBLIN_TOTAL) return false;
   location.reinforcementQueue.shift();
   location.pendingSpawns++;
   return true;

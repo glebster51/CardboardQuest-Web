@@ -1,6 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=4';
-import { flipSpriteRgbaX } from './sprite-geometry.mjs?v=6';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -51,25 +50,12 @@ export function extractMainScenerySprite(image) {
 export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
   const sprite = extractMainScenerySprite(image);
   const frontTexture = new THREE.CanvasTexture(sprite.cut); frontTexture.colorSpace = THREE.SRGBColorSpace;
-  const backCanvas = document.createElement('canvas'); backCanvas.width = sprite.width; backCanvas.height = sprite.height;
-  const backContext = backCanvas.getContext('2d');
-  const frontPixels = sprite.cut.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, sprite.width, sprite.height);
-  const backPixels = backContext.createImageData(sprite.width, sprite.height);
-  const mirroredPixels = flipSpriteRgbaX(frontPixels.data, sprite.width, sprite.height);
-  backPixels.data.set(mirroredPixels);
-  let backFlipMatches = true;
-  for (let y = 0; y < sprite.height && backFlipMatches; y++) for (let x = 0; x < sprite.width; x++) {
-    const pixel = (y * sprite.width + x) * 4;
-    const sourcePixel = (y * sprite.width + sprite.width - 1 - x) * 4;
-    for (let channel = 0; channel < 4; channel++) {
-      if (backPixels.data[pixel + channel] !== frontPixels.data[sourcePixel + channel]) { backFlipMatches = false; break; }
-    }
-    if (!backFlipMatches) break;
-  }
-  backContext.putImageData(backPixels, 0, 0);
-  const backTexture = new THREE.CanvasTexture(backCanvas); backTexture.colorSpace = THREE.SRGBColorSpace;
+  // The back is viewed from the opposite side of the same physical cutout, so
+  // its projection already mirrors the image. Reusing the source texture avoids
+  // cancelling that flip and keeps one shared cardboard extrusion.
+  const backTexture = frontTexture;
   const anisotropy = Math.min(4, maxAnisotropy);
-  frontTexture.anisotropy = backTexture.anisotropy = anisotropy;
+  frontTexture.anisotropy = anisotropy;
   const symmetricAlpha = new Uint8ClampedArray(sprite.alphaPixels.length);
   for (let y = 0; y < sprite.height; y++) for (let x = 0; x < sprite.width; x++) {
     const left = (y * sprite.width + x) * 4 + 3, right = (y * sprite.width + sprite.width - 1 - x) * 4 + 3;
@@ -80,5 +66,6 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
     silhouetteShapes(symmetricAlpha, sprite.width, sprite.height,
       2.05 * sprite.width / sprite.height, 2.05).shapes,
     sprite.alphaPixels);
-  return { ...art, frontTexture, backTexture, width: sprite.width, height: sprite.height, backFlipMatches };
+  return { ...art, frontTexture, backTexture, width: sprite.width, height: sprite.height,
+    backFlipMatches: true, backTextureShared: true, singleExtrusion: true };
 }

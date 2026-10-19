@@ -6,15 +6,16 @@ import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
-import { makeScenerySprite } from './scenery-model-v4.mjs';
+import { makeScenerySprite } from './scenery-model-v4.mjs?v=2';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
-import { CAMP_BOSS_DEFEATS, CAMP_LIVING_CAP, LOCATION_SCALE, createLocationNetwork, findNearbyExit,
-  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=4';
+import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
+  createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
+  recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=5';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
 const scaled = value => value * LOCATION_SCALE;
-const heroBody = { id: 'hero', team: 'player', x: scaled(1.8), z: scaled(.7), vx: 0, vz: 0,
+const heroBody = { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0,
   health: 20, maxHealth: 20, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] };
 let bodies = [heroBody];
 let state = heroBody;
@@ -269,8 +270,8 @@ async function start() {
 
     const loader = new THREE.TextureLoader();
     const artStates = {};
-    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=2`)));
-    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=2`)));
+    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=3`)));
+    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=3`)));
     const frameWidth = sources[0].image.width, frameHeight = sources[0].image.height;
     if (sources.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)
       || backTextures.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)) {
@@ -413,6 +414,10 @@ async function start() {
   }
   const figures = [];
   const heroFigure = await createFigure(heroBody, 'hero');
+  heroFigure.facing = 0;
+  heroFigure.group.rotation.y = 0;
+  theta = Math.PI;
+  target.set(heroBody.x, .65, heroBody.z);
   heroFigure.locationId = 'home'; figures.push(heroFigure);
   const enemyBody = (id, locationId, x, z, options = {}) => ({
     id, team: 'enemy', locationId, x, z, vx: 0, vz: 0,
@@ -430,11 +435,10 @@ async function start() {
     figure.locationId = 'forest'; figure.group.visible = false; figure.healthHUD.visible = false;
     figure.enemyMarker.group.visible = false; figures.push(figure);
   }
-  const campSpawns = [
-    { x: scaled(-5.6), z: scaled(-2.8), hutX: scaled(-8.5), hutZ: scaled(-5.4) },
-    { x: scaled(5.6), z: scaled(-2.8), hutX: scaled(8.5), hutZ: scaled(-5.4) },
-    { x: scaled(-5.6), z: scaled(2.8), hutX: scaled(-8.5), hutZ: scaled(5.4) },
-  ];
+  const campSpawns = CAMP_GOBLIN_SPAWNS.map((spawn, index) => ({
+    x: scaled(spawn.x), z: scaled(spawn.z),
+    hutX: scaled(CAMP_HUT_ANCHORS[index].x), hutZ: scaled(CAMP_HUT_ANCHORS[index].z),
+  }));
   for (let index = 0; index < campSpawns.length; index++) {
     const point = campSpawns[index];
     const body = enemyBody(`camp-goblin-${index + 1}`, 'camp', point.x, point.z, { spawnReady: false, combatAwake: true });
@@ -444,7 +448,6 @@ async function start() {
     figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
     figures.push(figure);
   }
-  locations.camp.reinforcementQueue.push(2);
   const propTypes = [
     { path: 'assets/env-tree.png', weight: .28, size: [2.1, 3.3] },
     { path: 'assets/env-evergreen.png', weight: .24, size: [1.9, 3.1] },
@@ -470,13 +473,11 @@ async function start() {
   };
   const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
   const sceneDetails = [
-    createScenery('assets/hero-house.png', 0, scaled(-1.7), 3.5, homeGroup, true, { fixedRadius: 1.2, base: true }),
+    createScenery('assets/hero-house.png', 0, scaled(-2.4), 3.5, homeGroup, true, { fixedRadius: 1.2, base: true }),
     populateForestEdge(locations.home, 10, 11),
     populateForestEdge(locations.forest, 36, 23),
-    createScenery('assets/env-troll-hut.png', scaled(-8.5), scaled(-5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
-    createScenery('assets/env-troll-hut.png', scaled(8.5), scaled(-5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
-    createScenery('assets/env-troll-hut.png', scaled(-8.5), scaled(5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
-    createScenery('assets/env-troll-hut.png', scaled(8.5), scaled(5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    ...CAMP_HUT_ANCHORS.map(hut => createScenery('assets/env-troll-hut.png', scaled(hut.x), scaled(hut.z), 3.2,
+      campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true })),
     populateForestEdge(locations.camp, 18, 37),
   ];
   await Promise.all(sceneDetails);
@@ -497,12 +498,8 @@ async function start() {
   let selectionAge = .6;
   let elapsed = 0;
   let transitionCooldown = 0;
-  const campSpawnPoints = [
-    { x: scaled(-5.6), z: scaled(-2.8), hutX: scaled(-8.5), hutZ: scaled(-5.4) },
-    { x: scaled(5.6), z: scaled(-2.8), hutX: scaled(8.5), hutZ: scaled(-5.4) },
-    { x: scaled(-5.6), z: scaled(2.8), hutX: scaled(-8.5), hutZ: scaled(5.4) },
-    { x: scaled(5.6), z: scaled(2.8), hutX: scaled(8.5), hutZ: scaled(5.4) },
-  ];
+  let protectedEntryFrom = null;
+  const campSpawnPoints = campSpawns;
   function refreshLocationInfo() {
     locationTitle.textContent = activeLocation.title;
     if (activeLocation.kind === 'home') locationDetail.textContent = 'Проход между холмами ведёт в лес';
@@ -544,10 +541,10 @@ async function start() {
         : { combatAwake: true, spawnReady: false });
     body.aiPhase = 'pause'; body.aiTimer = randomBetween(.4, 1.2);
     locations.camp.enemies.push(body);
-    const figure = await createFigure(body, 'goblin');
+    const figure = await createFigure(body, boss ? 'ogre' : 'goblin');
     figure.locationId = 'camp'; figures.push(figure);
     if (boss) {
-      figure.bossScale = 1.65;
+      figure.bossScale = 1.35;
       figure.spawnSource = { x: 0, z: scaled(-6.1) };
     } else figure.spawnSource = { x: spawn.hutX, z: spawn.hutZ };
     beginSpawn(figure, figure.spawnSource);
@@ -557,14 +554,20 @@ async function start() {
   function enterLocation(locationId, fromLocationId) {
     const next = locations[locationId];
     if (!next) return;
+    rememberExitPosition(activeLocation, locationId, heroBody);
     stopAim(); gesture = null; pointers.clear();
     activeLocation = next;
-    const arrival = locationArrival(activeLocation, fromLocationId);
+    protectedEntryFrom = fromLocationId;
+    const arrival = lastExitPosition(activeLocation, fromLocationId) ?? locationArrival(activeLocation, fromLocationId);
     heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
+    const direction = locationEntryDirection(activeLocation, fromLocationId);
+    const heading = Math.atan2(direction.x, direction.z);
+    heroFigure.facing = heading; heroFigure.group.rotation.y = heading;
+    theta = heading + Math.PI;
+    target.set(heroBody.x, .65, heroBody.z);
     transitionCooldown = .85;
     if (activeLocation.kind === 'camp' && !activeLocation.initialized) {
       activeLocation.initialized = true;
-      activeLocation.reinforcementQueue.push(elapsed + 2);
       for (const figure of figures.filter(item => item.locationId === 'camp' && !item.body.boss && !item.body.spawnReady)) {
         beginSpawn(figure, figure.spawnSource);
       }
@@ -575,6 +578,7 @@ async function start() {
   }
   function startQueuedReinforcement() {
     activeLocation.pendingSpawns = Math.max(0, activeLocation.pendingSpawns - 1);
+    activeLocation.goblinsSpawned++;
     spawnCampGoblin().catch(error => console.error('Не удалось создать гоблина лагеря', error));
   }
   function spawnCampBoss() {
@@ -1085,7 +1089,9 @@ async function start() {
       playerMarker.group.scale.setScalar(Math.max(.001, scale));
     }
     if (transitionCooldown <= 0) {
-      const exit = findNearbyExit(activeLocation, heroBody);
+      let exit = findNearbyExit(activeLocation, heroBody);
+      if (exit && protectedEntryFrom && shouldIgnoreEntryExit(activeLocation, protectedEntryFrom, heroBody)) exit = null;
+      else if (protectedEntryFrom) protectedEntryFrom = null;
       if (exit) enterLocation(exit.to, activeLocation.id);
     }
     playerMarker.material.color.lerp(
