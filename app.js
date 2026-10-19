@@ -2,6 +2,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.m
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
 import { traceSpriteContours, validateSpriteFrames, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=3';
 import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
+import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
+import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -71,18 +73,36 @@ function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation
         vertices[index * 3 + 2] / depth));
     },
   };
-  const geometry = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, steps: 1, UVGenerator: uvGenerator });
-  geometry.translate(0, 0, -depth / 2);
+  const extruded = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, steps: 1, UVGenerator: uvGenerator });
+  extruded.translate(0, 0, -depth / 2);
+  const sideGroup = extruded.groups.find(group => group.materialIndex === 1);
+  const sideGeometry = new THREE.BufferGeometry();
+  const sourceIndex = extruded.index;
+  for (const [name, attribute] of Object.entries(extruded.attributes)) {
+    const values = new Float32Array(sideGroup.count * attribute.itemSize);
+    for (let i = 0; i < sideGroup.count; i++) {
+      const vertex = sourceIndex ? sourceIndex.getX(sideGroup.start + i) : sideGroup.start + i;
+      for (let component = 0; component < attribute.itemSize; component++) values[i * attribute.itemSize + component] = attribute.array[vertex * attribute.itemSize + component];
+    }
+    sideGeometry.setAttribute(name, new THREE.BufferAttribute(values, attribute.itemSize));
+  }
+  sideGeometry.computeBoundingSphere();
+  extruded.dispose();
   const stencil = { stencilWrite: true, stencilRef: stencilPlayer ? 1 : 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide, ...stencil });
   const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.FrontSide, ...stencil });
-  const body = new THREE.Mesh(geometry, [frontMaterial, sideMaterial]);
+  const body = new THREE.Mesh(sideGeometry, sideMaterial);
   body.castShadow = true;
-  body.userData.print = true;
+  body.userData.sideWall = true;
+  const capGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight);
+  const frontCap = new THREE.Mesh(capGeometry, frontMaterial);
+  frontCap.position.z = depth / 2 + .003;
+  frontCap.castShadow = true;
+  frontCap.userData.print = true;
   const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight),
     new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, ...stencil }));
-  backPlane.position.z = -depth / 2 - .002;
+  backPlane.position.z = -depth / 2 - .003;
   backPlane.userData.print = true;
   const flashGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight);
   const whiteMask = document.createElement('canvas');
@@ -110,11 +130,11 @@ function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation
   const backFlashMaterial = new THREE.MeshBasicMaterial({ map: backFlashTexture, transparent: true, opacity: 0, alphaTest: .1,
     side: THREE.DoubleSide, depthWrite: false, ...stencil });
   const backFlash = new THREE.Mesh(flashGeometry, backFlashMaterial);
-  frontFlash.position.z = depth / 2 + .004; backFlash.position.z = -depth / 2 - .004;
+  frontFlash.position.z = depth / 2 + .005; backFlash.position.z = -depth / 2 - .005;
   frontFlash.userData.print = backFlash.userData.print = true;
   const group = new THREE.Group();
-  group.add(body, backPlane, frontFlash, backFlash);
-  return { group, body, geometry, frontMaterial, sideMaterial, backPlane, flashMaterial, flashTexture, backFlashMaterial, backFlashTexture, alphaPixels, width, height };
+  group.add(body, frontCap, backPlane, frontFlash, backFlash);
+  return { group, body, geometry: sideGeometry, frontMaterial, sideMaterial, frontCap, backPlane, flashMaterial, flashTexture, backFlashMaterial, backFlashTexture, alphaPixels, width, height };
 }
 
 document.querySelector('#restart').addEventListener('click', () => location.reload());
@@ -237,7 +257,9 @@ async function start() {
       sourceContext.drawImage(image, 0, 0, frameWidth, frameHeight);
       const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
-      const alphaPixels = sourcePixels;
+      const geometryPixels = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
+      const alphaPixels = clipSpriteToAlphaMask(sourcePixels, geometryPixels);
+      sourceContext.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
       const front = new THREE.CanvasTexture(sourceCanvas); front.colorSpace = THREE.SRGBColorSpace;
       front.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       const backCanvas = document.createElement('canvas'); backCanvas.width = frameWidth; backCanvas.height = frameHeight;
@@ -245,7 +267,6 @@ async function start() {
       backContext.translate(frameWidth, 0); backContext.scale(-1, 1);
       backContext.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
       const backPixels = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
-      const geometryPixels = unionSpriteAlpha(sourcePixels, backPixels, frameWidth, frameHeight);
       const clippedBack = clipSpriteToAlphaMask(backPixels, geometryPixels);
       backContext.putImageData(new ImageData(clippedBack, frameWidth, frameHeight), 0, 0);
       const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
@@ -283,23 +304,16 @@ async function start() {
     }
     healthHUD.position.set(body.x, 2.65, body.z);
     scene.add(healthHUD);
-    let enemyRing = null;
-    let attackIndicator = null;
-    let attackProgress = null;
+    let enemyMarker = null;
     if (body.team === 'enemy') {
-      enemyRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80),
-        new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
-      enemyRing.rotation.x = -Math.PI / 2; enemyRing.renderOrder = 1; scene.add(enemyRing);
-      attackIndicator = new THREE.Group();
-      const warning = createArrowSkin(0xd82932, 0xff5b50, true);
-      warning.group.scale.set(1.6, 36, 1);
-      attackIndicator.add(warning.group);
-      attackProgress = warning.progress;
-      attackIndicator.visible = false; scene.add(attackIndicator);
+      enemyMarker = createVectorMarker(0xdf3830, 0xff887d, true);
+      enemyMarker.group.rotation.y = body.aiAimAngle ?? 0;
+      enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
+      scene.add(enemyMarker.group);
     }
     const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
-      healthHUD, healthFill, chargePips, enemyRing, attackIndicator, attackProgress,
+      healthHUD, healthFill, chargePips, enemyMarker,
       flashMaterial: initialArt.flashMaterial, backFlashMaterial: initialArt.backFlashMaterial, facing: 0, hitAge: 10, hitStrength: 0,
       hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
@@ -386,10 +400,9 @@ async function start() {
   }
   await Promise.all(sceneryPaths);
   function setVisualState(figure, visualState) {
-    if (figure.visualState === visualState) return;
-    figure.artGroup.visible = false;
     const art = figure.artStates[visualState];
-    art.group.visible = true;
+    for (const [name, stateArt] of Object.entries(figure.artStates)) stateArt.group.visible = name === visualState;
+    if (figure.visualState === visualState) return;
     figure.artGroup = art.group;
     figure.alphaPixels = art.alphaPixels;
     figure.width = art.width;
@@ -467,49 +480,73 @@ async function start() {
     }
     burst(b ? (a.x + b.x) / 2 : a.x, b ? (a.z + b.z) / 2 : a.z, Math.min(1.5, speed / 7));
   }
-  const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80), new THREE.MeshBasicMaterial({ color: 0x65d536, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
-  selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = GROUND_UI_Y;
-  selectionRing.material.depthTest = true; selectionRing.renderOrder = 1;
-  selectionRing.visible = true; scene.add(selectionRing);
-  const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
-  const playerArrow = createArrowSkin(0x65d536, 0xd8ff91, false);
-  playerArrow.group.scale.x = 1.6;
-  playerArrow.group.add(playerArrow.overlap);
-  aiming.add(playerArrow.group);
-  const arrow = playerArrow.arrow;
-  function createArrowSkin(color, glowColor, showProgress) {
-    const shape = new THREE.Shape([
-      new THREE.Vector2(-.5, 0), new THREE.Vector2(.5, 0), new THREE.Vector2(.5, .76),
-      new THREE.Vector2(0, 1.25), new THREE.Vector2(-.5, .76),
-    ]);
-    const geometry = new THREE.ShapeGeometry(shape);
+  function markerGeometry(extension, filled = false) {
+    const { outer, inner } = createMarkerContours(1.13, extension, .26, 48);
+    const orientedPath = (points, clockwise) => {
+      const ordered = THREE.ShapeUtils.isClockWise(points) === clockwise ? points : [...points].reverse();
+      const path = new THREE.Path();
+      path.moveTo(ordered[0].x, ordered[0].y);
+      for (let i = 1; i < ordered.length; i++) path.lineTo(ordered[i].x, ordered[i].y);
+      path.closePath();
+      return path;
+    };
+    if (filled) return new THREE.ShapeGeometry(orientedPath(inner, false));
+    const shape = new THREE.Shape();
+    const outside = orientedPath(outer, false);
+    shape.moveTo(outside.curves[0].v1.x, outside.curves[0].v1.y);
+    for (const curve of outside.curves) shape.lineTo(curve.v2.x, curve.v2.y);
+    shape.closePath();
+    shape.holes.push(orientedPath(inner, true));
+    return new THREE.ShapeGeometry(shape);
+  }
+  function createVectorMarker(color, fillColor, showProgress, showOverlap = false) {
     const group = new THREE.Group();
-    const glow = new THREE.Mesh(geometry,
-      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: showProgress ? .18 : .42, side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
-    glow.rotation.x = Math.PI / 2; glow.scale.set(1.14, 1, 1); glow.renderOrder = 2; group.add(glow);
-    const arrow = new THREE.Mesh(geometry,
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: showProgress ? .4 : .96, side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
-    arrow.rotation.x = Math.PI / 2; arrow.renderOrder = 3; group.add(arrow);
-    const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry),
-      new THREE.LineBasicMaterial({ color: 0xfff4d4, transparent: true, opacity: showProgress ? .4 : .96, depthTest: true }));
-    outline.rotation.x = Math.PI / 2; outline.renderOrder = 4; group.add(outline);
+    const outlineMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .96,
+      side: THREE.DoubleSide, depthWrite: false, depthTest: true });
+    const outline = new THREE.Mesh(markerGeometry(0), outlineMaterial);
+    outline.rotation.x = Math.PI / 2; outline.renderOrder = 2; group.add(outline);
+    let overlap = null;
+    if (showOverlap) {
+      const overlapMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .5,
+        side: THREE.DoubleSide, depthWrite: false, depthTest: false, stencilWrite: true,
+        stencilRef: 1, stencilFunc: THREE.EqualStencilFunc });
+      overlap = new THREE.Mesh(outline.geometry, overlapMaterial);
+      overlap.rotation.x = Math.PI / 2; overlap.renderOrder = 20; group.add(overlap);
+    }
     let progress = null;
+    const fullExtension = 5.4;
+    const backEdge = -.87;
     if (showProgress) {
-      progress = new THREE.Mesh(geometry,
-        new THREE.MeshBasicMaterial({ color: 0xff5148, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: true, depthWrite: false }));
-      progress.rotation.x = Math.PI / 2; progress.scale.y = .001; progress.visible = false; progress.renderOrder = 5;
+      progress = new THREE.Mesh(markerGeometry(fullExtension, true),
+        new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: .94,
+          side: THREE.DoubleSide, depthWrite: false, depthTest: true }));
+      progress.rotation.x = Math.PI / 2; progress.visible = false; progress.renderOrder = 3;
       group.add(progress);
     }
-    const overlap = new THREE.Group();
-    if (!showProgress) for (const source of [glow, arrow, outline]) {
-      const copy = source.clone();
-      copy.material = source.material.clone();
-      Object.assign(copy.material, { opacity: .5, transparent: true, depthTest: false, depthWrite: false,
-        stencilWrite: false, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc });
-      copy.renderOrder = 20; overlap.add(copy);
-    }
-    return { group, arrow, progress, overlap };
+    let currentExtension = 0;
+    return {
+      group, outline, material: outlineMaterial, progress, overlap,
+      setExtension(extension) {
+        const quantized = Math.max(0, Math.round(extension * 12) / 12);
+        if (Math.abs(quantized - currentExtension) < 1e-6) return;
+        const previous = outline.geometry;
+        outline.geometry = markerGeometry(quantized);
+        if (overlap) overlap.geometry = outline.geometry;
+        previous.dispose();
+        currentExtension = quantized;
+      },
+      setProgress(amount) {
+        if (!progress) return;
+        const transform = markerFillTransform(amount, backEdge);
+        progress.scale.y = Math.max(.001, transform.scaleY);
+        progress.position.z = transform.offsetY;
+        progress.visible = amount > .005;
+      },
+    };
   }
+  const playerMarker = createVectorMarker(0x65d536, 0xd8ff91, false, true);
+  playerMarker.group.position.y = GROUND_UI_Y;
+  scene.add(playerMarker.group);
 
   const raycaster = new THREE.Raycaster();
   const figureHitPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -.12);
@@ -523,7 +560,7 @@ async function start() {
       while (root && !root.userData.figure) root = root.parent;
       const figure = root?.userData.figure;
       if (!figure) continue;
-      if (!hit.object.userData.print || !hit.uv || hit.face?.materialIndex === 1) return figure;
+      if (hit.object.userData.sideWall || !hit.object.userData.print || !hit.uv) return figure;
       const px = Math.min(figure.width - 1, Math.max(0, Math.floor(hit.uv.x * figure.width)));
       const py = Math.min(figure.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * figure.height)));
       if (figure.alphaPixels[(py * figure.width + px) * 4 + 3] > 100) return figure;
@@ -543,13 +580,13 @@ async function start() {
     if (figure !== activeFigure) {
       activeFigure = figure; state = figure.body;
       selectionAge = 0;
-      selectionRing.scale.setScalar(.001);
+      playerMarker.group.scale.setScalar(.001);
     }
     selected = true;
-    selectionRing.visible = true;
+    playerMarker.group.visible = true;
   }
   function stopAim() {
-    aiming.visible = false;
+    playerMarker.setExtension(0);
     host.classList.remove('aiming');
   }
   renderer.domElement.addEventListener('pointerdown', event => {
@@ -616,14 +653,11 @@ async function start() {
         -Math.sin(theta) * dx + Math.cos(theta) * dz);
       const direction = new THREE.Vector3(-gesture.pull.x, 0, -gesture.pull.z);
       const length = direction.length();
-      aiming.visible = length > .06;
+      playerMarker.setExtension(length > .06 ? length * 3.2 : 0);
       if (length > .06) {
         activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
-        aiming.position.set(state.x, GROUND_UI_Y, state.z);
-        aiming.rotation.y = activeFigure.facing;
-        playerArrow.group.scale.y = 264 * length / MAX_PULL;
-        if (state.charges > 0 && state.health > 0) arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
-        else arrow.material.color.setHex(0x77736b);
+        playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
+        playerMarker.group.rotation.y = activeFigure.facing;
       }
     } else {
       const dx = event.clientX - gesture.lastX, dy = event.clientY - gesture.lastY;
@@ -638,7 +672,7 @@ async function start() {
       if (gesture.mode === 'aim') {
         if (!cancelled && gesture.moved) {
           if (state.team === 'player' && state.health > 0 && state.charges > 0) {
-            state.charges--; state.rechargeTimer = 0;
+            state.charges--;
             state.chargePop[state.charges] = 0;
             state.attackRicochets = 0;
             launch(state, gesture.pull);
@@ -683,16 +717,7 @@ async function start() {
     const held = gesture?.mode === 'aim' ? state : null;
     for (const body of bodies) {
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
-      if (body.charges < body.maxCharges) {
-        body.rechargeTimer += dt;
-        while (body.rechargeTimer >= 3 && body.charges < body.maxCharges) {
-          body.rechargeTimer -= 3;
-          body.charges++;
-          body.chargePop ??= Array(body.maxCharges).fill(0);
-          body.chargePop[body.charges - 1] = .48;
-        }
-        if (body.charges === body.maxCharges) body.rechargeTimer = 0;
-      }
+      advanceChargeRecharge(body, dt);
       if (body.team !== 'enemy') continue;
       if (body.health <= 0) continue;
       if (body.aiStunRemaining > 0) {
@@ -720,7 +745,7 @@ async function start() {
         const aimX = body.aiTargetX - body.x, aimZ = body.aiTargetZ - body.z;
         const aimDistance = Math.hypot(aimX, aimZ);
         const power = THREE.MathUtils.clamp(aimDistance * .12, .55, .95);
-        body.charges--; body.rechargeTimer = 0; body.aiPhase = 'dash'; body.attackRicochets = 0;
+        body.charges--; body.aiPhase = 'dash'; body.attackRicochets = 0;
         launch(body, { x: -aimX / Math.max(.001, aimDistance) * power,
           z: -aimZ / Math.max(.001, aimDistance) * power });
         burst(body.x, body.z, .45);
@@ -757,7 +782,7 @@ async function start() {
       figure.healthFill.scale.x = healthRatio;
       figure.healthFill.position.x = -.04 - .71 * (1 - healthRatio);
       figure.healthFill.material.color.setHex(body.health <= 25 ? 0xf2a33b : body.team === 'player' ? 0x65d536 : 0xd84a38);
-      const rechargeProgress = body.charges < body.maxCharges ? body.rechargeTimer / 3 : 0;
+      const rechargeProgress = chargeRechargeProgress(body);
       figure.chargePips.forEach(({ group, base, fill }, index) => {
         const amount = index < body.charges ? 1 : index === body.charges ? rechargeProgress : 0;
         group.visible = body.team === 'player';
@@ -774,21 +799,15 @@ async function start() {
         }
         base.material.opacity = .4;
       });
-      if (figure.enemyRing) {
-        figure.enemyRing.position.set(body.x, GROUND_UI_Y, body.z);
-        figure.enemyRing.scale.setScalar(body.health > 0 ? 1 : .88);
-        figure.enemyRing.material.opacity = body.health > 0 ? .9 : .35;
-        figure.enemyRing.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
-        const aimingAtPlayer = body.health > 0 && body.aiPhase === 'aim';
-        figure.attackIndicator.visible = aimingAtPlayer;
-        if (aimingAtPlayer) {
-          figure.attackIndicator.position.set(body.x, GROUND_UI_Y, body.z);
-          figure.attackIndicator.rotation.y = body.aiAimAngle;
-          const progress = 1 - body.aiTimer / body.aiAimDuration;
-          figure.attackProgress.scale.y = Math.max(.001, progress);
-          figure.attackProgress.position.y = 0;
-          figure.attackProgress.visible = progress > .005;
-        }
+      if (figure.enemyMarker) {
+        const aiming = body.health > 0 && body.aiPhase === 'aim';
+        figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
+        figure.enemyMarker.group.rotation.y = aiming ? body.aiAimAngle : figure.facing;
+        figure.enemyMarker.group.visible = body.health > 0;
+        figure.enemyMarker.setExtension(aiming ? 5.4 : 0);
+        figure.enemyMarker.setProgress(aiming ? 1 - body.aiTimer / body.aiAimDuration : 0);
+        figure.enemyMarker.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
+        figure.enemyMarker.material.opacity = body.health > 0 ? .96 : .35;
       }
     }
     for (let i = bursts.length - 1; i >= 0; i--) {
@@ -812,12 +831,12 @@ async function start() {
       selectionAge += dt;
       const t = Math.min(1, selectionAge / .6);
       const scale = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
-      selectionRing.scale.setScalar(Math.max(.001, scale));
+      playerMarker.group.scale.setScalar(Math.max(.001, scale));
     }
-    selectionRing.material.color.lerp(
+    playerMarker.material.color.lerp(
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
       1 - Math.exp(-18 * dt));
-    selectionRing.position.set(state.x, GROUND_UI_Y, state.z);
+    playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
     updateCamera();
     for (const figure of figures) {
       figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);
