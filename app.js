@@ -284,7 +284,7 @@ async function start() {
   function loadSceneryTemplate(path) {
     if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
     const pending = (async () => {
-    const source = await new THREE.TextureLoader().loadAsync(path);
+    const source = await new THREE.TextureLoader().loadAsync(`${path}?art=2`);
     const { cut, alphaPixels, width, height } = extractMainScenerySprite(source.image);
     const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
     artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
