@@ -1,5 +1,17 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+export function flipSpriteRgbaX(rgba, width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || rgba.length !== width * height * 4) {
+    throw new RangeError('Sprite pixels must match their dimensions');
+  }
+  const flipped = new Uint8ClampedArray(rgba.length);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const source = (y * width + x) * 4, target = (y * width + width - 1 - x) * 4;
+    flipped.set(rgba.subarray(source, source + 4), target);
+  }
+  return flipped;
+}
+
 function signedArea(points) {
   let sum = 0;
   for (let i = 0; i < points.length; i++) {

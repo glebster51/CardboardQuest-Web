@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { traceSpriteContours } from './sprite-geometry.mjs?v=4';
+import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=1';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);
@@ -39,7 +40,7 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
 }
 
 export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
-  const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = .144;
+  const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = CARDBOARD_EXTRUSION_DEPTH;
   const uv = (vertices, index) => new THREE.Vector2(vertices[index * 3] / worldWidth + .5, vertices[index * 3 + 1] / worldHeight + .5);
   const uvGenerator = {
     generateTopUV(_geometry, vertices, a, b, c) { return [uv(vertices, a), uv(vertices, b), uv(vertices, c)]; },

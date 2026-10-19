@@ -1,17 +1,20 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=6';
 import { createTerrainHeightMap, extractTerrainContours, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
-import { CAMP_BOSS_DEFEATS, CAMP_LIVING_CAP, createLocationNetwork, findNearbyExit,
-  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=3';
+import { makeScenerySprite } from './scenery-model.mjs?v=1';
+import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
+import { CAMP_BOSS_DEFEATS, CAMP_LIVING_CAP, LOCATION_SCALE, createLocationNetwork, findNearbyExit,
+  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=4';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
-const heroBody = { id: 'hero', team: 'player', x: 1.8, z: .7, vx: 0, vz: 0,
+const scaled = value => value * LOCATION_SCALE;
+const heroBody = { id: 'hero', team: 'player', x: scaled(1.8), z: scaled(.7), vx: 0, vz: 0,
   health: 20, maxHealth: 20, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] };
 let bodies = [heroBody];
 let state = heroBody;
@@ -51,13 +54,13 @@ async function start() {
   }));
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   const target = new THREE.Vector3(0, .65, 0);
-  let theta = .22, phi = .86, distance = innerWidth < 650 ? 18 : 10.5;
+  let theta = .22, phi = .86, distance = innerWidth < 650 ? 27 : 15.75;
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -17, right: 17, top: 17, bottom: -17, far: 50 });
+  Object.assign(sun.shadow.camera, { left: -25.5, right: 25.5, top: 25.5, bottom: -25.5, far: 60 });
   sun.shadow.normalBias = .025;
   sun.shadow.bias = -.0002;
   scene.add(sun);
@@ -366,71 +369,11 @@ async function start() {
     return figure;
   }
   const sceneryTemplates = new Map();
-  function extractMainScenerySprite(image) {
-    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0);
-    const imageData = context.getImageData(0, 0, image.width, image.height);
-    const pixels = imageData.data, width = image.width, height = image.height;
-    const visited = new Uint8Array(width * height), stack = new Int32Array(width * height);
-    let largest = null;
-    for (let start = 0; start < width * height; start++) {
-      if (visited[start] || pixels[start * 4 + 3] <= 80) continue;
-      let top = 0, count = 0, x0 = width, y0 = height, x1 = -1, y1 = -1;
-      stack[top++] = start; visited[start] = 1;
-      while (top) {
-        const index = stack[--top], x = index % width, y = (index / width) | 0;
-        count++; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-        for (let ny = Math.max(0, y - 1); ny <= Math.min(height - 1, y + 1); ny++) {
-          for (let nx = Math.max(0, x - 1); nx <= Math.min(width - 1, x + 1); nx++) {
-            const next = ny * width + nx;
-            if (!visited[next] && pixels[next * 4 + 3] > 80) { visited[next] = 1; stack[top++] = next; }
-          }
-        }
-      }
-      if (!largest || count > largest.count) largest = { count, x0, y0, x1, y1 };
-    }
-    if (!largest) throw new Error('Scenery sprite has no opaque artwork');
-    const padding = 2;
-    const cropX = Math.max(0, largest.x0 - padding), cropY = Math.max(0, largest.y0 - padding);
-    const cropRight = Math.min(width - 1, largest.x1 + padding), cropBottom = Math.min(height - 1, largest.y1 + padding);
-    const cropWidth = cropRight - cropX + 1, cropHeight = cropBottom - cropY + 1;
-    const cut = document.createElement('canvas'); cut.width = cropWidth; cut.height = cropHeight;
-    const cutContext = cut.getContext('2d', { willReadFrequently: true });
-    cutContext.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-    const cutData = cutContext.getImageData(0, 0, cropWidth, cropHeight);
-    // Keep the dominant connected silhouette plus its antialiased edge; clear detached atlas fragments.
-    for (let y = 0; y < cropHeight; y++) for (let x = 0; x < cropWidth; x++) {
-      const sourceX = cropX + x, sourceY = cropY + y, sourceIndex = sourceY * width + sourceX;
-      let connected = visited[sourceIndex] === 1;
-      if (!connected) {
-        for (let ny = Math.max(0, sourceY - padding); ny <= Math.min(height - 1, sourceY + padding) && !connected; ny++)
-          for (let nx = Math.max(0, sourceX - padding); nx <= Math.min(width - 1, sourceX + padding); nx++)
-            if (visited[ny * width + nx]) { connected = true; break; }
-      }
-      if (!connected) cutData.data[(y * cropWidth + x) * 4 + 3] = 0;
-    }
-    cutContext.putImageData(cutData, 0, 0);
-    return { cut, alphaPixels: cutData.data, width: cropWidth, height: cropHeight };
-  }
   function loadSceneryTemplate(path) {
     if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
     const pending = (async () => {
-    const source = await new THREE.TextureLoader().loadAsync(`${path}?art=3`);
-    const { cut, alphaPixels, width, height } = extractMainScenerySprite(source.image);
-    const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
-    const backCanvas = document.createElement('canvas'); backCanvas.width = width; backCanvas.height = height;
-    const backContext = backCanvas.getContext('2d');
-    backContext.translate(width, 0); backContext.scale(-1, 1); backContext.drawImage(cut, 0, 0);
-    const backTexture = new THREE.CanvasTexture(backCanvas); backTexture.colorSpace = THREE.SRGBColorSpace;
-    artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    backTexture.anisotropy = artTexture.anisotropy;
-    const symmetricAlpha = new Uint8ClampedArray(alphaPixels.length);
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      const left = (y * width + x) * 4 + 3, right = (y * width + width - 1 - x) * 4 + 3;
-      symmetricAlpha[left] = Math.max(alphaPixels[left], alphaPixels[right]);
-    }
-    const art = buildExtrudedSprite(symmetricAlpha, width, height, artTexture, backTexture, corrugation);
-    art.group.position.y = 1.025;
+    const source = await new THREE.TextureLoader().loadAsync(`${path}?art=4`);
+    const art = makeScenerySprite(source.image, corrugation, renderer.capabilities.getMaxAnisotropy());
     source.dispose();
     return art.group;
     })();
@@ -441,7 +384,10 @@ async function start() {
     const template = await loadSceneryTemplate(path);
     const art = template.clone(true);
     // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
-    art.scale.set(size / 2.05, size / 2.05, 1);
+    const layout = sceneryTokenLayout(size, options.base ? options.fixedRadius ?? 0 : 0);
+    art.scale.setScalar(layout.scale);
+    // The sprite's bottom rests on the ground or on top of its cardboard puck.
+    art.position.y = layout.artY;
     const terrain = parent.userData.terrainHeightMap ?? locations.home.terrainHeightMap;
     const elevation = terrain.sample(x, z);
     if (elevation <= 0 && !allowFlat) return null;
@@ -449,12 +395,12 @@ async function start() {
     if (options.fixedRadius) {
       const baseRadius = options.base ? options.fixedRadius : 0;
       if (baseRadius) {
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(baseRadius, baseRadius, .2, 64), [
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(baseRadius, baseRadius, PUCK_HEIGHT, 64), [
           new THREE.MeshStandardMaterial({ map: terrainCorrugation, roughness: 1, ...sceneStencil }),
           new THREE.MeshStandardMaterial({ map: paper, roughness: .96, ...sceneStencil }),
           new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
         ]);
-        base.position.y = .11; base.castShadow = true; base.receiveShadow = true; prop.add(base);
+        base.position.y = PUCK_CENTER_Y; base.castShadow = true; base.receiveShadow = true; prop.add(base);
       }
       const owner = Object.values(locations).find(location => location.sceneGroup === parent);
       owner?.obstacles.push({ id: `obstacle-${owner.id}-${owner.obstacles.length + 1}`, x, z,
@@ -475,7 +421,7 @@ async function start() {
     combatAwake: options.combatAwake ?? false, spawnReady: options.spawnReady ?? true,
     boss: options.boss ?? false,
   });
-  const forestSpawns = [{ x: -3.1, z: .3 }, { x: 3.1, z: .3 }];
+  const forestSpawns = [{ x: scaled(-3.1), z: scaled(.3) }, { x: scaled(3.1), z: scaled(.3) }];
   for (let index = 0; index < forestSpawns.length; index++) {
     const point = forestSpawns[index];
     const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z);
@@ -485,9 +431,9 @@ async function start() {
     figure.enemyMarker.group.visible = false; figures.push(figure);
   }
   const campSpawns = [
-    { x: -5.6, z: -2.8, hutX: -8.5, hutZ: -5.4 },
-    { x: 5.6, z: -2.8, hutX: 8.5, hutZ: -5.4 },
-    { x: -5.6, z: 2.8, hutX: -8.5, hutZ: 5.4 },
+    { x: scaled(-5.6), z: scaled(-2.8), hutX: scaled(-8.5), hutZ: scaled(-5.4) },
+    { x: scaled(5.6), z: scaled(-2.8), hutX: scaled(8.5), hutZ: scaled(-5.4) },
+    { x: scaled(-5.6), z: scaled(2.8), hutX: scaled(-8.5), hutZ: scaled(5.4) },
   ];
   for (let index = 0; index < campSpawns.length; index++) {
     const point = campSpawns[index];
@@ -514,7 +460,7 @@ async function start() {
     let placed = 0;
     for (let candidate = 0; candidate < 180 && placed < count; candidate++) {
       const angle = random() * Math.PI * 2;
-      const radius = 10.8 + Math.sqrt(random()) * 3.3;
+      const radius = scaled(10.8 + Math.sqrt(random()) * 3.3);
       const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius * .78;
       if (location.terrainHeightMap.sample(x, z) <= 0) continue;
       const type = scatterTypes[Math.floor(random() * scatterTypes.length)];
@@ -524,13 +470,13 @@ async function start() {
   };
   const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
   const sceneDetails = [
-    createScenery('assets/hero-house.png', 0, -1.7, 3.5, homeGroup, true, { fixedRadius: 1.2 }),
+    createScenery('assets/hero-house.png', 0, scaled(-1.7), 3.5, homeGroup, true, { fixedRadius: 1.2, base: true }),
     populateForestEdge(locations.home, 10, 11),
     populateForestEdge(locations.forest, 36, 23),
-    createScenery('assets/env-troll-hut.png', -8.5, -5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
-    createScenery('assets/env-troll-hut.png', 8.5, -5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
-    createScenery('assets/env-troll-hut.png', -8.5, 5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
-    createScenery('assets/env-troll-hut.png', 8.5, 5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', scaled(-8.5), scaled(-5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', scaled(8.5), scaled(-5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', scaled(-8.5), scaled(5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', scaled(8.5), scaled(5.4), 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
     populateForestEdge(locations.camp, 18, 37),
   ];
   await Promise.all(sceneDetails);
@@ -552,10 +498,10 @@ async function start() {
   let elapsed = 0;
   let transitionCooldown = 0;
   const campSpawnPoints = [
-    { x: -5.6, z: -2.8, hutX: -8.5, hutZ: -5.4 },
-    { x: 5.6, z: -2.8, hutX: 8.5, hutZ: -5.4 },
-    { x: -5.6, z: 2.8, hutX: -8.5, hutZ: 5.4 },
-    { x: 5.6, z: 2.8, hutX: 8.5, hutZ: 5.4 },
+    { x: scaled(-5.6), z: scaled(-2.8), hutX: scaled(-8.5), hutZ: scaled(-5.4) },
+    { x: scaled(5.6), z: scaled(-2.8), hutX: scaled(8.5), hutZ: scaled(-5.4) },
+    { x: scaled(-5.6), z: scaled(2.8), hutX: scaled(-8.5), hutZ: scaled(5.4) },
+    { x: scaled(5.6), z: scaled(2.8), hutX: scaled(8.5), hutZ: scaled(5.4) },
   ];
   function refreshLocationInfo() {
     locationTitle.textContent = activeLocation.title;
@@ -602,7 +548,7 @@ async function start() {
     figure.locationId = 'camp'; figures.push(figure);
     if (boss) {
       figure.bossScale = 1.65;
-      figure.spawnSource = { x: 0, z: -6.1 };
+      figure.spawnSource = { x: 0, z: scaled(-6.1) };
     } else figure.spawnSource = { x: spawn.hutX, z: spawn.hutZ };
     beginSpawn(figure, figure.spawnSource);
     if (activeLocation.id === 'camp') refreshLocationInfo();
@@ -632,7 +578,7 @@ async function start() {
     spawnCampGoblin().catch(error => console.error('Не удалось создать гоблина лагеря', error));
   }
   function spawnCampBoss() {
-    spawnCampGoblin({ x: 0, z: -4.2, hutX: 0, hutZ: -7.4 }, true)
+    spawnCampGoblin({ x: 0, z: scaled(-4.2), hutX: 0, hutZ: scaled(-7.4) }, true)
       .catch(error => console.error('Не удалось создать огра', error));
   }
   const bursts = [];
@@ -865,7 +811,7 @@ async function start() {
         const points = [...pointers.values()];
         const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
         const pinch = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-        distance = THREE.MathUtils.clamp(gesture.zoomStart * gesture.pinchStart / Math.max(1, pinch), 4.5, 18);
+        distance = THREE.MathUtils.clamp(gesture.zoomStart * gesture.pinchStart / Math.max(1, pinch), 4.5, 27);
         theta -= (x - gesture.lastX) * .007;
         phi = THREE.MathUtils.clamp(phi - (y - gesture.lastY) * .005, .35, 1.3);
         gesture.lastX = x; gesture.lastY = y;
@@ -936,7 +882,7 @@ async function start() {
       : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? innerHeight : 1);
     if (Number.isFinite(deltaPixels)) {
       const comfortableDelta = THREE.MathUtils.clamp(deltaPixels, -240, 240);
-      distance = THREE.MathUtils.clamp(distance * Math.exp(comfortableDelta * .0012), 4.5, 18);
+      distance = THREE.MathUtils.clamp(distance * Math.exp(comfortableDelta * .0012), 4.5, 27);
     }
   }, { passive: false });
   addEventListener('blur', () => { stopAim(); gesture = null; pointers.clear(); });

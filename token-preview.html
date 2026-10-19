@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CardboardQuest — проверка фишек окружения</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#d7c5a5;color:#352817;font:14px/1.4 system-ui,sans-serif}.top{position:sticky;top:0;z-index:2;padding:14px 20px;background:#eadbbd;border-bottom:1px solid #9b805a;box-shadow:0 2px 10px #48351e22}.top h1{font-size:19px;margin:0 0 3px}.top p{margin:0;color:#66543a}.status{padding:12px 20px}.error{color:#9f2119;font-weight:700}.sheet{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:1px;padding:1px;background:#8b724e;min-width:720px;position:relative}.cell{height:250px;position:relative;background:#f0e3c8}.cell .label,.cell .view{position:absolute;top:6px;background:#f7eddaea;border-radius:5px;padding:3px 6px;font-size:11px;font-weight:700;pointer-events:none;z-index:1}.cell .label{left:7px}.cell .view{right:7px;background:#3d3326cc;color:#fff6e2}.state{grid-column:1/-1;padding:5px 9px;background:#6e5737;color:white;font-weight:700}.wrap{overflow:auto}#render-audit{display:none}
+    @media(max-width:760px){.sheet{grid-template-columns:repeat(4,180px)}.top{position:static}}
+  </style>
+</head>
+<body>
+  <header class="top"><h1>Проверка фишек окружения</h1><p>Тот же генератор, что в игре · все декорации спереди, в три четверти, сбоку и сзади</p></header>
+  <div id="status" class="status">Загружаю спрайты и строю выдавленные фишки…</div>
+  <main class="wrap"><div id="sheet" class="sheet"></div></main>
+  <output id="render-audit"></output>
+  <script type="module" src="token-preview.mjs?v=1"></script>
+</body>
+</html>

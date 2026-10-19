@@ -1,5 +1,6 @@
 export const EXIT_ZONE_RADIUS = 1.05;
-export const FOREST_WAKE_RADIUS = 3.1;
+export const LOCATION_SCALE = 1.5;
+export const FOREST_WAKE_RADIUS = 3.1 * LOCATION_SCALE;
 export const CAMP_REINFORCEMENT_DELAY = 2;
 export const CAMP_LIVING_CAP = 4;
 export const CAMP_BOSS_DEFEATS = 8;
@@ -28,28 +29,38 @@ const campWalkable = [
   point(-8.2, 3.7), point(-7.6, .5), point(-8.4, -2.1),
 ];
 
-export function createLocationNetwork() {
+function scalePoint(value, scale) { return point(value.x * scale, value.z * scale); }
+function scaleLocationFootprint(walkablePoints, arrivals, exits, entry, scale) {
+  return {
+    walkablePoints: walkablePoints.map(value => scalePoint(value, scale)),
+    ...(entry ? { entry: scalePoint(entry, scale) } : {}),
+    arrivals: Object.fromEntries(Object.entries(arrivals).map(([id, value]) => [id, scalePoint(value, scale)])),
+    exits: exits.map(exit => ({ ...exit, ...scalePoint(exit, scale) })),
+  };
+}
+
+export function createLocationNetwork(scale = LOCATION_SCALE) {
+  if (!Number.isFinite(scale) || scale <= 0) throw new RangeError('Location scale must be a positive number');
+  const home = scaleLocationFootprint(homeWalkable, { forest: point(0, 4.6) },
+    [{ x: 0, z: -8.55, to: 'forest', label: 'Проход между холмами' }], point(1.8, .7), scale);
+  const forest = scaleLocationFootprint(forestWalkable, { home: point(0, -7), camp: point(0, 7) }, [
+    { x: 0, z: -9.55, to: 'home', label: 'Домой' },
+    { x: 0, z: 9.55, to: 'camp', label: 'Лагерь гоблинов' },
+  ], null, scale);
+  const camp = scaleLocationFootprint(campWalkable, { forest: point(0, -6.8) },
+    [{ x: 0, z: -8.55, to: 'forest', label: 'Проход между холмами' }], null, scale);
   return {
     home: {
       id: 'home', title: 'Хижина в лесу', kind: 'home', enemies: [], scenery: [], combatTriggered: false,
-      walkablePoints: homeWalkable,
-      entry: point(1.8, .7), arrivals: { forest: point(0, 4.6) },
-      exits: [{ x: 0, z: -8.55, to: 'forest', label: 'Проход между холмами' }],
+      ...home,
     },
     forest: {
       id: 'forest', title: 'Лес', kind: 'forest', enemies: [], scenery: [], combatTriggered: false,
-      walkablePoints: forestWalkable,
-      arrivals: { home: point(0, -7), camp: point(0, 7) },
-      exits: [
-        { x: 0, z: -9.55, to: 'home', label: 'Домой' },
-        { x: 0, z: 9.55, to: 'camp', label: 'Лагерь гоблинов' },
-      ],
+      ...forest,
     },
     camp: {
       id: 'camp', title: 'Лагерь гоблинов', kind: 'camp', enemies: [], scenery: [], combatTriggered: true,
-      walkablePoints: campWalkable,
-      arrivals: { forest: point(0, -6.8) },
-      exits: [{ x: 0, z: -8.55, to: 'forest', label: 'Проход между холмами' }],
+      ...camp,
       defeats: 0, reinforcementQueue: [], pendingSpawns: 0, bossSpawned: false, initialized: false,
     },
   };
