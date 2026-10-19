@@ -3,16 +3,19 @@ import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=1';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
-import { createGroundRenderer } from './render/ground-renderer.mjs?v=1';
+import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=2';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=3';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
 import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
-import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=1';
+import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=2';
 import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
+import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
+  consumeFood, createCampaignState, inspectCampaignLocation, visitCampaignLocation } from './game/story-campaign.mjs?v=1';
+import { createCampaignLocations } from './game/story-world.mjs?v=1';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=6';
@@ -31,8 +34,6 @@ const AIM_MARKER_LENGTH_SCALE = 1 / 1.3;
 const MAX_AIM_MARKER_EXTENSION = 5.4 * AIM_MARKER_LENGTH_SCALE;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
-document.querySelector('#restart').addEventListener('click', () => location.reload());
-
 async function start() {
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -44,11 +45,33 @@ async function start() {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xc7b391, 68, 230);
-  const locations = createLocationNetwork();
+  let savedCampaign = null;
+  try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
+  const campaignState = createCampaignState(savedCampaign);
+  const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE);
+  campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
+  for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
+    const location = locations[id];
+    location.defeats = stored.defeats ?? location.defeats;
+    location.goblinsSpawned = stored.goblinsSpawned ?? location.goblinsSpawned;
+    location.reinforcementQueue = Array.isArray(stored.reinforcementQueue) ? [...stored.reinforcementQueue] : location.reinforcementQueue;
+    location.bossSpawned = stored.bossSpawned ?? location.bossSpawned;
+    location.initialized = stored.initialized ?? location.initialized;
+    location.combatTriggered = stored.combatTriggered ?? location.combatTriggered;
+    location.lastExitPositions = stored.lastExitPositions ?? location.lastExitPositions;
+  }
+  heroBody.maxHealth = 20 + campaignState.maxHealthBonus;
+  heroBody.health = Math.min(savedCampaign?.playerHealth ?? heroBody.maxHealth, heroBody.maxHealth);
+  if (savedCampaign?.playerPosition && Number.isFinite(savedCampaign.playerPosition.x) && Number.isFinite(savedCampaign.playerPosition.z)) {
+    heroBody.x = savedCampaign.playerPosition.x; heroBody.z = savedCampaign.playerPosition.z;
+  }
   for (const location of Object.values(locations)) location.obstacles = [];
-  let activeLocation = locations.home;
+  let activeLocation = locations[campaignState.currentLocationId];
   const locationTitle = document.querySelector('#location-title');
   const locationDetail = document.querySelector('#location-detail');
+  const interactButton = document.querySelector('#interact');
+  const dialoguePanel = document.querySelector('#story-dialogue');
+  const inventoryPanel = document.querySelector('#inventory-panel');
   const locationGroups = Object.fromEntries(Object.values(locations).map(location => {
     const group = new THREE.Group(); group.visible = location.id === activeLocation.id; scene.add(group);
     location.sceneGroup = group;
@@ -174,17 +197,22 @@ async function start() {
   orbit.theta = Math.PI;
   target.set(heroBody.x, .65, heroBody.z);
   heroFigure.locationId = 'home'; figures.push(heroFigure);
-  const enemyBody = (id, locationId, x, z, options = {}) => ({
-    id, team: 'enemy', locationId, x, z, vx: 0, vz: 0,
-    health: options.health ?? 32, maxHealth: options.maxHealth ?? 32,
+  const enemyBody = (id, locationId, x, z, options = {}) => {
+    const stored = campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
+    return {
+    id, team: 'enemy', locationId, x: stored?.x ?? x, z: stored?.z ?? z, vx: stored?.vx ?? 0, vz: stored?.vz ?? 0,
+    health: stored?.health ?? options.health ?? 32, maxHealth: options.maxHealth ?? 32,
     charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: randomBetween(1, 4),
-    combatAwake: options.combatAwake ?? false, spawnReady: options.spawnReady ?? true,
+    combatAwake: stored?.combatAwake ?? options.combatAwake ?? false,
+    spawnReady: stored?.spawnReady ?? options.spawnReady ?? true,
     boss: options.boss ?? false,
-  });
+    };
+  };
   const forestSpawns = [{ x: scaled(-3.1), z: scaled(.3) }, { x: scaled(3.1), z: scaled(.3) }];
   for (let index = 0; index < forestSpawns.length; index++) {
     const point = forestSpawns[index];
-    const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z);
+    const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z,
+      { combatAwake: locations.forest.combatTriggered });
     locations.forest.enemies.push(body);
     const figure = await createFigure(body, 'goblin');
     figure.locationId = 'forest'; figure.group.visible = false; figure.healthHUD.visible = false;
@@ -201,6 +229,20 @@ async function start() {
     const figure = await createFigure(body, 'goblin');
     figure.locationId = 'camp'; figure.spawnSource = { x: point.hutX, z: point.hutZ }; figure.spawnStarted = false;
     figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+    figures.push(figure);
+  }
+  for (const encounter of [
+    { location: 'broken-bridge', points: [[-2.45, -.35], [2.35, -.2]] },
+    { location: 'quarry', points: [[-2.5, .2], [2.55, .15]] },
+    { location: 'bone-gate', points: [[0, -2.7]] },
+  ]) for (let index = 0; index < encounter.points.length; index++) {
+    const [x, z] = encounter.points[index];
+    const body = enemyBody(`${encounter.location}-goblin-${index + 1}`, encounter.location,
+      scaled(x), scaled(z), { combatAwake: true });
+    locations[encounter.location].enemies.push(body);
+    const figure = await createFigure(body, 'goblin');
+    figure.locationId = encounter.location; figure.group.visible = false;
+    figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
     figures.push(figure);
   }
   const propTypes = [
@@ -227,28 +269,43 @@ async function start() {
     await Promise.all(tasks);
   };
   const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
-  const sceneDetails = [
-    createScenery('assets/hero-house.png', scaled(-2.4), scaled(-2.4), 3.5, homeGroup, true, { fixedRadius: 1.2, base: true }),
-    populateForestEdge(locations.home, 10, 11),
-    populateForestEdge(locations.forest, 36, 23),
-    ...CAMP_HUT_ANCHORS.map(hut => createScenery('assets/env-troll-hut.png', scaled(hut.x), scaled(hut.z), 3.2,
-      campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true })),
-    populateForestEdge(locations.camp, 18, 37),
-  ];
+  const sceneDetails = [];
+  for (const location of Object.values(locations)) {
+    if (location.id === 'home') {
+      sceneDetails.push(createScenery('assets/hero-house.png', scaled(-2.4), scaled(-2.4), 3.5,
+        locationGroups.home, true, { fixedRadius: 1.2, base: true }));
+      sceneDetails.push(populateForestEdge(location, 8, location.heightSeed));
+    } else if (location.id === 'camp') {
+      sceneDetails.push(...CAMP_HUT_ANCHORS.map(hut => createScenery('assets/env-troll-hut.png', scaled(hut.x), scaled(hut.z), 3.2,
+        locationGroups.camp, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true })));
+      sceneDetails.push(populateForestEdge(location, 12, location.heightSeed));
+    } else {
+      const sceneryCount = location.biome === 'ruins' || location.biome === 'vault' ? 5 : 8;
+      sceneDetails.push(populateForestEdge(location, sceneryCount, location.heightSeed));
+    }
+  }
   await Promise.all(sceneDetails);
-  const decorationSpecs = {
-    home: { seed: 1601, decalCount: 19, grassCount: 40,
-      exclusions: [{ x: scaled(-2.4), z: scaled(-2.4), radius: 2.7 }, { x: 0, z: 0, radius: 1.55 }] },
-    forest: { seed: 2719, decalCount: 38, grassCount: 78,
-      exclusions: forestSpawns.map(point => ({ ...point, radius: 1.5 })) },
-    camp: { seed: 3899, decalCount: 44, grassCount: 52,
-      exclusions: [...campSpawns.map(point => ({ x: point.x, z: point.z, radius: 1.45 })),
-        ...CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z), radius: 1.95 }))] },
-  };
+  const decorationSpecs = Object.fromEntries(Object.values(locations).map((location, index) => [location.id, {
+    seed: location.heightSeed,
+    decalCount: location.kind === 'camp' ? 32 : location.biome === 'home' ? 18 : 22,
+    grassCount: location.kind === 'camp' ? 34 : location.biome === 'home' ? 28 : 38,
+    exclusions: [
+      ...(location.id === 'home' ? [{ x: scaled(-2.4), z: scaled(-2.4), radius: 2.7 }] : []),
+      ...(location.id === 'forest' ? forestSpawns.map(point => ({ ...point, radius: 1.5 })) : []),
+      ...(location.id === 'camp' ? [
+        ...campSpawns.map(point => ({ x: point.x, z: point.z, radius: 1.45 })),
+        ...CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z), radius: 1.95 })),
+      ] : []),
+      { x: 0, z: 0, radius: 1.45 },
+    ],
+  }]));
   await createGroundRenderer({ THREE, renderer, locations, specsByLocation: decorationSpecs,
     pathTargets: { camp: CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) },
     createLocationWalkPaths, scatterGroundDetails });
   refreshLocationInfo();
+  const initialVisit = visitCampaignLocation(campaignState, activeLocation.id);
+  if (initialVisit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro });
+  renderInventory();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
     for (const [name, stateArt] of Object.entries(figure.artStates)) stateArt.group.visible = name === visualState;
@@ -309,20 +366,152 @@ async function start() {
     if (window.requestIdleCallback) window.requestIdleCallback(preloadOgre, { timeout: 1600 });
     else setTimeout(preloadOgre, 100);
   }
+  let campRestorePromise = null;
+  async function restoreSavedCampEnemies() {
+    const storedEnemies = campaignState.world?.camp?.enemies;
+    if (!storedEnemies?.length) return;
+    if (campRestorePromise) return campRestorePromise;
+    campRestorePromise = (async () => {
+      await preloadCampEnemies();
+      if (campaignState.world?.camp?.bossSpawned) await preloadCampOgre();
+      for (const saved of storedEnemies) {
+        if (locations.camp.enemies.some(enemy => enemy.id === saved.id)) continue;
+        const isBoss = saved.id === 'camp-ogre';
+        const figure = isBoss ? campOgrePool : campGoblinPool.pop();
+        if (!figure) continue;
+        const body = enemyBody(saved.id, 'camp', saved.x, saved.z,
+          isBoss ? { health: 48, maxHealth: 48, combatAwake: true, boss: true }
+            : { health: 32, maxHealth: 32, combatAwake: true });
+        body.spawnReady = true;
+        figure.body = body; figure.group.userData.figure = figure; figure.poolDormant = false;
+        figure.spawnAnimation = null; figure.victoryAnimation = null; figure.bossScale = isBoss ? 1.35 : 1;
+        figure.hitAge = 10; figure.hitStrength = 0; figure.hurtAge = 10; figure.dealDamageAge = 10;
+        figure.viewBack = false; figure.locationId = 'camp';
+        setVisualState(figure, body.health > 0 ? 'idle' : 'dead');
+        figure.group.visible = activeLocation.id === 'camp';
+        figure.healthHUD.visible = figure.group.visible && body.health > 0;
+        if (figure.enemyMarker) figure.enemyMarker.group.visible = figure.group.visible && body.health > 0;
+        locations.camp.enemies.push(body);
+        if (isBoss) campOgrePool = null;
+      }
+      if (activeLocation.id === 'camp') { showActiveLocationFigures(); rebuildBodies(); refreshLocationInfo(); }
+    })().finally(() => { campRestorePromise = null; });
+    return campRestorePromise;
+  }
   function scheduleCampPreload() {
     const preload = () => preloadCampEnemies().catch(error => console.error('Не удалось заранее подготовить лагерь', error));
     if (window.requestIdleCallback) window.requestIdleCallback(preload, { timeout: 1200 });
     else setTimeout(preload, 100);
   }
+  function renderInventory() {
+    const items = document.querySelector('#inventory-items');
+    items.replaceChildren();
+    const entries = Object.entries(campaignState.items).filter(([, count]) => count > 0);
+    if (!entries.length) {
+      const empty = document.createElement('span'); empty.textContent = 'Мешок пуст'; empty.style.gridColumn = '1 / -1'; items.append(empty);
+    } else for (const [id, count] of entries) {
+      const label = document.createElement('span'), amount = document.createElement('strong');
+      label.textContent = ITEM_LABELS[id] ?? id; amount.textContent = `× ${count}`;
+      items.append(label, amount);
+    }
+    if (campaignState.defenseBonus > 0) {
+      const label = document.createElement('span'), amount = document.createElement('strong');
+      label.textContent = 'Картонный оберег'; amount.textContent = `−${campaignState.defenseBonus} урона`;
+      items.append(label, amount);
+    }
+    if (campaignState.damageBonus > 0) {
+      const label = document.createElement('span'), amount = document.createElement('strong');
+      label.textContent = 'Заточенный осколок'; amount.textContent = `+${campaignState.damageBonus} урона`;
+      items.append(label, amount);
+    }
+    const carried = entries.reduce((sum, [, count]) => sum + count, 0);
+    document.querySelector('#inventory-toggle').textContent = carried ? `Рюкзак · ${carried}` : 'Рюкзак';
+    document.querySelector('#use-food').disabled = !['bandage', 'jerky', 'hardtack', 'berries'].some(id => campaignState.items[id] > 0)
+      || heroBody.health <= 0 || heroBody.health >= heroBody.maxHealth;
+  }
+  function showStoryCard({ title, text, options = [] }) {
+    document.querySelector('#story-title').textContent = title ?? activeLocation.title;
+    document.querySelector('#story-text').textContent = text ?? '';
+    const container = document.querySelector('#story-options');
+    container.replaceChildren();
+    for (const option of options) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.textContent = option.label;
+      button.addEventListener('click', () => {
+        const result = chooseCampaignOption(campaignState, activeLocation.id, option.id);
+        if (!result) return;
+        persistCampaign(); renderInventory();
+        showStoryCard({ title: result.title, text: result.text });
+        refreshLocationInfo();
+      }, { once: true });
+      container.append(button);
+    }
+    dialoguePanel.hidden = false;
+  }
+  function persistCampaign() {
+    campaignState.currentLocationId = activeLocation.id;
+    campaignState.playerHealth = heroBody.health;
+    campaignState.playerPosition = { x: heroBody.x, z: heroBody.z };
+    campaignState.elapsed = elapsed;
+    campaignState.world = Object.fromEntries(Object.values(locations).map(location => [location.id, {
+      enemies: location.enemies.map(enemy => ({ id: enemy.id, x: enemy.x, z: enemy.z, vx: enemy.vx, vz: enemy.vz,
+        health: enemy.health, combatAwake: enemy.combatAwake, spawnReady: enemy.spawnReady })),
+      defeats: location.defeats, goblinsSpawned: location.goblinsSpawned,
+      reinforcementQueue: (location.reinforcementQueue ?? []).map(due => Math.max(0, due - elapsed)), bossSpawned: location.bossSpawned,
+      initialized: location.initialized, combatTriggered: location.combatTriggered,
+      lastExitPositions: location.lastExitPositions,
+    }]));
+    try { localStorage.setItem(CAMPAIGN_SAVE_KEY, JSON.stringify(campaignState)); } catch (error) {
+      console.warn('Не удалось сохранить поход', error);
+    }
+  }
+  document.querySelector('#story-close').addEventListener('click', () => { dialoguePanel.hidden = true; });
+  document.querySelector('#inventory-toggle').addEventListener('click', () => {
+    renderInventory(); inventoryPanel.hidden = false;
+  });
+  document.querySelector('#inventory-close').addEventListener('click', () => { inventoryPanel.hidden = true; });
+  document.querySelector('#use-food').addEventListener('click', () => {
+    const result = consumeFood(campaignState, heroBody.health, heroBody.maxHealth);
+    if (!result.consumed) return;
+    heroBody.health = result.health; persistCampaign(); renderInventory();
+    showStoryCard({ title: 'Передышка', text: `${result.consumed === 'bandage' ? 'Ты перевязал рану' : `Ты съел: ${ITEM_LABELS[result.consumed]}`}. Восстановлено ${result.healed / 4} сердца.` });
+  });
+  interactButton.addEventListener('click', () => {
+    const result = inspectCampaignLocation(campaignState, activeLocation.id);
+    if (!result) return;
+    persistCampaign(); renderInventory(); showStoryCard(result);
+  });
+  document.querySelector('#restart').addEventListener('click', () => {
+    try { localStorage.removeItem(CAMPAIGN_SAVE_KEY); } catch { /* A fresh session still starts at home. */ }
+    location.reload();
+  });
+
+  // Simple cardboard chests give secret caches a visible, consistent world-space cue.
+  const chestMaterial = new THREE.MeshStandardMaterial({ color: 0x94623a, roughness: .78, map: paper });
+  const chestLidMaterial = new THREE.MeshStandardMaterial({ color: 0xb18450, roughness: .72, map: paper });
+  const chestLatchMaterial = new THREE.MeshStandardMaterial({ color: 0xd5b354, roughness: .38, metalness: .12 });
+  for (const location of Object.values(locations)) if (location.secret) {
+    const chest = new THREE.Group(); chest.name = `cache-${location.id}`;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(.82, .38, .55), chestMaterial);
+    base.position.y = .22; base.castShadow = true; base.receiveShadow = true; chest.add(base);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(.86, .17, .59), chestLidMaterial);
+    lid.position.y = .48; lid.castShadow = true; chest.add(lid);
+    const latch = new THREE.Mesh(new THREE.BoxGeometry(.12, .19, .04), chestLatchMaterial);
+    latch.position.set(0, .34, .3); chest.add(latch);
+    chest.position.set(0, 0, 0); location.sceneGroup.add(chest);
+  }
+
   function refreshLocationInfo() {
     locationTitle.textContent = activeLocation.title;
-    if (activeLocation.kind === 'home') locationDetail.textContent = 'Проход между холмами ведёт в лес';
-    else if (activeLocation.kind === 'forest') locationDetail.textContent = activeLocation.combatTriggered
-      ? 'Гоблины напали. Узкие проходы ведут домой и к лагерю'
-      : 'Тихий лес. Подойди к гоблинам, чтобы начать бой';
-    else locationDetail.textContent = activeLocation.bossSpawned
-      ? `Вожак вышел! Победы: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS}`
-      : `Победы: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS} · живых гоблинов: ${activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length}`;
+    const progress = `${campaignState.visited.length}/${CAMPAIGN.length} мест`;
+    if (activeLocation.kind === 'forest') locationDetail.textContent = activeLocation.combatTriggered
+      ? `Гоблины напали · ${progress}` : `Следы деда уходят в лес · ${progress}`;
+    else if (activeLocation.kind === 'camp') locationDetail.textContent = activeLocation.bossSpawned
+      ? `Вожак вышел · ${progress}`
+      : `Лагерь: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS} побед · ${progress}`;
+    else locationDetail.textContent = activeLocation.campaignIntro.length > 54
+      ? `${activeLocation.campaignIntro.slice(0, 52)}… · ${progress}`
+      : `${activeLocation.campaignIntro} · ${progress}`;
   }
   function rebuildBodies() {
     bodies = [heroBody, ...activeLocation.obstacles, ...activeLocation.enemies.filter(body => body.spawnReady)];
@@ -377,7 +566,7 @@ async function start() {
     if (!figure) return null;
     const spawn = source ?? campSpawnPoints[Math.floor(Math.random() * campSpawnPoints.length)];
     if (boss) campOgrePool = null;
-    const body = enemyBody(boss ? 'camp-ogre' : `camp-goblin-${locations.camp.goblinsSpawned}`,
+    const body = enemyBody(boss ? 'camp-ogre' : `camp-goblin-${locations.camp.goblinsSpawned + 1}`,
       'camp', spawn.x, spawn.z, boss
         ? { health: 48, maxHealth: 48, combatAwake: true, spawnReady: false, boss: true }
         : { combatAwake: true, spawnReady: false });
@@ -412,10 +601,12 @@ async function start() {
     orbit.theta = heading + Math.PI;
     target.set(heroBody.x, .65, heroBody.z);
     transitionCooldown = .85;
-    if (activeLocation.kind === 'camp' && !activeLocation.initialized) {
+    const visit = visitCampaignLocation(campaignState, activeLocation.id);
+    if (activeLocation.kind === 'camp') {
+      restoreSavedCampEnemies().catch(error => console.error('Не удалось восстановить состояние лагеря', error));
       activeLocation.initialized = true;
       for (const figure of figures.filter(item => item.locationId === 'camp' && !item.poolDormant
-        && !item.body.boss && !item.body.spawnReady && !item.spawnAnimation)) {
+        && !item.body.boss && item.body.health > 0 && !item.body.spawnReady && !item.spawnAnimation)) {
         beginSpawn(figure, figure.spawnSource);
       }
     }
@@ -423,6 +614,9 @@ async function start() {
     showActiveLocationFigures();
     rebuildBodies();
     refreshLocationInfo();
+    renderInventory();
+    persistCampaign();
+    if (visit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro });
   }
   function startQueuedReinforcement() {
     const camp = locations.camp;
@@ -459,7 +653,9 @@ async function start() {
   }
   function damage(target, damageQuarters, speed) {
     if (target.hitCooldown > 0 || target.health <= 0) return false;
-    target.health = Math.max(0, target.health - Math.max(1, Math.trunc(damageQuarters)));
+    const rawDamage = Math.max(1, Math.trunc(damageQuarters));
+    const armor = target.team === 'player' ? campaignState.defenseBonus : 0;
+    target.health = Math.max(0, target.health - Math.max(1, rawDamage - armor));
     target.hitCooldown = .65;
     if (target.team === 'enemy') target.aiStunRemaining = Math.max(target.aiStunRemaining || 0, .55);
     const figure = figures.find(item => item.body === target);
@@ -476,6 +672,13 @@ async function start() {
       refreshLocationInfo();
       if (bossUnlocked) spawnCampBoss();
     }
+    if (target.team === 'enemy' && target.health === 0 && !target.lootDropped) {
+      target.lootDropped = true;
+      const drop = Math.random() < .65 ? { berries: 1 } : Math.random() < .8 ? { hardtack: 1 } : { jerky: 1 };
+      addItems(campaignState, drop);
+      renderInventory();
+    }
+    persistCampaign();
     return true;
   }
   let lastVibration = 0;
@@ -497,7 +700,8 @@ async function start() {
       const attackHit = (attacker, target) => {
         if (attacker.fixed || target.fixed) return;
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
-        if (!damage(target, ricochetDamageQuarters(attacker.attackRicochets || 0), speed)) return;
+        const bonus = attacker.team === 'player' ? campaignState.damageBonus : 0;
+        if (!damage(target, ricochetDamageQuarters(attacker.attackRicochets || 0) + bonus, speed)) return;
         attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
         const attackerFigure = figures.find(item => item.body === attacker);
         if (attackerFigure) attackerFigure.dealDamageAge = 0;
@@ -652,6 +856,12 @@ async function start() {
     camera.updateProjectionMatrix(); updateCamera();
   }
   addEventListener('resize', resize); resize();
+  showActiveLocationFigures();
+  rebuildBodies();
+  if (activeLocation.id === 'forest') scheduleCampPreload();
+  if (activeLocation.id === 'camp') restoreSavedCampEnemies().then(() => {
+    showActiveLocationFigures(); rebuildBodies();
+  }).catch(error => console.error('Не удалось восстановить состояние лагеря', error));
   loading.hidden = true;
   let previousTime = null;
   renderer.setAnimationLoop(time => {
@@ -821,6 +1031,9 @@ async function start() {
       else if (protectedEntryFrom) protectedEntryFrom = null;
       if (exit) enterLocation(exit.to, activeLocation.id);
     }
+    const nearInteraction = heroBody.health > 0 && Math.hypot(heroBody.x, heroBody.z) <= 2.65;
+    interactButton.hidden = !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive;
+    interactButton.textContent = activeLocation.secret ? 'Открыть тайник' : 'Осмотреть';
     playerMarker.material.color.lerp(
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
       1 - Math.exp(-18 * dt));

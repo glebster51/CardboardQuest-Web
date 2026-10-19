@@ -52,17 +52,32 @@ const TERRAIN_PALETTES = {
   home: { tops: [0x84964c, 0x9ca657, 0xb4a868, 0xc0a873], side: 0x805b39 },
   forest: { tops: [0x647e43, 0x78884b, 0x9c975b, 0xb29d70], side: 0x67472e },
   camp: { tops: [0x8a784e, 0x9e8953, 0xb2a067, 0xc1ad78], side: 0x775037 },
+  river: { tops: [0x71836f, 0x849478, 0xa19d70, 0xb8a57b], side: 0x66563d },
+  cave: { tops: [0x716b59, 0x82785f, 0x978365, 0xa89570], side: 0x5f4834 },
+  ruins: { tops: [0x747e5c, 0x858861, 0x9b936b, 0xb2a079], side: 0x67503a },
+  ridge: { tops: [0x7f754e, 0x918252, 0xa69462, 0xb9a678], side: 0x704c31 },
+  meadow: { tops: [0x829351, 0x9ba25d, 0xb0a66a, 0xc1ae7b], side: 0x78603c },
+  quarry: { tops: [0x817d69, 0x979176, 0xaca17e, 0xc0ae82], side: 0x65523b },
+  marsh: { tops: [0x687b55, 0x7f895e, 0x99916a, 0xb1a079], side: 0x594c37 },
+  vault: { tops: [0x70735c, 0x858168, 0x9a8c70, 0xb09d7c], side: 0x58432f },
 };
 
 export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
   paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6 }) {
   for (const location of Object.values(locations)) {
-    const seed = location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731;
+    const seed = location.heightSeed ?? (location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731);
+    const bounds = location.walkablePoints.reduce((result, point) => ({
+      minX: Math.min(result.minX, point.x), maxX: Math.max(result.maxX, point.x),
+      minZ: Math.min(result.minZ, point.z), maxZ: Math.max(result.maxZ, point.z),
+    }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+    const terrainMargin = 6;
     const heightMap = createTerrainHeightMap(seed, location.walkablePoints,
-      { cellSize: .85, step: .24, maxHeight });
+      { minX: bounds.minX - terrainMargin, maxX: bounds.maxX + terrainMargin,
+        minZ: bounds.minZ - terrainMargin, maxZ: bounds.maxZ + terrainMargin,
+        cellSize: .85, step: .24, maxHeight });
     location.terrainHeightMap = heightMap;
     location.sceneGroup.userData.terrainHeightMap = heightMap;
-    const palette = TERRAIN_PALETTES[location.id];
+    const palette = TERRAIN_PALETTES[location.terrainStyle ?? location.id] ?? TERRAIN_PALETTES.forest;
     const layers = [{
       shapes: [terrainShape(THREE, location.walkablePoints)], depth: .3, top: 0,
       topColor: palette.tops[0], sideColor: palette.side,

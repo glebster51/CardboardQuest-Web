@@ -11,9 +11,29 @@
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
   <div id="location-info" role="status" aria-live="polite"><strong id="location-title"></strong><small id="location-detail"></small></div>
   <button id="restart" type="button" aria-label="Начать игру заново">↻ <span>Заново</span></button>
+  <div id="story-actions">
+    <button id="interact" type="button" hidden>Осмотреть</button>
+    <button id="inventory-toggle" type="button">Рюкзак</button>
+  </div>
+  <section id="story-dialogue" hidden aria-live="polite">
+    <article>
+      <strong id="story-title"></strong>
+      <p id="story-text"></p>
+      <div id="story-options"></div>
+      <button id="story-close" type="button">Понятно</button>
+    </article>
+  </section>
+  <section id="inventory-panel" hidden aria-live="polite">
+    <article>
+      <strong>Дорожный мешок</strong>
+      <div id="inventory-items"></div>
+      <button id="use-food" type="button">Съесть припасы</button>
+      <button id="inventory-close" type="button">Закрыть</button>
+    </article>
+  </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-<script type="module" src="app.js?v=68"></script>
+<script type="module" src="app.js?v=69"></script>
 </body>
 </html>
 

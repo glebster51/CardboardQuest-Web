@@ -1,8 +1,10 @@
-const DECAL_ASSETS = [
-  'ground-pit', 'ground-grass-ring', 'ground-dirt-patch', 'ground-footprints',
-  'ground-footsteps', 'ground-scuff', 'ground-pebbles', 'ground-cracks',
-  ...Array.from({ length: 8 }, (_, index) => `grass-tuft-${index + 1}`),
+const GROUND_DECALS = [
+  'ground-v2-pit', 'ground-v2-grass-ring', 'ground-v2-dirt-patch', 'ground-v2-footprints',
+  'ground-v2-footsteps', 'ground-v2-scuff', 'ground-v2-pebbles', 'ground-v2-cracks',
+  'ground-v2-twig', 'ground-v2-hooves', 'ground-v2-stones', 'ground-v2-cracks-broad',
 ];
+const GRASS_DECALS = Array.from({ length: 8 }, (_, index) => `grass-tuft-v2-${index + 1}`);
+const DECAL_ASSETS = [...GROUND_DECALS, ...GRASS_DECALS];
 
 function makeMarkMaterial(THREE, texture, opacity) {
   return new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: .035, opacity,
@@ -54,7 +56,7 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
   const textures = new Map(await Promise.all(DECAL_ASSETS.map(async name =>
     [name, await loadTexture(`assets/${name}.png`)])));
   const materials = new Map(DECAL_ASSETS.map(name => [name,
-    makeMarkMaterial(THREE, textures.get(name), name.startsWith('grass-tuft-') ? .94 : .8)]));
+    makeMarkMaterial(THREE, textures.get(name), name.startsWith('grass-tuft-v2-') ? .94 : .8)]));
 
   for (const location of Object.values(locations)) {
     const paths = createLocationWalkPaths(location, pathTargets[location.id] ?? []);
@@ -64,10 +66,10 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
     group.userData.walkPaths = paths;
     location.sceneGroup.add(group);
     const marks = [...details.decals, ...details.trail];
-    for (const kind of DECAL_ASSETS.slice(0, 8)) {
+    for (const kind of GROUND_DECALS) {
       addInstances(THREE, group, kind, marks.filter(mark => mark.kind === kind), materials);
     }
-    for (const kind of DECAL_ASSETS.slice(8)) {
+    for (const kind of GRASS_DECALS) {
       addInstances(THREE, group, kind, details.grass.filter(mark => mark.kind === kind), materials, true);
     }
     location.groundDetails = { ...details, paths };

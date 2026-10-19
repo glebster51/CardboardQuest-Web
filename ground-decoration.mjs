@@ -108,8 +108,9 @@ export function scatterGroundDetails({
   if (!polygon || polygon.length < 3) throw new TypeError('Scattering needs a walkable polygon');
   const random = seededRandom(seed), bounds = areaBounds(polygon);
   const decals = [], grass = [];
-  const decalKinds = ['ground-pit', 'ground-grass-ring', 'ground-dirt-patch', 'ground-footprints',
-    'ground-footsteps', 'ground-scuff', 'ground-pebbles', 'ground-cracks'];
+  const decalKinds = ['ground-v2-pit', 'ground-v2-grass-ring', 'ground-v2-dirt-patch', 'ground-v2-footprints',
+    'ground-v2-footsteps', 'ground-v2-scuff', 'ground-v2-pebbles', 'ground-v2-cracks',
+    'ground-v2-twig', 'ground-v2-hooves', 'ground-v2-stones', 'ground-v2-cracks-broad'];
   const accepts = (point, edge, path, placements, spacing) => pointInWalkableArea(point.x, point.z, polygon)
     && distanceToBoundary(point.x, point.z, polygon) >= edge
     && pathDistance(point, paths) >= path
@@ -120,7 +121,7 @@ export function scatterGroundDetails({
       const point = { x: bounds.minX + random() * (bounds.maxX - bounds.minX),
         z: bounds.minZ + random() * (bounds.maxZ - bounds.minZ) };
       if (!accepts(point, edgeMargin, pathMargin, target, options.spacing)) continue;
-      const kind = options.grass ? `grass-tuft-${1 + Math.floor(random() * 8)}`
+      const kind = options.grass ? `grass-tuft-v2-${1 + Math.floor(random() * 8)}`
         : decalKinds[Math.floor(random() * decalKinds.length)];
       target.push({ ...point, kind, width: options.width[0] + random() * (options.width[1] - options.width[0]),
         height: options.height[0] + random() * (options.height[1] - options.height[0]),
@@ -141,12 +142,12 @@ export function scatterGroundDetails({
       const tangent = Math.atan2(b.x - a.x, b.z - a.z);
       if (random() < .8) trail.push({ x: (a.x + b.x) / 2 + (random() - .5) * .12,
         z: (a.z + b.z) / 2 + (random() - .5) * .12,
-        kind: random() < .7 ? 'ground-dirt-patch' : 'ground-scuff',
+        kind: random() < .7 ? 'ground-v2-dirt-patch' : 'ground-v2-scuff',
         width: 1.02 + random() * .42, height: .72 + random() * .3,
         rotation: tangent + (random() - .5) * .28, opacity: .65 + random() * .18 });
       if (Math.floor(index * .46 / 1.55) !== Math.floor((index - 1) * .46 / 1.55) && random() < .72) {
         trail.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2,
-          kind: random() < .5 ? 'ground-footprints' : 'ground-footsteps',
+          kind: random() < .5 ? 'ground-v2-footprints' : 'ground-v2-footsteps',
           width: .42 + random() * .13, height: .48 + random() * .18,
           rotation: tangent + (random() - .5) * .16, opacity: .75 + random() * .2 });
       }
