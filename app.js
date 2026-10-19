@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
-import { validateSpriteFrames, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=3';
+import { validateSpriteFrames, spriteAlphaBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=4';
 import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
@@ -19,6 +19,8 @@ let selected = true;
 const pointers = new Map();
 let gesture = null;
 const GROUND_UI_Y = .026;
+const AIM_DRAG_SENSITIVITY = 1 / 3;
+const AIM_MARKER_LENGTH_SCALE = 1 / 1.3;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
@@ -160,6 +162,7 @@ async function start() {
       const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
       const cleanedMask = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
+      const frontBounds = spriteAlphaBounds(cleanedMask, frameWidth, frameHeight);
       const worldWidth = 2.05 * frameWidth / frameHeight;
       const spriteGeometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
       const alphaPixels = clipSpriteToAlphaMask(sourcePixels, spriteGeometry.rasterMask);
@@ -170,8 +173,17 @@ async function start() {
       const backContext = backCanvas.getContext('2d');
       backContext.translate(frameWidth, 0); backContext.scale(-1, 1);
       backContext.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
-      const backPixels = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
-      const clippedBack = clipSpriteToAlphaMask(backPixels, spriteGeometry.rasterMask);
+      const unregisteredBack = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
+      const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frameWidth, frameHeight);
+      const backBounds = spriteAlphaBounds(backMask, frameWidth, frameHeight);
+      const registeredBackCanvas = document.createElement('canvas');
+      registeredBackCanvas.width = frameWidth; registeredBackCanvas.height = frameHeight;
+      const registeredBackContext = registeredBackCanvas.getContext('2d', { willReadFrequently: true });
+      registeredBackContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
+        frontBounds.x, frontBounds.y, frontBounds.width, frontBounds.height);
+      const registeredBack = registeredBackContext.getImageData(0, 0, frameWidth, frameHeight).data;
+      const clippedBack = clipSpriteToAlphaMask(registeredBack, spriteGeometry.rasterMask);
+      backContext.setTransform(1, 0, 0, 1, 0, 0); backContext.clearRect(0, 0, frameWidth, frameHeight);
       backContext.putImageData(new ImageData(clippedBack, frameWidth, frameHeight), 0, 0);
       const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
       back.anisotropy = front.anisotropy;
@@ -425,7 +437,7 @@ async function start() {
       overlap.rotation.x = Math.PI / 2; overlap.renderOrder = 20; group.add(overlap);
     }
     let progress = null;
-    const fullExtension = 5.4;
+    const fullExtension = 5.4 * AIM_MARKER_LENGTH_SCALE;
     const backEdge = -.87;
     if (showProgress) {
       progress = new THREE.Mesh(markerGeometry(fullExtension, true),
@@ -560,11 +572,11 @@ async function start() {
       const scale = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / innerHeight;
       const dx = (event.clientX - gesture.startX) * scale;
       const dz = (event.clientY - gesture.startY) * scale / Math.cos(phi);
-      gesture.pull = clampPull(Math.cos(theta) * dx + Math.sin(theta) * dz,
-        -Math.sin(theta) * dx + Math.cos(theta) * dz);
+      gesture.pull = clampPull((Math.cos(theta) * dx + Math.sin(theta) * dz) * AIM_DRAG_SENSITIVITY,
+        (-Math.sin(theta) * dx + Math.cos(theta) * dz) * AIM_DRAG_SENSITIVITY);
       const direction = new THREE.Vector3(-gesture.pull.x, 0, -gesture.pull.z);
       const length = direction.length();
-      playerMarker.setExtension(length > .06 ? length * 3.2 : 0);
+      playerMarker.setExtension(length > .02 ? length * 3.2 / AIM_DRAG_SENSITIVITY * AIM_MARKER_LENGTH_SCALE : 0);
       if (length > .06) {
         activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
         playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
@@ -715,7 +727,7 @@ async function start() {
         figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
         figure.enemyMarker.group.rotation.y = aiming ? body.aiAimAngle : figure.facing;
         figure.enemyMarker.group.visible = body.health > 0;
-        figure.enemyMarker.setExtension(aiming ? 5.4 : 0);
+        figure.enemyMarker.setExtension(aiming ? 5.4 * AIM_MARKER_LENGTH_SCALE : 0);
         figure.enemyMarker.setProgress(aiming ? 1 - body.aiTimer / body.aiAimDuration : 0);
         figure.enemyMarker.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
         figure.enemyMarker.material.opacity = body.health > 0 ? .96 : .35;

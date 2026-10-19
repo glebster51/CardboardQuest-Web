@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=1';
-import { validateSpriteFrames, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=3';
+import { validateSpriteFrames, spriteAlphaBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=4';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const subjects = [{ id: 'hero', label: 'Игрок', back: 'hero-back.png' }, { id: 'goblin', label: 'Гоблин', back: 'goblin-back.png' }];
@@ -33,13 +33,22 @@ async function loadSubject(subject) {
     const source = textures[si], canvas = document.createElement('canvas'); canvas.width = frame.width; canvas.height = frame.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source.image, 0, 0, frame.width, frame.height);
     const pixels = ctx.getImageData(0, 0, frame.width, frame.height).data;
-    const cleaned = unionSpriteAlpha(pixels, pixels, frame.width, frame.height), worldWidth = 2.05 * frame.width / frame.height;
+    const cleaned = unionSpriteAlpha(pixels, pixels, frame.width, frame.height), frontBounds = spriteAlphaBounds(cleaned, frame.width, frame.height);
+    const worldWidth = 2.05 * frame.width / frame.height;
     const outline = silhouetteShapes(cleaned, frame.width, frame.height, worldWidth, 2.05), frontPixels = clipSpriteToAlphaMask(pixels, outline.rasterMask);
     ctx.putImageData(new ImageData(frontPixels, frame.width, frame.height), 0, 0);
     const backCanvas = document.createElement('canvas'); backCanvas.width = frame.width; backCanvas.height = frame.height;
     const backCtx = backCanvas.getContext('2d', { willReadFrequently: true }); backCtx.translate(frame.width, 0); backCtx.scale(-1, 1);
     backCtx.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
-    const backPixels = clipSpriteToAlphaMask(backCtx.getImageData(0, 0, frame.width, frame.height).data, outline.rasterMask);
+    const unregisteredBack = backCtx.getImageData(0, 0, frame.width, frame.height).data;
+    const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frame.width, frame.height);
+    const backBounds = spriteAlphaBounds(backMask, frame.width, frame.height), registeredBack = document.createElement('canvas');
+    registeredBack.width = frame.width; registeredBack.height = frame.height;
+    const registeredContext = registeredBack.getContext('2d', { willReadFrequently: true });
+    registeredContext.drawImage(backCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
+      frontBounds.x, frontBounds.y, frontBounds.width, frontBounds.height);
+    const backPixels = clipSpriteToAlphaMask(registeredContext.getImageData(0, 0, frame.width, frame.height).data, outline.rasterMask);
+    backCtx.setTransform(1, 0, 0, 1, 0, 0); backCtx.clearRect(0, 0, frame.width, frame.height);
     backCtx.putImageData(new ImageData(backPixels, frame.width, frame.height), 0, 0);
     const front = new THREE.CanvasTexture(canvas), back = new THREE.CanvasTexture(backCanvas);
     front.colorSpace = back.colorSpace = THREE.SRGBColorSpace;

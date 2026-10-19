@@ -200,6 +200,17 @@ export function validateSpriteFrames(states, backFrame) {
     backX: (width - backWidth) / 2, backY: (height - backHeight) / 2 };
 }
 
+export function spriteAlphaBounds(rgba, width, height, threshold = 128) {
+  if (rgba.length !== width * height * 4) throw new RangeError('Sprite bounds dimensions must match the pixel data');
+  let minX = width, minY = height, maxX = -1, maxY = -1;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (rgba[(y * width + x) * 4 + 3] < threshold) continue;
+    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  if (maxX < minX || maxY < minY) throw new RangeError('Sprite has no opaque pixels');
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
 export function unionSpriteAlpha(frontRGBA, backRGBA, width, height, minimumIslandPixels = 12) {
   if (frontRGBA.length !== backRGBA.length || frontRGBA.length % 4 !== 0) throw new RangeError('Front and back textures must share a frame');
   const pixelCount = frontRGBA.length / 4;
