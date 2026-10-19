@@ -186,7 +186,7 @@ async function start() {
       group.add(artGroup);
       artStates[visualState] = { group: artGroup, frontArt, backArt,
         alphaPixels: frontArt.alphaPixels, width: frameWidth, height: frameHeight };
-      source.dispose();
+      sources[stateIndex].dispose();
       backTextures[stateIndex].dispose();
     }
     const initialArt = artStates.idle;
