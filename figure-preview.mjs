@@ -61,8 +61,8 @@ async function loadSubject(subject) {
       new THREE.MeshStandardMaterial({ color: 0x97713e }),
     ]);
     base.position.y = .115; group.add(base); art.group.position.y = 1.25; group.add(art.group);
-    built.set(`${subject.id}:${states[si]}`, { group, art, source, front, back });
-    backTexture.dispose();
+    built.set(`${subject.id}:${states[si]}`, { group, art });
+    textures[si].dispose(); backTextures[si].dispose();
   }
 }
 
