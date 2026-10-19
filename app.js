@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=9';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL } from './physics.mjs?v=10';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -13,6 +13,7 @@ let state = bodies[0];
 let selected = true;
 const pointers = new Map();
 let gesture = null;
+const GROUND_UI_Y = .026;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 document.querySelector('#restart').addEventListener('click', () => location.reload());
 
@@ -165,9 +166,9 @@ async function start() {
     const artGroup = new THREE.Group();
     artGroup.position.y = .225;
     group.add(artGroup);
-    for (let i = 0; i < 9; i++) {
-      const face = new THREE.Mesh(geometry, i === 8 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
-      face.position.set(0, 1.025, (i - 4) * .006);
+    for (let i = 0; i < 25; i++) {
+      const face = new THREE.Mesh(geometry, i === 24 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
+      face.position.set(0, 1.025, (i - 12) * .006);
       face.castShadow = true;
       face.userData.print = true;
       artGroup.add(face);
@@ -182,7 +183,7 @@ async function start() {
       alphaTest: .1, side: THREE.DoubleSide, depthWrite: false });
     const frontFlash = new THREE.Mesh(geometry, flashMaterial);
     const backFlash = new THREE.Mesh(geometry, flashMaterial);
-    frontFlash.position.set(0, 1.025, .032); backFlash.position.set(0, 1.025, -.032);
+    frontFlash.position.set(0, 1.025, .08); backFlash.position.set(0, 1.025, -.08);
     artGroup.add(frontFlash, backFlash);
 
     const healthHUD = new THREE.Group();
@@ -213,11 +214,11 @@ async function start() {
     let attackProgress = null;
     if (body.team === 'enemy') {
       enemyRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80),
-        new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
-      enemyRing.rotation.x = -Math.PI / 2; scene.add(enemyRing);
+        new THREE.MeshBasicMaterial({ color: 0xdf3830, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+      enemyRing.rotation.x = -Math.PI / 2; enemyRing.renderOrder = 1; scene.add(enemyRing);
       attackIndicator = new THREE.Group();
       const warning = createArrowSkin(0xd82932, 0xff5b50, true);
-      warning.group.scale.set(1.6, 2.4, 1);
+      warning.group.scale.set(1.6, 12, 1);
       attackIndicator.add(warning.group);
       attackProgress = warning.progress;
       attackIndicator.visible = false; scene.add(attackIndicator);
@@ -242,6 +243,7 @@ async function start() {
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
   const dustGeometry = new THREE.SphereGeometry(.045, 5, 4);
   const selectedColor = new THREE.Color(0x65d536);
+  const enemyColor = new THREE.Color(0xdf3830);
   const attackColor = new THREE.Color(0xffffff);
   function burst(x, z, strength = 1) {
     if (bursts.length >= 12) return;
@@ -293,7 +295,8 @@ async function start() {
     burst(b ? (a.x + b.x) / 2 : a.x, b ? (a.z + b.z) / 2 : a.z, Math.min(1.5, speed / 7));
   }
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(.87, 1.13, 80), new THREE.MeshBasicMaterial({ color: 0x65d536, transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false }));
-  selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = .012;
+  selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = GROUND_UI_Y;
+  selectionRing.material.depthTest = false; selectionRing.renderOrder = 1;
   selectionRing.visible = true; scene.add(selectionRing);
   const aiming = new THREE.Group(); aiming.visible = false; scene.add(aiming);
   const playerArrow = createArrowSkin(0x65d536, 0xd8ff91, false);
@@ -308,19 +311,19 @@ async function start() {
     const geometry = new THREE.ShapeGeometry(shape);
     const group = new THREE.Group();
     const glow = new THREE.Mesh(geometry,
-      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: showProgress ? .18 : .42, side: THREE.DoubleSide, depthWrite: false }));
-    glow.rotation.x = Math.PI / 2; glow.scale.set(1.14, 1, 1); glow.position.z = -.01; group.add(glow);
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: showProgress ? .18 : .42, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+    glow.rotation.x = Math.PI / 2; glow.scale.set(1.14, 1, 1); glow.renderOrder = 2; group.add(glow);
     const arrow = new THREE.Mesh(geometry,
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: showProgress ? .4 : .96, side: THREE.DoubleSide, depthWrite: false }));
-    arrow.rotation.x = Math.PI / 2; group.add(arrow);
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: showProgress ? .4 : .96, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+    arrow.rotation.x = Math.PI / 2; arrow.renderOrder = 3; group.add(arrow);
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry),
       new THREE.LineBasicMaterial({ color: 0xfff4d4, transparent: true, opacity: showProgress ? .4 : .96, depthTest: false }));
-    outline.rotation.x = Math.PI / 2; outline.position.z = -.02; group.add(outline);
+    outline.rotation.x = Math.PI / 2; outline.renderOrder = 4; group.add(outline);
     let progress = null;
     if (showProgress) {
       progress = new THREE.Mesh(geometry,
         new THREE.MeshBasicMaterial({ color: 0xff5148, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
-      progress.rotation.x = Math.PI / 2; progress.position.z = -.035; progress.scale.y = .001; progress.visible = false;
+      progress.rotation.x = Math.PI / 2; progress.scale.y = .001; progress.visible = false; progress.renderOrder = 5;
       group.add(progress);
     }
     return { group, arrow, progress };
@@ -369,7 +372,8 @@ async function start() {
     if (pointers.size > 1) {
       stopAim();
       const points = [...pointers.values()];
-      gesture = { mode: 'touchOrbit',
+      const pinchStart = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+      gesture = { mode: 'touchOrbit', pinchStart, zoomStart: distance,
         lastX: (points[0].x + points[1].x) / 2, lastY: (points[0].y + points[1].y) / 2 };
       return;
     }
@@ -378,7 +382,7 @@ async function start() {
     } else {
       const hit = hitFigure(event.clientX, event.clientY);
       if (hit) choose(hit);
-      if (hit?.body.team === 'player') {
+      if (hit) {
         if (state.charges > 0 && state.health > 0) {
           state.vx = 0; state.vz = 0;
           gesture = { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 },
@@ -399,6 +403,8 @@ async function start() {
       if (pointers.size >= 2) {
         const points = [...pointers.values()];
         const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
+        const pinch = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+        distance = THREE.MathUtils.clamp(gesture.zoomStart * gesture.pinchStart / Math.max(1, pinch), 4.5, 18);
         theta -= (x - gesture.lastX) * .007;
         phi = THREE.MathUtils.clamp(phi - (y - gesture.lastY) * .005, .35, 1.3);
         gesture.lastX = x; gesture.lastY = y;
@@ -422,9 +428,9 @@ async function start() {
       aiming.visible = length > .06;
       if (length > .06) {
         activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
-        aiming.position.set(state.x, .025, state.z);
+        aiming.position.set(state.x, GROUND_UI_Y, state.z);
         aiming.rotation.y = activeFigure.facing;
-        playerArrow.group.scale.y = 17.6 * length / MAX_PULL;
+        playerArrow.group.scale.y = 88 * length / MAX_PULL;
         if (state.charges > 0 && state.health > 0) arrow.material.color.setHSL(.25 - .18 * length / MAX_PULL, .42, .36);
         else arrow.material.color.setHex(0x77736b);
       }
@@ -507,12 +513,19 @@ async function start() {
       if (body.aiPhase === 'dash' && speed < .2) {
         body.aiPhase = 'pause'; body.aiTimer = randomBetween(1, 4);
       } else if (body.aiPhase === 'pause' && body.aiTimer <= 0) {
-        body.aiPhase = 'aim'; body.aiAimDuration = randomBetween(1.7, 2.7); body.aiTimer = body.aiAimDuration;
+        body.aiPhase = 'aim'; body.aiTargetX = state.x; body.aiTargetZ = state.z;
+        body.aiAimAngle = facingAngle(body.aiTargetX - body.x, body.aiTargetZ - body.z,
+          figures.find(item => item.body === body)?.facing ?? 0);
+        body.aiAimDuration = randomBetween(1.7, 2.7); body.aiTimer = body.aiAimDuration;
+        const figure = figures.find(item => item.body === body);
+        if (figure) figure.facing = body.aiAimAngle;
       } else if (body.aiPhase === 'aim' && body.aiTimer <= 0 && body.charges > 0 && state.health > 0 && body.health > 0) {
-        const power = THREE.MathUtils.clamp(distanceToPlayer * .12, .55, .95);
+        const aimX = body.aiTargetX - body.x, aimZ = body.aiTargetZ - body.z;
+        const aimDistance = Math.hypot(aimX, aimZ);
+        const power = THREE.MathUtils.clamp(aimDistance * .12, .55, .95);
         body.charges--; body.rechargeTimer = 0; body.aiPhase = 'dash';
-        launch(body, { x: -dx / Math.max(.001, distanceToPlayer) * power,
-          z: -dz / Math.max(.001, distanceToPlayer) * power });
+        launch(body, { x: -aimX / Math.max(.001, aimDistance) * power,
+          z: -aimZ / Math.max(.001, aimDistance) * power });
         burst(body.x, body.z, .45);
       }
       if (body.health <= 0) body.vx = body.vz = 0;
@@ -523,7 +536,9 @@ async function start() {
       const body = figure.body;
       figure.group.position.set(body.x, 0, body.z);
       const speed = Math.hypot(body.vx, body.vz);
-      if (body !== held) figure.facing = facingAngle(body.vx, body.vz, figure.facing);
+      if (body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
+        figure.facing = facingAngle(body.vx, body.vz, figure.facing);
+      }
       figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
       figure.hitAge += dt;
       figure.hurtAge += dt;
@@ -559,14 +574,15 @@ async function start() {
         figure.markerAge += dt;
         const t = Math.min(1, figure.markerAge / .55);
         const bounce = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
-        figure.enemyRing.position.set(body.x, .013, body.z);
+        figure.enemyRing.position.set(body.x, GROUND_UI_Y, body.z);
         figure.enemyRing.scale.setScalar(Math.max(.001, bounce) * (body.health > 0 ? 1 : .88));
         figure.enemyRing.material.opacity = body.health > 0 ? .9 : .35;
+        figure.enemyRing.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
         const aimingAtPlayer = body.health > 0 && body.aiPhase === 'aim';
         figure.attackIndicator.visible = aimingAtPlayer;
         if (aimingAtPlayer) {
-          figure.attackIndicator.position.set(body.x, .028, body.z);
-          figure.attackIndicator.rotation.y = facingAngle(state.x - body.x, state.z - body.z, figure.facing);
+          figure.attackIndicator.position.set(body.x, GROUND_UI_Y, body.z);
+          figure.attackIndicator.rotation.y = body.aiAimAngle;
           const progress = 1 - body.aiTimer / body.aiAimDuration;
           figure.attackProgress.scale.y = Math.max(.001, progress);
           figure.attackProgress.position.y = 0;
@@ -600,7 +616,7 @@ async function start() {
     selectionRing.material.color.lerp(
       state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
       1 - Math.exp(-18 * dt));
-    selectionRing.position.set(state.x, .012, state.z);
+    selectionRing.position.set(state.x, GROUND_UI_Y, state.z);
     updateCamera();
     for (const figure of figures) {
       figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);
