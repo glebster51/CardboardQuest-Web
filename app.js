@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advance, LIMIT_X, LIMIT_Z, MAX_PULL } from './physics.mjs';
+import { clampPull, launch, advance, facingAngle, LIMIT_X, LIMIT_Z, MAX_PULL } from './physics.mjs';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -117,7 +117,11 @@ async function start() {
   const elastic = new THREE.Line(elasticGeometry, new THREE.LineBasicMaterial({ color: 0xfff1cd, transparent: true, opacity: .8 }));
   elastic.frustumCulled = false; aiming.add(elastic);
 
-  const tex = await new THREE.TextureLoader().loadAsync('assets/hero-a.png');
+  const loader = new THREE.TextureLoader();
+  const [tex, backTex] = await Promise.all([
+    loader.loadAsync('assets/hero-a.png'),
+    loader.loadAsync('assets/hero-back.png'),
+  ]);
   tex.colorSpace = THREE.SRGBColorSpace;
   const image = tex.image;
   const silhouette = document.createElement('canvas');
@@ -139,6 +143,21 @@ async function start() {
   const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
   const art = new THREE.CanvasTexture(cut); art.colorSpace = THREE.SRGBColorSpace;
   art.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  const backCut = document.createElement('canvas');
+  backCut.width = cut.width; backCut.height = cut.height;
+  const backContext = backCut.getContext('2d');
+  // Both prints share the front's cutout and registration, even at different resolutions.
+  backContext.fillStyle = '#fff4d8';
+  backContext.fillRect(0, 0, cut.width, cut.height);
+  const backScaleX = backTex.image.width / image.width;
+  const backScaleY = backTex.image.height / image.height;
+  backContext.drawImage(backTex.image, x0 * backScaleX, y0 * backScaleY,
+    cut.width * backScaleX, cut.height * backScaleY, 0, 0, cut.width, cut.height);
+  backContext.globalCompositeOperation = 'destination-in';
+  backContext.drawImage(cut, 0, 0);
+  const backArt = new THREE.CanvasTexture(backCut); backArt.colorSpace = THREE.SRGBColorSpace;
+  backArt.anisotropy = art.anisotropy;
+  tex.dispose(); backTex.dispose();
   const geometry = new THREE.PlaneGeometry(2.05 * cut.width / cut.height, 2.05);
   const edgeMaterial = new THREE.MeshStandardMaterial({ alphaMap: art, alphaTest: .5, color: 0x9d7746, roughness: 1, side: THREE.DoubleSide });
   // AlphaMap reads green rather than PNG alpha; use the same silhouette through map.
@@ -147,9 +166,11 @@ async function start() {
   edgeMaterial.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb = vec3(0.48, 0.31, 0.15);');
   };
-  const printMaterial = new THREE.MeshStandardMaterial({ map: art, alphaTest: .5, roughness: 1, side: THREE.DoubleSide });
+  const printMaterial = new THREE.MeshStandardMaterial({ map: art, alphaTest: .5, roughness: 1, side: THREE.FrontSide });
+  // Keep identical UVs: looking through the back of the card mirrors the print naturally.
+  const backMaterial = new THREE.MeshStandardMaterial({ map: backArt, alphaTest: .5, roughness: 1, side: THREE.BackSide });
   for (let i = 0; i < 9; i++) {
-    const face = new THREE.Mesh(geometry, i === 8 ? printMaterial : edgeMaterial);
+    const face = new THREE.Mesh(geometry, i === 8 ? printMaterial : i === 0 ? backMaterial : edgeMaterial);
     face.position.set(0, .225 + 1.025, (i - 4) * .006);
     face.castShadow = true;
     face.userData.print = true;
@@ -226,6 +247,7 @@ async function start() {
       aiming.visible = length > .06; anchorRing.visible = aiming.visible;
       anchorRing.position.set(gesture.anchor.x, .015, gesture.anchor.z);
       if (length > .06) {
+        hero.rotation.y = facingAngle(direction.x, direction.z, hero.rotation.y);
         arrow.position.set(state.x, .08, state.z);
         arrow.setDirection(direction.normalize());
         arrow.setLength(.8 + length * 1.4, .28 + length * .12, .2 + length * .08);
@@ -290,6 +312,7 @@ async function start() {
     previousTime = time;
     if (gesture?.mode !== 'aim') {
       for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advance(state, Math.min(remaining, 1 / 120));
+      hero.rotation.y = facingAngle(state.vx, state.vz, hero.rotation.y);
       if (selected) {
         const easing = 1 - Math.exp(-dt * 8);
         target.x += (state.x - target.x) * easing;

@@ -6,6 +6,11 @@ export const REBOUND = 0.55;
 export const LIMIT_X = 11.1;
 export const LIMIT_Z = 9.1;
 
+// The printed front faces local +Z; retain the last direction when stopped.
+export function facingAngle(x, z, previous) {
+  return Math.hypot(x, z) > 0.0001 ? Math.atan2(x, z) : previous;
+}
+
 export function clampPull(x, z) {
   const length = Math.hypot(x, z);
   const scale = length > MAX_PULL ? MAX_PULL / length : 1;
