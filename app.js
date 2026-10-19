@@ -245,7 +245,7 @@ async function start() {
     const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
     const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
     artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    const art = makeExtrudedSprite(alphaPixels, cut.width, cut.height, artTexture, artTexture, corrugation);
+    const art = buildExtrudedSprite(alphaPixels, cut.width, cut.height, artTexture, artTexture, corrugation);
     art.group.position.y = 1.025;
     source.dispose();
     return art.group;
