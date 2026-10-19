@@ -91,14 +91,15 @@ function render() {
     const r = cell.getBoundingClientRect(), x = Math.round((r.left - bounds.left) * ratio), y = Math.round((bounds.bottom - r.bottom) * ratio);
     const w = Math.round(r.width * ratio), h = Math.round(r.height * ratio);
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, true);
-    const model = models.get(asset.id); model.root.rotation.y = view.angle; model.model.setViewBack(view.angle > Math.PI / 2);
+    const model = models.get(asset.id); model.root.rotation.y = 0; model.model.setViewBack(view.angle > Math.PI / 2);
     const visibleExtrusions = Number(model.model.frontGroup.visible) + Number(model.model.backGroup.visible);
     activeExtrusions[asset.id].push(visibleExtrusions);
     if (visibleExtrusions !== 1) throw new Error(`${asset.label} (${view.label}): одновременно видны две толщины картона`);
     scene.add(model.root);
     const aspect = r.width / r.height, halfHeight = 2.1;
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect; camera.top = halfHeight; camera.bottom = -halfHeight;
-    camera.position.set(0, 3.1, 8); camera.lookAt(0, 1.5, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    camera.position.set(8 * Math.sin(view.angle), 3.1, 8 * Math.cos(view.angle));
+    camera.lookAt(0, 1.5, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
     renderer.render(scene, camera); scene.remove(model.root);
   }
   renderer.setScissorTest(false);
