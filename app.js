@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
-import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath, containingTerrainLayer } from './terrain-shapes.mjs?v=2';
+import { createTerrainPeaks, createTerrainHeightMap, extractTerrainContours, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
@@ -59,6 +59,7 @@ async function start() {
     return map;
   }
   const terrainPeaks = createTerrainPeaks(1937, 34, 6.5);
+  const terrainHeightMap = createTerrainHeightMap(8128, WALKABLE_POINTS, { cellSize: .85, step: .24, maxHeight: 3.6 });
   function terrainShape(outerPoints, innerPoints = null) {
     const shape = new THREE.Shape();
     const outer = outerPoints.map(point => new THREE.Vector2(point.x, -point.z));
@@ -75,6 +76,42 @@ async function start() {
       hole.closePath(); shape.holes.push(hole);
     }
     return shape;
+  }
+  function terrainShapesFromContours(contours) {
+    const records = contours.map(points => {
+      let area = 0;
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i], b = points[(i + 1) % points.length];
+        area += a.x * b.z - b.x * a.z;
+      }
+      return { points, area: Math.abs(area), parent: null, depth: 0 };
+    });
+    const contains = (point, polygon) => {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const a = polygon[i], b = polygon[j];
+        if ((a.z > point.z) !== (b.z > point.z) && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
+      }
+      return inside;
+    };
+    for (const record of records) {
+      record.parent = records.filter(candidate => candidate.area > record.area && contains(record.points[0], candidate.points))
+        .sort((a, b) => a.area - b.area)[0] || null;
+    }
+    const depthOf = record => record.parent ? depthOf(record.parent) + 1 : 0;
+    records.forEach(record => { record.depth = depthOf(record); });
+    return records.filter(record => record.depth % 2 === 0).map(record => {
+      const shape = terrainShape(record.points);
+      for (const child of records) if (child.parent === record && child.depth === record.depth + 1) {
+        const holePoints = child.points.map(point => new THREE.Vector2(point.x, -point.z));
+        const orderedHole = THREE.ShapeUtils.isClockWise(holePoints) ? holePoints : [...holePoints].reverse();
+        const hole = new THREE.Path();
+        hole.moveTo(orderedHole[0].x, orderedHole[0].y);
+        for (let i = 1; i < orderedHole.length; i++) hole.lineTo(orderedHole[i].x, orderedHole[i].y);
+        hole.closePath(); shape.holes.push(hole);
+      }
+      return shape;
+    });
   }
   const paper = texture(256, 256, (c, w, h) => {
     c.fillStyle = '#e4d0a8'; c.fillRect(0, 0, w, h);
@@ -95,22 +132,24 @@ async function start() {
       c.stroke();
     }
   });
-  const terrainScales = [1, 1.15, 1.32, 1.52, 1.76, 2.05, 2.4, 2.82, 3.3, 3.85, 4.45, 5.1, 5.8, 6.5];
-  const terrainBoundaries = terrainScales.map(scale => makeNoisyBoundary(WALKABLE_POINTS, scale, terrainPeaks, 7));
   const terrainCorrugation = corrugation.clone();
   terrainCorrugation.wrapS = terrainCorrugation.wrapT = THREE.RepeatWrapping;
   terrainCorrugation.repeat.set(1, 1);
   const terrainColors = [0x789456, 0x91a05b, 0xa2a063, 0xb1a36c, 0x9b8c66, 0x897858, 0x9f956f, 0xb2a878, 0x8b8369, 0x9d9477, 0xb4a983, 0x968e79, 0xb3aa91, 0x8b816e];
-  const terrainLayers = terrainBoundaries.map((boundary, index) => ({
-    outer: boundary, inner: index ? terrainBoundaries[index - 1] : null,
-    depth: index === 0 ? .3 : .25 + index * .012,
-    top: index * .28,
-    topColor: terrainColors[index],
-    sideColor: index % 2 ? 0x805b39 : 0x9c7243,
-  }));
+  const terrainLayers = [{
+    shapes: [terrainShape(WALKABLE_POINTS)], depth: .3, top: 0,
+    topColor: terrainColors[0], sideColor: 0x805b39,
+  }, {
+    shapes: terrainShapesFromContours(extractTerrainContours(terrainHeightMap, .001)), depth: terrainHeightMap.step, top: terrainHeightMap.step,
+    topColor: terrainColors[1], sideColor: 0x9c7243,
+  }, ...terrainHeightMap.layers.filter(layer => layer.contours.length).map((layer, index) => ({
+    shapes: terrainShapesFromContours(layer.contours), depth: terrainHeightMap.step, top: layer.height,
+    topColor: terrainColors[(index + 2) % terrainColors.length], sideColor: index % 2 ? 0x805b39 : 0x9c7243,
+  }))];
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   for (const layer of terrainLayers) {
+    if (!layer.shapes.length) continue;
     const terrainUvGenerator = {
       generateTopUV(_geometry, vertices, a, b, c) {
         return [a, b, c].map(index => new THREE.Vector2(vertices[index * 3], vertices[index * 3 + 1]));
@@ -123,7 +162,7 @@ async function start() {
         });
       },
     };
-    const geometry = new THREE.ExtrudeGeometry(terrainShape(layer.outer, layer.inner), {
+    const geometry = new THREE.ExtrudeGeometry(layer.shapes, {
       depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: terrainUvGenerator,
     });
     geometry.rotateX(-Math.PI / 2);
@@ -301,9 +340,8 @@ async function start() {
     const art = template.clone(true);
     // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
     art.scale.set(size / 2.05, size / 2.05, 1);
-    const layerIndex = containingTerrainLayer(x, z, terrainBoundaries);
-    if (layerIndex < 0) return;
-    const elevation = layerIndex * .28;
+    const elevation = terrainHeightMap.sample(x, z);
+    if (elevation <= 0) return;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
     const inward = nearestPointOnPath(x, z, WALKABLE_POINTS);
     prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
@@ -340,7 +378,7 @@ async function start() {
     const typeRoll = growthRandom();
     const type = propTypes.find((item, index) => typeRoll < propTypes.slice(0, index + 1).reduce((sum, entry) => sum + entry.weight, 0)) || propTypes[0];
     const x = Math.cos(angle) * radius * 10.8, z = Math.sin(angle) * radius * 8.2;
-    if (containingTerrainLayer(x, z, terrainBoundaries) < 0) continue;
+    if (terrainHeightMap.sample(x, z) <= 0) continue;
     if (radius < 1.35 && WALKABLE_POINTS.some(point => Math.hypot(point.x - x, point.z - z) < 1.1)) continue;
     const distanceScale = radius > 3.5 ? .64 : radius > 2.3 ? .82 : 1;
     sceneryPaths.push(createScenery(type.path, x, z, randomBetween(...type.size) * distanceScale));
