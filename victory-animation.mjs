@@ -16,6 +16,18 @@ export function createVictoryLoop(random = Math.random) {
   return { time: 0, wait: 1 + random() * 2, spin: random() < .38, cycles: 0 };
 }
 
+export function canCelebrateLocationVictory(location, campGoblinTotal = 8) {
+  const enemies = location?.enemies;
+  if (!Array.isArray(enemies) || enemies.length === 0 || enemies.some(enemy => enemy.health > 0)) return false;
+  if (location.kind === 'forest' && !location.combatTriggered) return false;
+  if (location.kind === 'camp') return Boolean(location.bossSpawned)
+    && (location.goblinsSpawned ?? 0) >= campGoblinTotal
+    && (location.pendingSpawns ?? 0) === 0
+    && (location.reinforcementQueue?.length ?? 0) === 0
+    && enemies.some(enemy => enemy.boss);
+  return true;
+}
+
 export function advanceVictoryLoop(loop, dt, random = Math.random) {
   loop.time += Math.max(0, dt);
   while (loop.time >= loop.wait + VICTORY_MOTION_DURATION) {

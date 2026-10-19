@@ -12,7 +12,7 @@ import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=2';
-import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
+import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
   consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=2';
@@ -334,6 +334,7 @@ async function start() {
   let elapsed = 0;
   let transitionCooldown = 0;
   let victorySequenceActive = false;
+  const celebratedLocations = new Set();
   let protectedEntryFrom = null;
   const campSpawnPoints = campSpawns;
   const campGoblinPool = [];
@@ -992,6 +993,7 @@ async function start() {
   }
   function choose(figure) {
     if (victorySequenceActive || !figure || figure.body.health <= 0 || figure.body.team !== 'player') return;
+    if (figure === heroFigure) figure.victoryAnimation = null;
     if (figure !== activeFigure) {
       activeFigure = figure; state = figure.body;
       selectionAge = 0;
@@ -1009,6 +1011,7 @@ async function start() {
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
     onLaunch(body, pull) {
+      if (body === heroBody) heroFigure.victoryAnimation = null;
       body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
       launch(body, pull);
       if (Math.hypot(body.vx, body.vz) > 1) burst(body.x, body.z, .55);
@@ -1041,6 +1044,11 @@ async function start() {
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
     if (heroBody.health <= 0) beginVictorySequence();
+    if (!victorySequenceActive && heroBody.health > 0 && !celebratedLocations.has(activeLocation.id)
+      && canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL)) {
+      celebratedLocations.add(activeLocation.id);
+      startUnitVictory(heroFigure);
+    }
     for (const figure of figures) if (figure.spawnAnimation) {
       const animation = figure.spawnAnimation;
       animation.age += dt;
