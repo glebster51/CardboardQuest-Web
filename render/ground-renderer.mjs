@@ -39,11 +39,11 @@ function addInstances(THREE, parent, kind, marks, materials, upright = false) {
 
 /** Load shared decal resources once and build per-location instanced scenery. */
 export async function createGroundRenderer({ THREE, renderer, locations, specsByLocation,
-  pathTargets = {}, createLocationWalkPaths, scatterGroundDetails }) {
+  pathTargets = {}, createLocationWalkPaths, scatterGroundDetails, assetBase = 'assets/' }) {
   const textureCache = new Map();
   const loadTexture = path => {
     if (!textureCache.has(path)) {
-      textureCache.set(path, new THREE.TextureLoader().loadAsync(path).then(texture => {
+      textureCache.set(path, new THREE.TextureLoader().loadAsync(`${assetBase}${path.replace(/^assets\//, '')}`).then(texture => {
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
         return texture;

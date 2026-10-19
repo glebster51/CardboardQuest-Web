@@ -23,7 +23,7 @@ function yieldFrameWork() {
 
 /** Build display instances from cached pose geometry and source textures. */
 export function createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
-  corrugation, paper, sceneStencil, heartMaterials, createEnemyMarker, groundUiY }) {
+  corrugation, paper, sceneStencil, heartMaterials, createEnemyMarker, groundUiY, assetBase = 'assets/' }) {
   const artCache = new Map();
 
   async function loadFigureArt(body, prefix) {
@@ -33,9 +33,9 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
       pending = (async () => {
         const loader = new THREE.TextureLoader();
         const frontSources = await Promise.all(VISUAL_STATES.map(state =>
-          loader.loadAsync(`assets/${prefix}-${state}.png?sheet=3`)));
+          loader.loadAsync(`${assetBase}${prefix}-${state}.png?sheet=3`)));
         const backSources = await Promise.all(VISUAL_STATES.map(state =>
-          loader.loadAsync(`assets/${prefix}-${state}-back.png?sheet=3`)));
+          loader.loadAsync(`${assetBase}${prefix}-${state}-back.png?sheet=3`)));
         const width = frontSources[0].image.width, height = frontSources[0].image.height;
         if ([...frontSources, ...backSources].some(source => source.image.width !== width || source.image.height !== height)) {
           throw new Error(`Pose sheet cells must share one frame: ${prefix}`);

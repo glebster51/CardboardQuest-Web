@@ -5,14 +5,14 @@ import { nearestPointOnPath } from '../terrain-shapes.mjs';
 
 /** Own scenery asset templates and construct location props from them. */
 export function createScenerySystem({ THREE, renderer, scene, locations, corrugation, paper,
-  terrainCorrugation, sceneStencil }) {
+  terrainCorrugation, sceneStencil, assetBase = 'assets/' }) {
   const templates = new Map();
   const facePairs = [];
 
   function loadTemplate(path) {
     if (templates.has(path)) return templates.get(path);
     const pending = (async () => {
-      const source = await new THREE.TextureLoader().loadAsync(`${path}?art=4`);
+      const source = await new THREE.TextureLoader().loadAsync(`${assetBase}${path.replace(/^assets\//, '')}?art=4`);
       const art = makeScenerySprite(source.image, corrugation, renderer.capabilities.getMaxAnisotropy());
       source.dispose();
       return art.group;
