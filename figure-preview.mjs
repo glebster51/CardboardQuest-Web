@@ -77,7 +77,7 @@ function render() {
     const r = cell.getBoundingClientRect(), x = Math.round((r.left - bounds.left) * ratio), y = Math.round((bounds.bottom - r.bottom) * ratio);
     const w = Math.round(r.width * ratio), h = Math.round(r.height * ratio);
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, true);
-    const model = built.get(`${subject.id}:${state}`); scene.add(model.group); model.group.rotation.y = view.angle;
+    const model = built.get(`${subject.id}:${state}`); scene.add(model.group); model.group.rotation.y = 0;
     const aspect = r.width / r.height, halfHeight = 1.58;
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect; camera.top = halfHeight; camera.bottom = -halfHeight;
     const az = view.angle, distance = view.id === 'three-quarter' ? 7.5 : 8;
