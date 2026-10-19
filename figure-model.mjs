@@ -39,7 +39,7 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
 }
 
 export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
-  const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = .04;
+  const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = .144;
   const uv = (vertices, index) => new THREE.Vector2(vertices[index * 3] / worldWidth + .5, vertices[index * 3 + 1] / worldHeight + .5);
   const uvGenerator = {
     generateTopUV(_geometry, vertices, a, b, c) { return [uv(vertices, a), uv(vertices, b), uv(vertices, c)]; },

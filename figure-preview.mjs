@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=3';
-import { validateSpriteFrames, spriteAlphaBounds, fitSpriteBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=4';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const subjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }];
@@ -26,38 +26,34 @@ const paper = new THREE.CanvasTexture(paperCanvas); paper.colorSpace = THREE.SRG
 const built = new Map(), cells = [];
 
 async function loadSubject(subject) {
-  const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png`)));
-  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?v=1`)));
-  const frame = validateSpriteFrames(textures.map(texture => texture.image), backTextures[0].image);
+  const textures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}.png?sheet=1`)));
+  const backTextures = await Promise.all(states.map(state => loader.loadAsync(`assets/${subject.id}-${state}-back.png?sheet=1`)));
+  const frameWidth = textures[0].image.width, frameHeight = textures[0].image.height;
+  if (textures.some(texture => texture.image.width !== frameWidth || texture.image.height !== frameHeight)
+    || backTextures.some(texture => texture.image.width !== frameWidth || texture.image.height !== frameHeight)) {
+    throw new Error(`Pose sheet cells must share one frame: ${subject.id}`);
+  }
+  const prepareFace = (image, state, side) => {
+    const canvas = document.createElement('canvas'); canvas.width = frameWidth; canvas.height = frameHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(image, 0, 0, frameWidth, frameHeight);
+    const pixels = ctx.getImageData(0, 0, frameWidth, frameHeight).data;
+    if (!pixels.some((_value, index) => index % 4 === 3 && pixels[index] > 80)) throw new Error(`Empty sprite: ${subject.id}-${state}-${side}`);
+    const cleaned = unionSpriteAlpha(pixels, pixels, frameWidth, frameHeight);
+    const worldWidth = 2.05 * frameWidth / frameHeight;
+    const outline = silhouetteShapes(cleaned, frameWidth, frameHeight, worldWidth, 2.05);
+    const alphaPixels = clipSpriteToAlphaMask(pixels, outline.rasterMask);
+    ctx.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
+    const faceTexture = new THREE.CanvasTexture(canvas); faceTexture.colorSpace = THREE.SRGBColorSpace;
+    const model = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, faceTexture, faceTexture,
+      corrugation, subject.id === 'hero', outline.shapes, alphaPixels);
+    model.group.rotation.y = side === 'back' ? Math.PI : 0;
+    return model;
+  };
   for (let si = 0; si < states.length; si++) {
-    const source = textures[si], backTexture = backTextures[si], canvas = document.createElement('canvas'); canvas.width = frame.width; canvas.height = frame.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source.image, 0, 0, frame.width, frame.height);
-    const pixels = ctx.getImageData(0, 0, frame.width, frame.height).data;
-    const cleaned = unionSpriteAlpha(pixels, pixels, frame.width, frame.height);
-    const frontBounds = spriteAlphaBounds(cleaned, frame.width, frame.height);
-    const worldWidth = 2.05 * frame.width / frame.height;
-    const outline = silhouetteShapes(cleaned, frame.width, frame.height, worldWidth, 2.05), frontPixels = clipSpriteToAlphaMask(pixels, outline.rasterMask);
-    ctx.putImageData(new ImageData(frontPixels, frame.width, frame.height), 0, 0);
-    const backCanvas = document.createElement('canvas'); backCanvas.width = frame.width; backCanvas.height = frame.height;
-    const backCtx = backCanvas.getContext('2d', { willReadFrequently: true }); backCtx.translate(frame.width, 0); backCtx.scale(-1, 1);
-    backCtx.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
-    const unregisteredBack = backCtx.getImageData(0, 0, frame.width, frame.height).data;
-    const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frame.width, frame.height);
-    const backBounds = spriteAlphaBounds(backMask, frame.width, frame.height), registeredBack = document.createElement('canvas');
-    const cleanedBack = clipSpriteToAlphaMask(unregisteredBack, backMask), cleanBack = document.createElement('canvas');
-    cleanBack.width = frame.width; cleanBack.height = frame.height;
-    cleanBack.getContext('2d').putImageData(new ImageData(cleanedBack, frame.width, frame.height), 0, 0);
-    const fittedBack = fitSpriteBounds(backBounds, frontBounds);
-    registeredBack.width = frame.width; registeredBack.height = frame.height;
-    const registeredContext = registeredBack.getContext('2d', { willReadFrequently: true });
-    registeredContext.drawImage(cleanBack, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
-      fittedBack.x, fittedBack.y, fittedBack.width, fittedBack.height);
-    const backPixels = clipSpriteToAlphaMask(registeredContext.getImageData(0, 0, frame.width, frame.height).data, outline.rasterMask);
-    backCtx.setTransform(1, 0, 0, 1, 0, 0); backCtx.clearRect(0, 0, frame.width, frame.height);
-    backCtx.putImageData(new ImageData(backPixels, frame.width, frame.height), 0, 0);
-    const front = new THREE.CanvasTexture(canvas), back = new THREE.CanvasTexture(backCanvas);
-    front.colorSpace = back.colorSpace = THREE.SRGBColorSpace;
-    const art = makeExtrudedSprite(frontPixels, frame.width, frame.height, front, back, corrugation, subject.id === 'hero', outline.shapes, backPixels);
+    const frontArt = prepareFace(textures[si].image, states[si], 'front');
+    const backArt = prepareFace(backTextures[si].image, states[si], 'back');
+    const art = { group: new THREE.Group(), frontArt, backArt };
+    art.group.add(frontArt.group, backArt.group); frontArt.group.visible = true; backArt.group.visible = false;
     const group = new THREE.Group();
     const base = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .2, 48), [
       new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1 }),
@@ -92,8 +88,10 @@ function render() {
     const w = Math.round(r.width * ratio), h = Math.round(r.height * ratio);
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, true);
     const model = built.get(`${subject.id}:${state}`); scene.add(model.group);
-    model.art.group.rotation.set(0, view.angle, 0); model.art.group.updateMatrix(); model.art.group.updateMatrixWorld(true);
-    model.art.backPlane.visible = view.angle > Math.PI / 2;
+    model.art.group.rotation.set(0, view.angle, 0);
+    model.art.frontArt.group.visible = view.angle <= Math.PI / 2;
+    model.art.backArt.group.visible = view.angle > Math.PI / 2;
+    model.art.group.updateMatrix(); model.art.group.updateMatrixWorld(true);
     const aspect = r.width / r.height, halfHeight = 1.58;
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect; camera.top = halfHeight; camera.bottom = -halfHeight;
     camera.position.set(0, 2.5, 8); camera.lookAt(0, 1.16, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();

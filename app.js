@@ -1,10 +1,10 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
-import { validateSpriteFrames, spriteAlphaBounds, fitSpriteBounds, unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=3';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -149,55 +149,45 @@ async function start() {
 
     const loader = new THREE.TextureLoader();
     const artStates = {};
-    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png`)));
-    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?v=1`)));
-    const frame = validateSpriteFrames(sources.map(source => source.image), backTextures[0].image);
-    const frameWidth = frame.width, frameHeight = frame.height;
-    for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
-      const visualState = VISUAL_STATES[stateIndex], source = sources[stateIndex], image = source.image, backTexture = backTextures[stateIndex];
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = frameWidth; sourceCanvas.height = frameHeight;
-      const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
-      sourceContext.drawImage(image, 0, 0, frameWidth, frameHeight);
-      const sourcePixels = sourceContext.getImageData(0, 0, frameWidth, frameHeight).data;
-      if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
-      const cleanedMask = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
-      const frontBounds = spriteAlphaBounds(cleanedMask, frameWidth, frameHeight);
+    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=1`)));
+    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=1`)));
+    const frameWidth = sources[0].image.width, frameHeight = sources[0].image.height;
+    if (sources.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)
+      || backTextures.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)) {
+      throw new Error(`Pose sheet cells must share one frame: ${prefix}`);
+    }
+    const prepareFace = (image, visualState, side) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = frameWidth; canvas.height = frameHeight;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0, frameWidth, frameHeight);
+      const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
+      if (!pixels.some((_value, index) => index % 4 === 3 && pixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}-${side}`);
+      const cleanedMask = unionSpriteAlpha(pixels, pixels, frameWidth, frameHeight);
       const worldWidth = 2.05 * frameWidth / frameHeight;
-      const spriteGeometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
-      const alphaPixels = clipSpriteToAlphaMask(sourcePixels, spriteGeometry.rasterMask);
-      sourceContext.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
-      const front = new THREE.CanvasTexture(sourceCanvas); front.colorSpace = THREE.SRGBColorSpace;
-      front.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      const backCanvas = document.createElement('canvas'); backCanvas.width = frameWidth; backCanvas.height = frameHeight;
-      const backContext = backCanvas.getContext('2d');
-      backContext.translate(frameWidth, 0); backContext.scale(-1, 1);
-      backContext.drawImage(backTexture.image, frame.backX, frame.backY, frame.backWidth, frame.backHeight);
-      const unregisteredBack = backContext.getImageData(0, 0, frameWidth, frameHeight).data;
-      const backMask = unionSpriteAlpha(unregisteredBack, unregisteredBack, frameWidth, frameHeight);
-      const backBounds = spriteAlphaBounds(backMask, frameWidth, frameHeight);
-      const cleanedBackPixels = clipSpriteToAlphaMask(unregisteredBack, backMask), cleanBackCanvas = document.createElement('canvas');
-      cleanBackCanvas.width = frameWidth; cleanBackCanvas.height = frameHeight;
-      cleanBackCanvas.getContext('2d').putImageData(new ImageData(cleanedBackPixels, frameWidth, frameHeight), 0, 0);
-      const fittedBack = fitSpriteBounds(backBounds, frontBounds);
-      const registeredBackCanvas = document.createElement('canvas');
-      registeredBackCanvas.width = frameWidth; registeredBackCanvas.height = frameHeight;
-      const registeredBackContext = registeredBackCanvas.getContext('2d', { willReadFrequently: true });
-      registeredBackContext.drawImage(cleanBackCanvas, backBounds.x, backBounds.y, backBounds.width, backBounds.height,
-        fittedBack.x, fittedBack.y, fittedBack.width, fittedBack.height);
-      const registeredBack = registeredBackContext.getImageData(0, 0, frameWidth, frameHeight).data;
-      const clippedBack = clipSpriteToAlphaMask(registeredBack, spriteGeometry.rasterMask);
-      backContext.setTransform(1, 0, 0, 1, 0, 0); backContext.clearRect(0, 0, frameWidth, frameHeight);
-      backContext.putImageData(new ImageData(clippedBack, frameWidth, frameHeight), 0, 0);
-      const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
-      back.anisotropy = front.anisotropy;
-      const art = buildExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player', spriteGeometry.shapes, clippedBack);
-      art.group.position.y = 1.25;
-      art.group.visible = visualState === 'idle';
-      group.add(art.group);
-      artStates[visualState] = art;
+      const geometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
+      const alphaPixels = clipSpriteToAlphaMask(pixels, geometry.rasterMask);
+      context.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
+      const faceTexture = new THREE.CanvasTexture(canvas); faceTexture.colorSpace = THREE.SRGBColorSpace;
+      faceTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      const model = buildExtrudedSprite(alphaPixels, frameWidth, frameHeight, faceTexture, faceTexture,
+        corrugation, body.team === 'player', geometry.shapes, alphaPixels);
+      model.group.rotation.y = side === 'back' ? Math.PI : 0;
+      return { ...model, texture: faceTexture };
+    };
+    for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
+      const visualState = VISUAL_STATES[stateIndex];
+      const frontArt = prepareFace(sources[stateIndex].image, visualState, 'front');
+      const backArt = prepareFace(backTextures[stateIndex].image, visualState, 'back');
+      const artGroup = new THREE.Group(); artGroup.position.y = 1.25;
+      artGroup.add(frontArt.group, backArt.group);
+      frontArt.group.visible = true; backArt.group.visible = false;
+      artGroup.visible = visualState === 'idle';
+      group.add(artGroup);
+      artStates[visualState] = { group: artGroup, frontArt, backArt,
+        alphaPixels: frontArt.alphaPixels, width: frameWidth, height: frameHeight };
       source.dispose();
-      backTexture.dispose();
+      backTextures[stateIndex].dispose();
     }
     const initialArt = artStates.idle;
 
@@ -234,7 +224,8 @@ async function start() {
     const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
       healthHUD, healthFill, chargePips, enemyMarker,
-      flashMaterial: initialArt.flashMaterial, backFlashMaterial: initialArt.backFlashMaterial, facing: 0, hitAge: 10, hitStrength: 0,
+      flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
+      viewBack: false, facing: 0, hitAge: 10, hitStrength: 0,
       hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
@@ -327,8 +318,8 @@ async function start() {
     figure.alphaPixels = art.alphaPixels;
     figure.width = art.width;
     figure.height = art.height;
-    figure.flashMaterial = art.flashMaterial;
-    figure.backFlashMaterial = art.backFlashMaterial;
+    figure.flashMaterial = art.frontArt.flashMaterial;
+    figure.backFlashMaterial = art.backArt.flashMaterial;
     figure.visualState = visualState;
   }
   let activeFigure = figures[0];
@@ -689,8 +680,13 @@ async function start() {
       }
       if (body.health > 0) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
       const cameraDx = camera.position.x - figure.group.position.x, cameraDz = camera.position.z - figure.group.position.z;
-      const cameraOnBack = cameraDx * Math.sin(figure.group.rotation.y) + cameraDz * Math.cos(figure.group.rotation.y) < 0;
-      for (const art of Object.values(figure.artStates)) art.backPlane.visible = cameraOnBack;
+      const cameraDistance = Math.max(.001, Math.hypot(cameraDx, cameraDz));
+      const facingDot = (cameraDx * Math.sin(figure.group.rotation.y) + cameraDz * Math.cos(figure.group.rotation.y)) / cameraDistance;
+      if (figure.viewBack ? facingDot > .025 : facingDot < -.025) figure.viewBack = !figure.viewBack;
+      for (const art of Object.values(figure.artStates)) {
+        art.frontArt.group.visible = !figure.viewBack;
+        art.backArt.group.visible = figure.viewBack;
+      }
       figure.hitAge += dt;
       figure.hurtAge += dt;
       figure.dealDamageAge += dt;
@@ -700,8 +696,9 @@ async function start() {
             : body === held || (body.team === 'enemy' && body.aiPhase === 'aim') ? 'aiming'
               : isAttacking(body) && body !== held ? 'attack' : 'idle';
       setVisualState(figure, visualState);
-      figure.flashMaterial.opacity = figure.hurtAge < .42 && Math.floor(figure.hurtAge / .055) % 2 === 0 ? 1 : 0;
-      figure.backFlashMaterial.opacity = figure.flashMaterial.opacity;
+      const flashOpacity = figure.hurtAge < .42 && Math.floor(figure.hurtAge / .055) % 2 === 0 ? 1 : 0;
+      figure.flashMaterial.opacity = figure.viewBack ? 0 : flashOpacity;
+      figure.backFlashMaterial.opacity = figure.viewBack ? flashOpacity : 0;
       const spring = Math.exp(-figure.hitAge * 9) * Math.sin(figure.hitAge * 28);
       const squash = figure.hitStrength * spring;
       figure.artGroup.scale.set(1 + squash * .7, 1 - squash, 1);
