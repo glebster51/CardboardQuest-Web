@@ -1,10 +1,11 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=1';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=1';
 import { createScenerySystem } from './render/scenery-system.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=1';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=2';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
 import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
@@ -82,6 +83,7 @@ async function start() {
       c.fillRect(Math.random() * w, Math.random() * h, 1, 1);
     }
   });
+  const cardboardGrain = createCardboardGrainTexture({ THREE, texture });
   const corrugation = texture(1024, 128, (c, w, h) => {
     c.fillStyle = '#a77b46'; c.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 32) {
@@ -157,7 +159,8 @@ async function start() {
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
-    paper, terrainCorrugation, sceneStencil });
+    paper, playfieldCardboard: cardboardGrain, roughCardboard: cardboardGrain,
+    terrainCorrugation, sceneStencil });
   const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
     corrugation, paper, sceneStencil, heartMaterials,
     createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });

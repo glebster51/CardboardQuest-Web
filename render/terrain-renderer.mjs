@@ -1,3 +1,5 @@
+import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs';
+
 function terrainShape(THREE, outerPoints) {
   const shape = new THREE.Shape();
   const outer = outerPoints.map(point => new THREE.Vector2(point.x, -point.z));
@@ -53,11 +55,11 @@ const TERRAIN_PALETTES = {
 };
 
 export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
-  paper, terrainCorrugation, sceneStencil }) {
+  paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6 }) {
   for (const location of Object.values(locations)) {
     const seed = location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731;
     const heightMap = createTerrainHeightMap(seed, location.walkablePoints,
-      { cellSize: .85, step: .24, maxHeight: 3.6 });
+      { cellSize: .85, step: .24, maxHeight });
     location.terrainHeightMap = heightMap;
     location.sceneGroup.userData.terrainHeightMap = heightMap;
     const palette = TERRAIN_PALETTES[location.id];
@@ -92,11 +94,12 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
         depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: uvGenerator,
       });
       geometry.rotateX(-Math.PI / 2);
+      const topMaterial = layer.top === 0
+        ? makePlayfieldCardboardMaterial(THREE, playfieldCardboard, layer.topColor, sceneStencil)
+        : makeRoughCardboardMaterial(THREE, roughCardboard, layer.topColor, sceneStencil);
       const mesh = new THREE.Mesh(geometry, [
-        new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null,
-          roughness: .96, ...sceneStencil }),
-        new THREE.MeshStandardMaterial({ color: layer.sideColor, map: terrainCorrugation,
-          roughness: 1, ...sceneStencil }),
+        topMaterial,
+        makeRoughCardboardMaterial(THREE, terrainCorrugation, layer.sideColor, sceneStencil),
       ]);
       mesh.position.y = layer.top - layer.depth;
       mesh.castShadow = true;
