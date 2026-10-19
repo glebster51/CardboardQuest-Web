@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=18';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=19';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 import { createTerrainHeightMap, extractTerrainContours, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
@@ -39,6 +39,7 @@ async function start() {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xc7b391, 68, 230);
   const locations = createLocationNetwork();
+  for (const location of Object.values(locations)) location.obstacles = [];
   let activeLocation = locations.home;
   const locationTitle = document.querySelector('#location-title');
   const locationDetail = document.querySelector('#location-detail');
@@ -417,8 +418,18 @@ async function start() {
     const source = await new THREE.TextureLoader().loadAsync(`${path}?art=2`);
     const { cut, alphaPixels, width, height } = extractMainScenerySprite(source.image);
     const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
+    const backCanvas = document.createElement('canvas'); backCanvas.width = width; backCanvas.height = height;
+    const backContext = backCanvas.getContext('2d');
+    backContext.translate(width, 0); backContext.scale(-1, 1); backContext.drawImage(cut, 0, 0);
+    const backTexture = new THREE.CanvasTexture(backCanvas); backTexture.colorSpace = THREE.SRGBColorSpace;
     artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    const art = buildExtrudedSprite(alphaPixels, width, height, artTexture, artTexture, corrugation);
+    backTexture.anisotropy = artTexture.anisotropy;
+    const symmetricAlpha = new Uint8ClampedArray(alphaPixels.length);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const left = (y * width + x) * 4 + 3, right = (y * width + width - 1 - x) * 4 + 3;
+      symmetricAlpha[left] = Math.max(alphaPixels[left], alphaPixels[right]);
+    }
+    const art = buildExtrudedSprite(symmetricAlpha, width, height, artTexture, backTexture, corrugation);
     art.group.position.y = 1.025;
     source.dispose();
     return art.group;
@@ -426,7 +437,7 @@ async function start() {
     sceneryTemplates.set(path, pending);
     return pending;
   }
-  async function createScenery(path, x, z, size, parent = scene, allowFlat = false) {
+  async function createScenery(path, x, z, size, parent = scene, allowFlat = false, options = {}) {
     const template = await loadSceneryTemplate(path);
     const art = template.clone(true);
     // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
@@ -435,6 +446,20 @@ async function start() {
     const elevation = terrain.sample(x, z);
     if (elevation <= 0 && !allowFlat) return null;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
+    if (options.fixedRadius) {
+      const baseRadius = options.base ? options.fixedRadius : 0;
+      if (baseRadius) {
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(baseRadius, baseRadius, .2, 64), [
+          new THREE.MeshStandardMaterial({ map: terrainCorrugation, roughness: 1, ...sceneStencil }),
+          new THREE.MeshStandardMaterial({ map: paper, roughness: .96, ...sceneStencil }),
+          new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
+        ]);
+        base.position.y = .11; base.castShadow = true; base.receiveShadow = true; prop.add(base);
+      }
+      const owner = Object.values(locations).find(location => location.sceneGroup === parent);
+      owner?.obstacles.push({ id: `obstacle-${owner.id}-${owner.obstacles.length + 1}`, x, z,
+        vx: 0, vz: 0, radius: options.fixedRadius, fixed: true, team: 'obstacle' });
+    }
     const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);
     prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
     parent.add(prop);
@@ -499,19 +524,16 @@ async function start() {
   };
   const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
   const sceneDetails = [
-    createScenery('assets/env-troll-hut.png', 0, -13, 4.5, homeGroup),
-    createScenery('assets/env-troll-hut.png', 0, -1.7, 2.1, homeGroup, true),
+    createScenery('assets/hero-house.png', 0, -1.7, 3.5, homeGroup, true, { fixedRadius: 1.2 }),
     populateForestEdge(locations.home, 10, 11),
     populateForestEdge(locations.forest, 36, 23),
-    createScenery('assets/env-troll-hut.png', -8.5, -5.4, 3.2, campGroup, true),
-    createScenery('assets/env-troll-hut.png', 8.5, -5.4, 3.2, campGroup, true),
-    createScenery('assets/env-troll-hut.png', -8.5, 5.4, 3.2, campGroup, true),
-    createScenery('assets/env-troll-hut.png', 8.5, 5.4, 3.2, campGroup, true),
+    createScenery('assets/env-troll-hut.png', -8.5, -5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', 8.5, -5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', -8.5, 5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
+    createScenery('assets/env-troll-hut.png', 8.5, 5.4, 3.2, campGroup, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true }),
     populateForestEdge(locations.camp, 18, 37),
   ];
   await Promise.all(sceneDetails);
-  const homeSign = homeGroup.children.find(child => child.position?.x === 0 && child.position?.z === -1.7);
-  if (homeSign) homeSign.rotation.y = 0;
   refreshLocationInfo();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
@@ -546,8 +568,9 @@ async function start() {
       : `Победы: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS} · живых гоблинов: ${activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length}`;
   }
   function rebuildBodies() {
-    bodies = [heroBody, ...activeLocation.enemies.filter(body => body.spawnReady)];
+    bodies = [heroBody, ...activeLocation.obstacles, ...activeLocation.enemies.filter(body => body.spawnReady)];
   }
+  rebuildBodies();
   function showActiveLocationFigures() {
     for (const figure of figures) {
       const active = figure.body === heroBody || figure.locationId === activeLocation.id;
@@ -668,6 +691,7 @@ async function start() {
     if (b) {
       let playerDealtDamage = false, playerTookDamage = false;
       const attackHit = (attacker, target) => {
+        if (attacker.fixed || target.fixed) return;
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
         if (!damage(target, ricochetDamageQuarters(attacker.attackRicochets || 0), speed)) return;
         attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
@@ -966,6 +990,7 @@ async function start() {
     }
     const held = gesture?.mode === 'aim' ? state : null;
     for (const body of bodies) {
+      if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
       advanceChargeRecharge(body, dt);
       if (body.team !== 'enemy') continue;

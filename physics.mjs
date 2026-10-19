@@ -98,11 +98,12 @@ function confine(state, arenaPoints) {
 export function collide(a, b, held = null) {
   const dx = b.x - a.x, dz = b.z - a.z;
   const distance = Math.hypot(dx, dz);
-  const diameter = PUCK_RADIUS * 2;
+  const radiusA = a.radius ?? PUCK_RADIUS, radiusB = b.radius ?? PUCK_RADIUS;
+  const diameter = radiusA + radiusB;
   if (distance >= diameter) return 0;
   const nx = distance > 1e-8 ? dx / distance : 1;
   const nz = distance > 1e-8 ? dz / distance : 0;
-  const ia = a === held ? 0 : 1, ib = b === held ? 0 : 1;
+  const ia = a.fixed || a === held ? 0 : 1, ib = b.fixed || b === held ? 0 : 1;
   const inverseMass = ia + ib;
   if (!inverseMass) return 0;
   const separation = (diameter - distance) / inverseMass;
@@ -117,7 +118,7 @@ export function collide(a, b, held = null) {
 }
 
 export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoints = ARENA_POINTS) {
-  for (const body of bodies) if (body !== held) {
+  for (const body of bodies) if (!body.fixed && body !== held) {
     const strength = advance(body, dt, arenaPoints);
     if (strength > .4) onImpact?.(body, null, strength);
   }
@@ -131,7 +132,7 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoin
         if (strength > .4) onImpact?.(a, b, strength, attackingA, attackingB);
       }
     }
-    for (const body of bodies) if (body !== held) {
+    for (const body of bodies) if (!body.fixed && body !== held) {
       const strength = confine(body, arenaPoints);
       if (strength > .4) onImpact?.(body, null, strength);
     }
