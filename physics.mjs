@@ -50,7 +50,7 @@ export function launch(state, drag) {
   state.vz = -pull.z * LAUNCH_GAIN || 0;
 }
 
-export function advance(state, dt) {
+export function advance(state, dt, arenaPoints = ARENA_POINTS) {
   const speed = Math.hypot(state.vx, state.vz);
   if (speed === 0 || dt <= 0) return 0;
   const travelTime = Math.min(dt, speed / FRICTION);
@@ -61,18 +61,18 @@ export function advance(state, dt) {
   const nextSpeed = Math.max(0, speed - FRICTION * dt);
   state.vx = nx * nextSpeed;
   state.vz = nz * nextSpeed;
-  return confine(state);
+  return confine(state, arenaPoints);
 }
 
-function confine(state) {
+function confine(state, arenaPoints) {
   let inside = false;
-  for (let i = 0, j = ARENA_POINTS.length - 1; i < ARENA_POINTS.length; j = i++) {
-    const a = ARENA_POINTS[i], b = ARENA_POINTS[j];
+  for (let i = 0, j = arenaPoints.length - 1; i < arenaPoints.length; j = i++) {
+    const a = arenaPoints[i], b = arenaPoints[j];
     if ((a.z > state.z) !== (b.z > state.z) && state.x < (b.x - a.x) * (state.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
   }
   let nearestX = 0, nearestZ = 0, nearestDistance = Infinity;
-  for (let i = 0; i < ARENA_POINTS.length; i++) {
-    const a = ARENA_POINTS[i], b = ARENA_POINTS[(i + 1) % ARENA_POINTS.length];
+  for (let i = 0; i < arenaPoints.length; i++) {
+    const a = arenaPoints[i], b = arenaPoints[(i + 1) % arenaPoints.length];
     const dx = b.x - a.x, dz = b.z - a.z;
     const t = clamp(((state.x - a.x) * dx + (state.z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
     const x = a.x + dx * t, z = a.z + dz * t;
@@ -116,9 +116,9 @@ export function collide(a, b, held = null) {
   return -closingSpeed;
 }
 
-export function advanceWorld(bodies, dt, held = null, onImpact = null) {
+export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoints = ARENA_POINTS) {
   for (const body of bodies) if (body !== held) {
-    const strength = advance(body, dt);
+    const strength = advance(body, dt, arenaPoints);
     if (strength > .4) onImpact?.(body, null, strength);
   }
   // Reconcile overlap with the table edges after each contact pass.
@@ -132,7 +132,7 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null) {
       }
     }
     for (const body of bodies) if (body !== held) {
-      const strength = confine(body);
+      const strength = confine(body, arenaPoints);
       if (strength > .4) onImpact?.(body, null, strength);
     }
   }

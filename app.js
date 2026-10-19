@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=17';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=18';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 import { createTerrainHeightMap, extractTerrainContours, nearestPointOnPath } from './terrain-shapes.mjs?v=3';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
@@ -7,7 +7,7 @@ import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
 import { CAMP_BOSS_DEFEATS, CAMP_LIVING_CAP, createLocationNetwork, findNearbyExit,
-  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=1';
+  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=2';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -45,6 +45,7 @@ async function start() {
   const locationGroups = Object.fromEntries(Object.values(locations).map(location => {
     const group = new THREE.Group(); group.visible = location.id === activeLocation.id; scene.add(group);
     location.sceneGroup = group;
+    group.userData.walkablePoints = location.walkablePoints;
     return [location.id, group];
   }));
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
@@ -68,7 +69,6 @@ async function start() {
     map.colorSpace = THREE.SRGBColorSpace;
     return map;
   }
-  const terrainHeightMap = createTerrainHeightMap(8128, WALKABLE_POINTS, { cellSize: .85, step: .24, maxHeight: 3.6 });
   function terrainShape(outerPoints, innerPoints = null) {
     const shape = new THREE.Shape();
     const outer = outerPoints.map(point => new THREE.Vector2(point.x, -point.z));
@@ -195,43 +195,54 @@ async function start() {
   const terrainCorrugation = corrugation.clone();
   terrainCorrugation.wrapS = terrainCorrugation.wrapT = THREE.RepeatWrapping;
   terrainCorrugation.repeat.set(1, 1);
-  const terrainColors = [0x789456, 0x91a05b, 0xa2a063, 0xb1a36c, 0x9b8c66, 0x897858, 0x9f956f, 0xb2a878, 0x8b8369, 0x9d9477, 0xb4a983, 0x968e79, 0xb3aa91, 0x8b816e];
-  const terrainLayers = [{
-    shapes: [terrainShape(WALKABLE_POINTS)], depth: .3, top: 0,
-    topColor: terrainColors[0], sideColor: 0x805b39,
-  }, {
-    shapes: terrainShapesFromContours(extractTerrainContours(terrainHeightMap, .001)), depth: terrainHeightMap.step, top: terrainHeightMap.step,
-    topColor: terrainColors[1], sideColor: 0x9c7243,
-  }, ...terrainHeightMap.layers.filter(layer => layer.contours.length).map((layer, index) => ({
-    shapes: terrainShapesFromContours(layer.contours), depth: terrainHeightMap.step, top: layer.height,
-    topColor: terrainColors[(index + 2) % terrainColors.length], sideColor: index % 2 ? 0x805b39 : 0x9c7243,
-  }))];
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
-  for (const layer of terrainLayers) {
-    if (!layer.shapes.length) continue;
-    const terrainUvGenerator = {
-      generateTopUV(_geometry, vertices, a, b, c) {
-        return [a, b, c].map(index => new THREE.Vector2(vertices[index * 3], vertices[index * 3 + 1]));
-      },
-      generateSideWallUV(_geometry, vertices, a, b, c, d) {
-        const horizontal = Math.abs(vertices[b * 3] - vertices[a * 3]) >= Math.abs(vertices[b * 3 + 1] - vertices[a * 3 + 1]);
-        return [a, b, c, d].map(index => {
-          const alongEdge = horizontal ? vertices[index * 3] : vertices[index * 3 + 1];
-          return new THREE.Vector2(alongEdge * .25, vertices[index * 3 + 2] / layer.depth);
-        });
-      },
-    };
-    const geometry = new THREE.ExtrudeGeometry(layer.shapes, {
-      depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: terrainUvGenerator,
-    });
-    geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, [
-      new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96, ...sceneStencil }),
-      new THREE.MeshStandardMaterial({ color: layer.sideColor, map: terrainCorrugation, roughness: 1, ...sceneStencil }),
-    ]);
-    mesh.position.y = layer.top - layer.depth;
-    mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
+  const terrainPalettes = {
+    home: { tops: [0x84964c, 0x9ca657, 0xb4a868, 0xc0a873], side: 0x805b39 },
+    forest: { tops: [0x647e43, 0x78884b, 0x9c975b, 0xb29d70], side: 0x67472e },
+    camp: { tops: [0x8a784e, 0x9e8953, 0xb2a067, 0xc1ad78], side: 0x775037 },
+  };
+  for (const location of Object.values(locations)) {
+    const map = createTerrainHeightMap(location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731,
+      location.walkablePoints, { cellSize: .85, step: .24, maxHeight: 3.6 });
+    location.terrainHeightMap = map;
+    location.sceneGroup.userData.terrainHeightMap = map;
+    const palette = terrainPalettes[location.id];
+    const layers = [{
+      shapes: [terrainShape(location.walkablePoints)], depth: .3, top: 0,
+      topColor: palette.tops[0], sideColor: palette.side,
+    }, {
+      shapes: terrainShapesFromContours(extractTerrainContours(map, .001)), depth: map.step, top: map.step,
+      topColor: palette.tops[1], sideColor: palette.side,
+    }, ...map.layers.filter(layer => layer.contours.length).map((layer, index) => ({
+      shapes: terrainShapesFromContours(layer.contours), depth: map.step, top: layer.height,
+      topColor: palette.tops[(index + 2) % palette.tops.length], sideColor: index % 2 ? palette.side : 0x9c7243,
+    }))];
+    for (const layer of layers) {
+      if (!layer.shapes.length) continue;
+      const terrainUvGenerator = {
+        generateTopUV(_geometry, vertices, a, b, c) {
+          return [a, b, c].map(index => new THREE.Vector2(vertices[index * 3], vertices[index * 3 + 1]));
+        },
+        generateSideWallUV(_geometry, vertices, a, b, c, d) {
+          const horizontal = Math.abs(vertices[b * 3] - vertices[a * 3]) >= Math.abs(vertices[b * 3 + 1] - vertices[a * 3 + 1]);
+          return [a, b, c, d].map(index => {
+            const alongEdge = horizontal ? vertices[index * 3] : vertices[index * 3 + 1];
+            return new THREE.Vector2(alongEdge * .25, vertices[index * 3 + 2] / layer.depth);
+          });
+        },
+      };
+      const geometry = new THREE.ExtrudeGeometry(layer.shapes, {
+        depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: terrainUvGenerator,
+      });
+      geometry.rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geometry, [
+        new THREE.MeshStandardMaterial({ color: layer.topColor, map: layer.top === 0 ? paper : null, roughness: .96, ...sceneStencil }),
+        new THREE.MeshStandardMaterial({ color: layer.sideColor, map: terrainCorrugation, roughness: 1, ...sceneStencil }),
+      ]);
+      mesh.position.y = layer.top - layer.depth;
+      mesh.castShadow = true; mesh.receiveShadow = true; location.sceneGroup.add(mesh);
+    }
   }
   async function createFigure(body, prefix) {
     const group = new THREE.Group();
@@ -420,10 +431,11 @@ async function start() {
     const art = template.clone(true);
     // Scale the artwork to its requested height while keeping a consistent cardboard edge thickness.
     art.scale.set(size / 2.05, size / 2.05, 1);
-    const elevation = terrainHeightMap.sample(x, z);
+    const terrain = parent.userData.terrainHeightMap ?? locations.home.terrainHeightMap;
+    const elevation = terrain.sample(x, z);
     if (elevation <= 0 && !allowFlat) return null;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
-    const inward = nearestPointOnPath(x, z, WALKABLE_POINTS);
+    const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);
     prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
     parent.add(prop);
     return prop;
@@ -481,16 +493,6 @@ async function start() {
       stone.receiveShadow = true; group.add(stone);
     }
   };
-  const addPortal = (group, x, z, color) => {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(.58, .79, 48), new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: .92, side: THREE.DoubleSide, depthWrite: false,
-    }));
-    ring.rotation.x = -Math.PI / 2; ring.position.set(x, .04, z); ring.renderOrder = 4; group.add(ring);
-    const center = new THREE.Mesh(new THREE.CircleGeometry(.55, 40), new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: .13, side: THREE.DoubleSide, depthWrite: false,
-    }));
-    center.rotation.x = -Math.PI / 2; center.position.set(x, .032, z); center.renderOrder = 3; group.add(center);
-  };
   const populateForestEdge = async (location, count, seedOffset = 0) => {
     const group = locationGroups[location.id];
     const random = (() => { let seed = (0x4f1bbcdc + seedOffset) >>> 0; return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); })();
@@ -501,7 +503,7 @@ async function start() {
       const angle = random() * Math.PI * 2;
       const radius = 10.8 + Math.sqrt(random()) * 3.3;
       const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius * .78;
-      if (terrainHeightMap.sample(x, z) <= 0) continue;
+      if (location.terrainHeightMap.sample(x, z) <= 0) continue;
       const type = scatterTypes[Math.floor(random() * scatterTypes.length)];
       tasks.push(createScenery(type.path, x, z, randomBetween(...type.size), group)); placed++;
     }
@@ -519,13 +521,9 @@ async function start() {
     createScenery('assets/env-troll-hut.png', 8.5, 5.4, 3.2, campGroup, true),
     populateForestEdge(locations.camp, 18, 37),
   ];
-  addTrail(homeGroup, { x: 0, z: -2.2 }, { x: 0, z: -6.35 }, 0xb9935d);
-  addPortal(homeGroup, 0, -6.35, 0xffd476);
-  addTrail(forestGroup, { x: 0, z: -6.35 }, { x: 0, z: 6.35 }, 0xb9935d);
-  addPortal(forestGroup, 0, -6.35, 0xe9d39b);
-  addPortal(forestGroup, 0, 6.35, 0xdf6650);
-  addTrail(campGroup, { x: 0, z: 4.4 }, { x: 0, z: 6.35 }, 0x986d45);
-  addPortal(campGroup, 0, 6.35, 0xdf6650);
+  addTrail(homeGroup, { x: 0, z: -2.2 }, { x: 0, z: -5.8 }, 0xb9935d);
+  addTrail(forestGroup, { x: 0, z: -6 }, { x: 0, z: 6 }, 0xb9935d);
+  addTrail(campGroup, { x: 0, z: -2.1 }, { x: 0, z: -5.9 }, 0x986d45);
   await Promise.all(sceneDetails);
   const homeSign = homeGroup.children.find(child => child.position?.x === 0 && child.position?.z === -1.7);
   if (homeSign) homeSign.rotation.y = 0;
@@ -1025,7 +1023,9 @@ async function start() {
       }
       if (body.health <= 0) body.vx = body.vz = 0;
     }
-    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact);
+    for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
+      advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints);
+    }
     for (const figure of figures) {
       const body = figure.body;
       if (body !== heroBody && figure.locationId !== activeLocation.id) continue;
