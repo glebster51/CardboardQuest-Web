@@ -232,27 +232,73 @@ async function start() {
     return figure;
   }
   const sceneryTemplates = new Map();
+  function extractMainScenerySprite(image) {
+    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0);
+    const imageData = context.getImageData(0, 0, image.width, image.height);
+    const pixels = imageData.data, width = image.width, height = image.height;
+    const visited = new Uint8Array(width * height), stack = new Int32Array(width * height);
+    let largest = null;
+    for (let start = 0; start < width * height; start++) {
+      if (visited[start] || pixels[start * 4 + 3] <= 80) continue;
+      let top = 0, count = 0, x0 = width, y0 = height, x1 = -1, y1 = -1;
+      stack[top++] = start; visited[start] = 1;
+      while (top) {
+        const index = stack[--top], x = index % width, y = (index / width) | 0;
+        count++; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        for (let ny = Math.max(0, y - 1); ny <= Math.min(height - 1, y + 1); ny++) {
+          for (let nx = Math.max(0, x - 1); nx <= Math.min(width - 1, x + 1); nx++) {
+            const next = ny * width + nx;
+            if (!visited[next] && pixels[next * 4 + 3] > 80) { visited[next] = 1; stack[top++] = next; }
+          }
+        }
+      }
+      if (!largest || count > largest.count) largest = { count, x0, y0, x1, y1 };
+    }
+    if (!largest) throw new Error('Scenery sprite has no opaque artwork');
+    const padding = 2;
+    const cropX = Math.max(0, largest.x0 - padding), cropY = Math.max(0, largest.y0 - padding);
+    const cropRight = Math.min(width - 1, largest.x1 + padding), cropBottom = Math.min(height - 1, largest.y1 + padding);
+    const cropWidth = cropRight - cropX + 1, cropHeight = cropBottom - cropY + 1;
+    const cut = document.createElement('canvas'); cut.width = cropWidth; cut.height = cropHeight;
+    const cutContext = cut.getContext('2d', { willReadFrequently: true });
+    cutContext.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+    const cutData = cutContext.getImageData(0, 0, cropWidth, cropHeight);
+    // Keep the dominant connected silhouette plus its antialiased edge; clear detached atlas fragments.
+    for (let y = 0; y < cropHeight; y++) for (let x = 0; x < cropWidth; x++) {
+      const sourceX = cropX + x, sourceY = cropY + y, sourceIndex = sourceY * width + sourceX;
+      let connected = visited[sourceIndex] === 1;
+      if (!connected) {
+        for (let ny = Math.max(0, sourceY - padding); ny <= Math.min(height - 1, sourceY + padding) && !connected; ny++)
+          for (let nx = Math.max(0, sourceX - padding); nx <= Math.min(width - 1, sourceX + padding); nx++)
+            if (visited[ny * width + nx]) { connected = true; break; }
+      }
+      if (!connected) cutData.data[(y * cropWidth + x) * 4 + 3] = 0;
+    }
+    cutContext.putImageData(cutData, 0, 0);
+    return { cut, alphaPixels: cutData.data, width: cropWidth, height: cropHeight };
+  }
+  function sceneryLayerIndex(x, z) {
+    let index = 0;
+    for (let i = 0; i < terrainBoundaries.length; i++) {
+      const boundary = terrainBoundaries[i];
+      let inside = false;
+      for (let a = 0, b = boundary.length - 1; a < boundary.length; b = a++) {
+        const p = boundary[a], q = boundary[b];
+        if ((p.z > z) !== (q.z > z) && x < (q.x - p.x) * (z - p.z) / (q.z - p.z) + p.x) inside = !inside;
+      }
+      if (inside) index = i;
+    }
+    return index;
+  }
   function loadSceneryTemplate(path) {
     if (sceneryTemplates.has(path)) return sceneryTemplates.get(path);
     const pending = (async () => {
     const source = await new THREE.TextureLoader().loadAsync(path);
-    const image = source.image;
-    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, image.width, image.height).data;
-    let x0 = image.width, y0 = image.height, x1 = -1, y1 = -1;
-    for (let py = 0; py < image.height; py++) for (let px = 0; px < image.width; px++) {
-      if (pixels[(py * image.width + px) * 4 + 3] > 80) {
-        x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
-      }
-    }
-    const cut = document.createElement('canvas'); cut.width = x1 - x0 + 1; cut.height = y1 - y0 + 1;
-    const cutContext = cut.getContext('2d', { willReadFrequently: true });
-    cutContext.drawImage(image, x0, y0, cut.width, cut.height, 0, 0, cut.width, cut.height);
-    const alphaPixels = cutContext.getImageData(0, 0, cut.width, cut.height).data;
+    const { cut, alphaPixels, width, height } = extractMainScenerySprite(source.image);
     const artTexture = new THREE.CanvasTexture(cut); artTexture.colorSpace = THREE.SRGBColorSpace;
     artTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    const art = buildExtrudedSprite(alphaPixels, cut.width, cut.height, artTexture, artTexture, corrugation);
+    const art = buildExtrudedSprite(alphaPixels, width, height, artTexture, artTexture, corrugation);
     art.group.position.y = 1.025;
     source.dispose();
     return art.group;
@@ -264,9 +310,7 @@ async function start() {
     const template = await loadSceneryTemplate(path);
     const art = template.clone(true);
     art.scale.setScalar(size / 2.05);
-    const radius = Math.hypot(x / 10.8, z / 8.2);
-    let layerIndex = 0;
-    while (layerIndex < terrainScales.length - 1 && radius >= terrainScales[layerIndex + 1]) layerIndex++;
+    const layerIndex = sceneryLayerIndex(x, z);
     const elevation = layerIndex * .28;
     const prop = new THREE.Group(); prop.position.set(x, elevation, z); prop.add(art);
     const inward = nearestPointOnPath(x, z, WALKABLE_POINTS);
