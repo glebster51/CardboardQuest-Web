@@ -5,7 +5,7 @@ export const SPEAKERS = Object.freeze({
   narrator: { name: 'Лесная тишина', sprite: null },
   hero: { name: 'Внук', sprite: 'assets/hero-idle.png' },
   grandpa: { name: 'Дед Егор', sprite: 'assets/npc-grandpa-idle.png' },
-  scout: { name: 'Щепка · разведчик', sprite: 'assets/goblin-on-hit.png' },
+  scout: { name: 'Щепка · разведчик', sprite: 'assets/goblin-idle.png' },
   carrier: { name: 'Бирка · носильщик', sprite: 'assets/goblin-idle.png' },
   slinger: { name: 'Сивый · пращник', sprite: 'assets/slinger-idle.png' },
   ogre: { name: 'Кряж · вожак', sprite: 'assets/ogre-idle.png' },
@@ -38,7 +38,7 @@ export const STORY_DIALOGUE = {
   },
   forest: {
     intro: C(S('Говорю тебе: старик заплатил. Плату взяли. Значит, проводим.'),
-      ['slinger', 'Если бы всё решала плата, я бы давно купил себе другую работу.'],
+      B('Если бы всё решала плата, я бы давно купил себе другую работу.'),
       H('Где мой дед?'), S('Вот. А это, видимо, сдача.')),
     scene: C(H('Он проходил здесь? Серый шарф. Вечно поправляет чужие воротники.'),
       S('И чужие обещания. Свой воротник так и не поправил.'), H('Я не шучу.'),

@@ -4,7 +4,7 @@ import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=1';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=2';
-import { getStoryDialogue } from './game/story-dialogue.mjs?v=1';
+import { getStoryDialogue } from './game/story-dialogue.mjs?v=2';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createStoryActors } from './render/story-actors.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
@@ -305,8 +305,8 @@ async function start() {
     createLocationWalkPaths, scatterGroundDetails });
   refreshLocationInfo();
   const initialVisit = visitCampaignLocation(campaignState, activeLocation.id);
-  if (initialVisit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro,
-    lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') });
+  const initialStoryCard = initialVisit?.firstVisit ? { title: activeLocation.title, text: activeLocation.campaignIntro,
+    lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') } : null;
   renderInventory();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
@@ -319,6 +319,41 @@ async function start() {
     figure.flashMaterial = art.frontArt.flashMaterial;
     figure.backFlashMaterial = art.backArt.flashMaterial;
     figure.visualState = visualState;
+  }
+  function prepareScenePresentation() {
+    updateCamera();
+    for (const figure of figures) {
+      if (figure.poolDormant || (figure.body !== heroBody && figure.locationId !== activeLocation.id)) continue;
+      const body = figure.body;
+      if (!body.fell && !figure.spawnAnimation) figure.group.position.set(body.x, 0, body.z);
+      const cameraDx = camera.position.x - figure.group.position.x;
+      const cameraDz = camera.position.z - figure.group.position.z;
+      const cameraDistance = Math.max(.001, Math.hypot(cameraDx, cameraDz));
+      const facingDot = (cameraDx * Math.sin(figure.group.rotation.y) + cameraDz * Math.cos(figure.group.rotation.y)) / cameraDistance;
+      figure.viewBack = body.health > 0 && facingDot < 0;
+      for (const art of Object.values(figure.artStates)) {
+        art.frontArt.group.visible = !figure.viewBack;
+        art.backArt.group.visible = figure.viewBack;
+      }
+      const visualState = body.health <= 0 ? 'dead'
+        : figure.hurtAge < .55 ? 'on-hit'
+          : figure.dealDamageAge < .32 ? 'deal-damage'
+            : body.team === 'enemy' && body.aiPhase === 'aim' ? 'aiming' : 'idle';
+      setVisualState(figure, visualState);
+      figure.healthHUD.position.set(body.x, 2.65, body.z);
+      figure.healthHUD.quaternion.copy(camera.quaternion);
+      if (figure.enemyMarker) {
+        figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
+        figure.enemyMarker.group.rotation.y = body.aiPhase === 'aim' ? body.aiAimAngle : figure.facing;
+      }
+    }
+    playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
+    for (const { prop, front, back } of sceneryFacePairs) {
+      const dx = camera.position.x - prop.position.x, dz = camera.position.z - prop.position.z;
+      const cameraOnFront = dx * Math.sin(prop.rotation.y) + dz * Math.cos(prop.rotation.y) >= 0;
+      front.visible = cameraOnFront;
+      back.visible = !cameraOnFront;
+    }
   }
   let activeFigure = figures[0];
   let selectionAge = .6;
@@ -702,6 +737,7 @@ async function start() {
     refreshLocationInfo();
     renderInventory();
     persistCampaign();
+    prepareScenePresentation();
     if (visit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro,
       lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') });
   }
@@ -1066,13 +1102,16 @@ async function start() {
   addEventListener('resize', resize); resize();
   showActiveLocationFigures();
   rebuildBodies();
+  prepareScenePresentation();
   if (activeLocation.id === 'forest') scheduleCampPreload();
   if (activeLocation.id === 'camp') restoreSavedCampEnemies().then(() => {
     showActiveLocationFigures(); rebuildBodies();
   }).catch(error => console.error('Не удалось восстановить состояние лагеря', error));
   loading.hidden = true;
+  if (initialStoryCard) showStoryCard(initialStoryCard);
   if (debugMode) window.__CQ_DEBUG__ = {
     locations: Object.keys(locations),
+    enter(id) { enterLocation(id, activeLocation.id); },
     view(id, distance = 43) {
       simulationPaused = true;
       enterLocation(id, activeLocation.id);
@@ -1110,7 +1149,9 @@ async function start() {
     },
     snapshot() {
       return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
-        hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer },
+        hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer,
+          renderedX: heroFigure.group.position.x, renderedZ: heroFigure.group.position.z, viewBack: heroFigure.viewBack,
+          visualState: heroFigure.visualState },
         dialogue: dialogue.frame(), elapsed,
         actors: storyActors.actors.filter(actor => actor.spec.location === activeLocation.id)
           .map(actor => ({ id: actor.spec.id, visible: actor.prop.visible, fixed: actor.body.fixed, x: actor.body.x, z: actor.body.z,
