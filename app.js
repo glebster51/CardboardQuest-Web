@@ -21,6 +21,7 @@ let gesture = null;
 const GROUND_UI_Y = .026;
 const AIM_DRAG_SENSITIVITY = 1 / 3;
 const AIM_MARKER_LENGTH_SCALE = 1 / 1.3;
+const MAX_AIM_MARKER_EXTENSION = 5.4 * AIM_MARKER_LENGTH_SCALE;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
@@ -507,7 +508,7 @@ async function start() {
       overlap.rotation.x = Math.PI / 2; overlap.renderOrder = 20; group.add(overlap);
     }
     let progress = null;
-    const fullExtension = 5.4 * AIM_MARKER_LENGTH_SCALE;
+    const fullExtension = MAX_AIM_MARKER_EXTENSION;
     const backEdge = -.87;
     if (showProgress) {
       progress = new THREE.Mesh(markerGeometry(fullExtension, true),
@@ -646,7 +647,7 @@ async function start() {
         (-Math.sin(theta) * dx + Math.cos(theta) * dz) * AIM_DRAG_SENSITIVITY);
       const direction = new THREE.Vector3(-gesture.pull.x, 0, -gesture.pull.z);
       const length = direction.length();
-      playerMarker.setExtension(length > .02 ? length * 3.2 / AIM_DRAG_SENSITIVITY * AIM_MARKER_LENGTH_SCALE : 0);
+      playerMarker.setExtension(length > .02 ? length / MAX_PULL * MAX_AIM_MARKER_EXTENSION : 0);
       if (length > .06) {
         activeFigure.facing = facingAngle(direction.x, direction.z, activeFigure.facing);
         playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
@@ -819,7 +820,7 @@ async function start() {
         figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
         figure.enemyMarker.group.rotation.y = aiming ? body.aiAimAngle : figure.facing;
         figure.enemyMarker.group.visible = body.health > 0;
-        figure.enemyMarker.setExtension(aiming ? 5.4 * AIM_MARKER_LENGTH_SCALE : 0);
+        figure.enemyMarker.setExtension(aiming ? MAX_AIM_MARKER_EXTENSION : 0);
         figure.enemyMarker.setProgress(aiming ? 1 - body.aiTimer / body.aiAimDuration : 0);
         figure.enemyMarker.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
         figure.enemyMarker.material.opacity = body.health > 0 ? .96 : .35;
