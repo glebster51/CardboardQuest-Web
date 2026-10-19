@@ -268,8 +268,24 @@ async function start() {
   const campGoblinPool = [];
   let campOgrePool = null;
   let campPreloadPromise = null;
+  let campOgrePreloadPromise = null;
+  async function preloadCampOgre() {
+    if (campOgrePool) return campOgrePool;
+    if (campOgrePreloadPromise) return campOgrePreloadPromise;
+    campOgrePreloadPromise = (async () => {
+      const body = enemyBody('camp-ogre-pool', 'camp', 0, 0,
+        { health: 0, maxHealth: 48, spawnReady: false, combatAwake: true, boss: true });
+      const figure = await createFigure(body, 'ogre');
+      figure.locationId = 'camp'; figure.poolDormant = true;
+      figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+      figures.push(figure); campOgrePool = figure;
+      return figure;
+    })();
+    try { return await campOgrePreloadPromise; }
+    finally { campOgrePreloadPromise = null; }
+  }
   async function preloadCampEnemies() {
-    if (campGoblinPool.length >= CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP && campOgrePool) return;
+    if (campGoblinPool.length >= CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP) return;
     if (campPreloadPromise) return campPreloadPromise;
     campPreloadPromise = (async () => {
       while (campGoblinPool.length < CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP) {
@@ -281,17 +297,14 @@ async function start() {
         figures.push(figure); campGoblinPool.push(figure);
         await yieldFrameWork();
       }
-      if (!campOgrePool) {
-        const body = enemyBody('camp-ogre-pool', 'camp', 0, 0,
-          { health: 0, maxHealth: 48, spawnReady: false, combatAwake: true, boss: true });
-        const figure = await createFigure(body, 'ogre');
-        figure.locationId = 'camp'; figure.poolDormant = true;
-        figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
-        figures.push(figure); campOgrePool = figure;
-      }
     })().catch(error => { campPreloadPromise = null; throw error; });
     try { await campPreloadPromise; }
     finally { campPreloadPromise = null; }
+    const preloadOgre = () => preloadCampOgre().catch(error => {
+      console.error('Не удалось заранее подготовить огра', error);
+    });
+    if (window.requestIdleCallback) window.requestIdleCallback(preloadOgre, { timeout: 1600 });
+    else setTimeout(preloadOgre, 100);
   }
   function scheduleCampPreload() {
     const preload = () => preloadCampEnemies().catch(error => console.error('Не удалось заранее подготовить лагерь', error));
@@ -356,6 +369,7 @@ async function start() {
   }
   async function spawnCampGoblin(source = null, boss = false) {
     await preloadCampEnemies();
+    if (boss) await preloadCampOgre();
     const figure = boss ? campOgrePool : campGoblinPool.pop();
     if (!figure) return null;
     const spawn = source ?? campSpawnPoints[Math.floor(Math.random() * campSpawnPoints.length)];
