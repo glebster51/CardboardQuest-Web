@@ -776,7 +776,7 @@ async function start() {
 start().catch(error => {
   loading.hidden = true;
   document.querySelector('#error').hidden = false;
-  document.querySelector('#error').textContent = 'Не удалось загрузить сцену. Обнови страницу.';
+  document.querySelector('#error').textContent = `Не удалось загрузить сцену: ${error.message || error}. Обнови страницу.`;
   console.error(error);
 });
 
