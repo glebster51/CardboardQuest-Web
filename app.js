@@ -8,6 +8,7 @@ import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
 import { makeScenerySprite } from './scenery-model-v4.mjs?v=4';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
+import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=1';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=5';
@@ -483,6 +484,78 @@ async function start() {
     populateForestEdge(locations.camp, 18, 37),
   ];
   await Promise.all(sceneDetails);
+  const groundTextureCache = new Map();
+  const loadGroundTexture = path => {
+    if (!groundTextureCache.has(path)) {
+      groundTextureCache.set(path, new THREE.TextureLoader().loadAsync(path).then(texture => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return texture;
+      }));
+    }
+    return groundTextureCache.get(path);
+  };
+  const groundMarkMaterial = (texture, opacity) => new THREE.MeshBasicMaterial({ map: texture, transparent: true,
+    alphaTest: .035, opacity, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 });
+  const groundAssets = [
+    'ground-pit', 'ground-grass-ring', 'ground-dirt-patch', 'ground-footprints',
+    'ground-footsteps', 'ground-scuff', 'ground-pebbles', 'ground-cracks',
+    ...Array.from({ length: 8 }, (_, index) => `grass-tuft-${index + 1}`),
+  ];
+  const groundTextures = new Map();
+  await Promise.all(groundAssets.map(async name => groundTextures.set(name, await loadGroundTexture(`assets/${name}.png`))));
+  const groundMaterials = new Map(groundAssets.map(name => [name,
+    groundMarkMaterial(groundTextures.get(name), name.startsWith('grass-tuft-') ? .94 : .8)]));
+  const addGroundInstances = (parent, kind, marks, upright = false) => {
+    if (!marks.length) return;
+    const multiplier = upright ? 2 : 1;
+    const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), groundMaterials.get(kind), marks.length * multiplier);
+    const position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3(), matrix = new THREE.Matrix4();
+    const euler = new THREE.Euler(0, 0, 0, 'XYZ');
+    let index = 0;
+    for (const mark of marks) for (let variant = 0; variant < multiplier; variant++) {
+      if (upright) {
+        position.set(mark.x, mark.height / 2 + .009, mark.z);
+        euler.set(0, mark.rotation + variant * Math.PI / 2, 0);
+      } else {
+        position.set(mark.x, .018, mark.z);
+        euler.set(-Math.PI / 2, 0, mark.rotation);
+      }
+      quaternion.setFromEuler(euler);
+      scale.set(mark.width, mark.height, 1);
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(index++, matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.renderOrder = upright ? 3 : 2;
+    mesh.frustumCulled = false;
+    parent.add(mesh);
+  };
+  const decorationSpecs = {
+    home: { seed: 1601, decalCount: 19, grassCount: 40,
+      exclusions: [{ x: scaled(-2.4), z: scaled(-2.4), radius: 2.7 }, { x: 0, z: 0, radius: 1.55 }] },
+    forest: { seed: 2719, decalCount: 38, grassCount: 78,
+      exclusions: forestSpawns.map(point => ({ ...point, radius: 1.5 })) },
+    camp: { seed: 3899, decalCount: 44, grassCount: 52,
+      exclusions: [...campSpawns.map(point => ({ x: point.x, z: point.z, radius: 1.45 })),
+        ...CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z), radius: 1.95 }))] },
+  };
+  for (const location of Object.values(locations)) {
+    const specs = decorationSpecs[location.id];
+    const hutPaths = location.id === 'camp' ? CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) : [];
+    const paths = createLocationWalkPaths(location, hutPaths);
+    const details = scatterGroundDetails({ location, ...specs, paths });
+    const ground = new THREE.Group();
+    ground.name = `ground-details-${location.id}`;
+    ground.userData.walkPaths = paths;
+    location.sceneGroup.add(ground);
+    const groundMarks = [...details.decals, ...details.trail];
+    for (const kind of groundAssets.slice(0, 8)) addGroundInstances(ground, kind,
+      groundMarks.filter(mark => mark.kind === kind));
+    for (const kind of groundAssets.slice(8)) addGroundInstances(ground, kind,
+      details.grass.filter(mark => mark.kind === kind), true);
+    location.groundDetails = { ...details, paths };
+  }
   refreshLocationInfo();
   function setVisualState(figure, visualState) {
     const art = figure.artStates[visualState];
