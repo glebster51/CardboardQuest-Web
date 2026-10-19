@@ -975,13 +975,13 @@ async function start() {
     return {
       group, outline, material: outlineMaterial, progress, overlap,
       setExtension(extension) {
-        const quantized = Math.max(0, Math.round(extension * 12) / 12);
-        if (Math.abs(quantized - currentExtension) < 1e-6) return;
+        const nextExtension = Math.max(0, extension);
+        if (Math.abs(nextExtension - currentExtension) < 1e-4) return;
         const previous = outline.geometry;
-        outline.geometry = markerGeometry(quantized);
+        outline.geometry = markerGeometry(nextExtension);
         if (overlap) overlap.geometry = outline.geometry;
         previous.dispose();
-        currentExtension = quantized;
+        currentExtension = nextExtension;
       },
       setProgress(amount) {
         if (!progress) return;
