@@ -9,5 +9,6 @@ export function sceneryTokenLayout(spriteHeight, baseRadius = 0) {
   const scale = spriteHeight / SPRITE_REFERENCE_HEIGHT;
   const baseTop = baseRadius > 0 ? PUCK_CENTER_Y + PUCK_HEIGHT / 2 : 0;
   const artY = spriteHeight / 2 + baseTop;
-  return { scale, artY, baseTop, extrusionDepth: CARDBOARD_EXTRUSION_DEPTH * scale };
+  // The printed silhouette scales in its XY plane; all cutouts use one sheet gauge.
+  return { scale, depthScale: 1, artY, baseTop, extrusionDepth: CARDBOARD_EXTRUSION_DEPTH };
 }

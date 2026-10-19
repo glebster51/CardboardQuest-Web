@@ -1,5 +1,5 @@
 import { makeScenerySprite } from '../scenery-model-v4.mjs';
-import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs';
+import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=2';
 import { WALKABLE_POINTS } from '../physics.mjs';
 import { nearestPointOnPath } from '../terrain-shapes.mjs';
 
@@ -26,7 +26,7 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     const template = await loadTemplate(path);
     const art = template.clone(true);
     const layout = sceneryTokenLayout(size, options.base ? options.fixedRadius ?? 0 : 0);
-    art.scale.setScalar(layout.scale);
+    art.scale.set(layout.scale, layout.scale, layout.depthScale);
     art.position.y = layout.artY;
     if (options.flat) {
       art.rotation.x = -Math.PI / 2;

@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { makeScenerySprite } from './scenery-model.mjs?v=3';
-import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
+import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=2';
 
 const assets = [
   { id: 'hero-house', label: 'Дом героя', path: 'assets/hero-house.png', height: 3.5, radius: 1.2 },
@@ -65,14 +65,14 @@ async function loadAssets() {
       base.position.y = PUCK_CENTER_Y; base.castShadow = true; base.receiveShadow = true; root.add(base);
     }
     const layout = sceneryTokenLayout(asset.height, asset.radius ?? 0);
-    model.group.scale.setScalar(layout.scale);
+    model.group.scale.set(layout.scale, layout.scale, layout.depthScale);
     model.group.position.y = layout.artY;
     root.add(model.group);
     models.set(asset.id, { root, model });
     const baseTop = layout.baseTop;
     const artBottom = model.group.position.y - asset.height / 2;
     const flipMatches = model.backFlipMatches;
-    audit.push({ id: asset.id, views: 4, extrusionDepth: depth * layout.scale,
+    audit.push({ id: asset.id, views: 4, extrusionDepth: depth * model.group.scale.z,
       baseRadius: asset.radius ?? 0, baseTop, artBottom, groundGap: artBottom - baseTop, backFlipMatches: flipMatches });
     if (!flipMatches) throw new Error(`${asset.label}: задняя сторона не совпадает со спрайтом, отражённым по X (audit=${String(flipMatches)})`);
     if (Math.abs(artBottom - baseTop) > 1e-8) throw new Error(`${asset.label}: основание проваливается или висит над шайбой`);
