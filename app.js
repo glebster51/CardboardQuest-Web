@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS } from './physics.mjs?v=13';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS, PUCK_RADIUS } from './physics.mjs?v=14';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -463,7 +463,7 @@ async function start() {
     figure.visualState = visualState;
   }
   let activeFigure = figures[0];
-  let selectionAge = 0;
+  let selectionAge = .6;
   let elapsed = 0;
   const bursts = [];
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
@@ -566,6 +566,7 @@ async function start() {
   }
 
   const raycaster = new THREE.Raycaster();
+  const figureHitPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -.12);
   function rayAt(x, y) {
     raycaster.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, 1 - y / innerHeight * 2), camera);
   }
@@ -581,7 +582,15 @@ async function start() {
       const py = Math.min(figure.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * figure.height)));
       if (figure.alphaPixels[(py * figure.width + px) * 4 + 3] > 100) return figure;
     }
-    return null;
+    const groundPoint = raycaster.ray.intersectPlane(figureHitPlane, new THREE.Vector3());
+    if (!groundPoint) return null;
+    let closest = null, closestDistance = (PUCK_RADIUS + .08) ** 2;
+    for (const figure of figures) {
+      const dx = groundPoint.x - figure.body.x, dz = groundPoint.z - figure.body.z;
+      const distanceSquared = dx * dx + dz * dz;
+      if (distanceSquared < closestDistance) { closest = figure; closestDistance = distanceSquared; }
+    }
+    return closest;
   }
   function choose(figure) {
     if (!figure) return;
@@ -601,7 +610,7 @@ async function start() {
     aiming.visible = false;
     host.classList.remove('aiming');
   }
-  host.addEventListener('pointerdown', event => {
+  renderer.domElement.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
     event.preventDefault();
     try { event.target.setPointerCapture(event.pointerId); } catch { /* Window listeners still track the drag. */ }
