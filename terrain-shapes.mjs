@@ -132,6 +132,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
   const minZ = options.minZ ?? -60, maxZ = options.maxZ ?? 60;
   const cellSize = options.cellSize ?? .75, step = options.step ?? .28;
   const maxHeight = options.maxHeight ?? 3.92;
+  const authoredRelief = Number.isFinite(options.edgeHeight);
   const columns = Math.ceil((maxX - minX) / cellSize) + 1, rows = Math.ceil((maxZ - minZ) / cellSize) + 1;
   const values = new Float32Array(columns * rows);
   let state = seed >>> 0;
@@ -157,8 +158,8 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
   const dropZones = options.dropZones ?? [];
   const corridors = exits.map(exit => {
     const length = Math.hypot(exit.x - center.x, exit.z - center.z) || 1;
-    return { x: (exit.x - center.x) / length, z: (exit.z - center.z) / length,
-      start: length - 2.8, width: options.exitCorridorHalfWidth ?? 2.55 };
+    return { x: exit.dirX ?? (exit.x - center.x) / length, z: exit.dirZ ?? (exit.z - center.z) / length,
+      originX: exit.x, originZ: exit.z, start: -2.8, width: (exit.halfWidth ?? 2.3) + .3 };
   });
   const distanceToBounds = (x, z) => Math.min(x - minX, maxX - x, z - minZ, maxZ - z);
   const rawHeight = (x, z) => {
@@ -181,10 +182,16 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
     const outerFade = 1 - smoothStep(19, 28, distance);
     const edgeFade = smoothStep(0, 5.5, distanceToBounds(x, z));
     let height = (.38 + ridge * (1.35 + Math.max(0, noise) * .95) + peakHeight * .78) * outerFade * edgeFade;
+    if (authoredRelief) {
+      const rise = smoothStep(0, options.nearSlope ?? 6.8, distance);
+      const farHills = .2 + ridge * (options.ridgeStrength ?? .22)
+        + peakHeight * (options.peakAmplitude ?? .65) * .22 + Math.max(0, noise) * .19;
+      height = (options.edgeHeight + rise * Math.max(0, maxHeight - options.edgeHeight) * farHills) * outerFade * edgeFade;
+    }
     for (const corridor of corridors) {
-      const along = (x - center.x) * corridor.x + (z - center.z) * corridor.z;
+      const along = (x - corridor.originX) * corridor.x + (z - corridor.originZ) * corridor.z;
       if (along < corridor.start) continue;
-      const across = Math.abs((x - center.x) * corridor.z - (z - center.z) * corridor.x);
+      const across = Math.abs((x - corridor.originX) * corridor.z - (z - corridor.originZ) * corridor.x);
       height *= smoothStep(corridor.width * .72, corridor.width, across);
     }
     for (const zone of dropZones) {
@@ -205,13 +212,14 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
       const a = values[z0 * columns + x0] * (1 - tx) + values[z0 * columns + x0 + 1] * tx;
       const b = values[(z0 + 1) * columns + x0] * (1 - tx) + values[(z0 + 1) * columns + x0 + 1] * tx;
       const height = a * (1 - tz) + b * tz;
+      if (authoredRelief) return Math.min(maxHeight, Math.round(height / step) * step);
       return height <= 1e-4 ? 0 : Math.min(maxHeight, step + Math.floor((height + 1e-6) / step) * step);
     },
   };
-  const layerCount = Math.max(0, Math.floor(maxHeight / step + 1e-8) - 1);
+  const layerCount = authoredRelief ? Math.ceil(maxHeight / step) : Math.max(0, Math.floor(maxHeight / step + 1e-8) - 1);
   map.layers = Array.from({ length: layerCount }, (_, index) => {
-    const threshold = (index + 1) * step;
-    return { threshold, height: threshold + step, contours: extractTerrainContours(map, threshold) };
+    const threshold = (index + (authoredRelief ? .5 : 1)) * step;
+    return { threshold, height: authoredRelief ? (index + 1) * step : threshold + step, contours: extractTerrainContours(map, threshold) };
   });
   return map;
 }

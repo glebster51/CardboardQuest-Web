@@ -28,8 +28,12 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     const layout = sceneryTokenLayout(size, options.base ? options.fixedRadius ?? 0 : 0);
     art.scale.setScalar(layout.scale);
     art.position.y = layout.artY;
+    if (options.flat) {
+      art.rotation.x = -Math.PI / 2;
+      art.position.y = .1;
+    }
     const terrain = parent.userData.terrainHeightMap ?? locations.home.terrainHeightMap;
-    const elevation = terrain.sample(x, z);
+    const elevation = options.elevation ?? terrain.sample(x, z);
     if (elevation <= 0 && !allowFlat) return null;
 
     const prop = new THREE.Group();
@@ -52,8 +56,8 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     }
 
     const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);
-    prop.rotation.y = Math.atan2(inward.x - x, inward.z - z);
-    facePairs.push({ prop, front: art.getObjectByName('scenery-front'), back: art.getObjectByName('scenery-back') });
+    prop.rotation.y = options.yaw ?? Math.atan2(inward.x - x, inward.z - z);
+    if (!options.flat) facePairs.push({ prop, front: art.getObjectByName('scenery-front'), back: art.getObjectByName('scenery-back') });
     parent.add(prop);
     return prop;
   }

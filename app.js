@@ -1,30 +1,38 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=1';
-import { advanceEnemyAI } from './game/enemy-ai.mjs?v=1';
+import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
+import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=1';
+import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
-import { createScenerySystem } from './render/scenery-system.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=6';
-import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=20';
-import { createTerrainHeightMap } from './terrain-shapes.mjs?v=5';
+import { createScenerySystem } from './render/scenery-system.mjs?v=2';
+import { populateNarrativeScenery } from './render/location-scenery.mjs?v=1';
+import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=7';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=21';
+import { createTerrainHeightMap } from './terrain-shapes.mjs?v=6';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
-import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=2';
+import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
-  consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=2';
+  consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=3';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=3';
-import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=4';
+import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
-  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=6';
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=7';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
 const scaled = value => value * LOCATION_SCALE;
+const yieldFrameWork = () => new Promise(resolve => {
+  if (window.requestIdleCallback) window.requestIdleCallback(resolve, { timeout: 120 });
+  else setTimeout(resolve, 16);
+});
 const heroBody = { id: 'hero', team: 'player', x: 0, z: 0, vx: 0, vz: 0,
   health: 20, maxHealth: 20, charges: 3, maxCharges: 3, rechargeTimer: 0, chargePop: [0, 0, 0] };
 let bodies = [heroBody];
@@ -212,11 +220,13 @@ async function start() {
     const stored = campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
     return {
     id, team: 'enemy', locationId, x: stored?.x ?? x, z: stored?.z ?? z, vx: stored?.vx ?? 0, vz: stored?.vz ?? 0,
-    health: stored?.health ?? options.health ?? 32, maxHealth: options.maxHealth ?? 32,
+    health: Math.min(options.maxHealth ?? 32, stored?.health ?? options.health ?? 32), maxHealth: options.maxHealth ?? 32,
     charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: randomBetween(1, 4),
     combatAwake: stored?.combatAwake ?? options.combatAwake ?? false,
     spawnReady: stored?.spawnReady ?? options.spawnReady ?? true,
     boss: options.boss ?? false,
+    archetype: options.archetype ?? 'goblin', damageQuarters: options.damageQuarters ?? 4,
+    fell: stored?.fell ?? false,
     };
   };
   const forestSpawns = [{ x: scaled(-3.1), z: scaled(.3) }, { x: scaled(3.1), z: scaled(.3) }];
@@ -242,64 +252,23 @@ async function start() {
     figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
     figures.push(figure);
   }
-  for (const encounter of [
-    { location: 'broken-bridge', points: [[-2.45, -.35], [2.35, -.2]] },
-    { location: 'quarry', points: [[-2.5, .2], [2.55, .15]] },
-    { location: 'bone-gate', points: [[0, -2.7]] },
-  ]) for (let index = 0; index < encounter.points.length; index++) {
-    const [x, z] = encounter.points[index];
-    const body = enemyBody(`${encounter.location}-goblin-${index + 1}`, encounter.location,
-      scaled(x), scaled(z), { combatAwake: true });
+  for (const encounter of STORY_ENCOUNTERS) for (const unit of encounter.units) {
+    const body = enemyBody(`${encounter.location}-${unit.id}`, encounter.location,
+      scaled(unit.x), scaled(unit.z), { combatAwake: true, archetype: unit.type, ...ENEMY_STATS[unit.type] });
+    body.lastSafePosition = { x: body.x, z: body.z };
     locations[encounter.location].enemies.push(body);
-    const figure = await createFigure(body, 'goblin');
+    const figure = await createFigure(body, unit.type);
     figure.locationId = encounter.location; figure.group.visible = false;
     figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
     figures.push(figure);
   }
-  const propTypes = [
-    { path: 'assets/env-tree.png', weight: .28, size: [2.1, 3.3] },
-    { path: 'assets/env-evergreen.png', weight: .24, size: [1.9, 3.1] },
-    { path: 'assets/env-moss-rocks.png', weight: .28, size: [1.1, 2.4] },
-    { path: 'assets/env-bushes.png', weight: .2, size: [1.4, 2.6] },
-  ];
-  await Promise.all(propTypes.map(type => loadSceneryTemplate(type.path)));
-  const populateForestEdge = async (location, count, seedOffset = 0) => {
-    const group = locationGroups[location.id];
-    const random = (() => { let seed = (0x4f1bbcdc + seedOffset) >>> 0; return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); })();
-    const tasks = [];
-    const scatterTypes = [propTypes[0], propTypes[1], propTypes[2], propTypes[3]];
-    let placed = 0;
-    for (let candidate = 0; candidate < 180 && placed < count; candidate++) {
-      const angle = random() * Math.PI * 2;
-      const radius = scaled(10.8 + Math.sqrt(random()) * 3.3);
-      const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius * .78;
-      if (location.terrainHeightMap.sample(x, z) <= 0) continue;
-      const type = scatterTypes[Math.floor(random() * scatterTypes.length)];
-      tasks.push(createScenery(type.path, x, z, randomBetween(...type.size), group)); placed++;
-    }
-    await Promise.all(tasks);
-  };
-  const homeGroup = locationGroups.home, forestGroup = locationGroups.forest, campGroup = locationGroups.camp;
-  const sceneDetails = [];
-  for (const location of Object.values(locations)) {
-    if (location.id === 'home') {
-      sceneDetails.push(createScenery('assets/hero-house.png', scaled(-2.4), scaled(-2.4), 3.5,
-        locationGroups.home, true, { fixedRadius: 1.2, base: true }));
-      sceneDetails.push(populateForestEdge(location, 8, location.heightSeed));
-    } else if (location.id === 'camp') {
-      sceneDetails.push(...CAMP_HUT_ANCHORS.map(hut => createScenery('assets/env-troll-hut.png', scaled(hut.x), scaled(hut.z), 3.2,
-        locationGroups.camp, true, { fixedRadius: PUCK_RADIUS * 1.3, base: true })));
-      sceneDetails.push(populateForestEdge(location, 12, location.heightSeed));
-    } else {
-      const sceneryCount = location.biome === 'ruins' || location.biome === 'vault' ? 5 : 8;
-      sceneDetails.push(populateForestEdge(location, sceneryCount, location.heightSeed));
-    }
-  }
-  await Promise.all(sceneDetails);
+  await populateNarrativeScenery({ locations, createScenery, loadTemplate: loadSceneryTemplate,
+    scale: LOCATION_SCALE, hutAnchors: CAMP_HUT_ANCHORS, puckRadius: PUCK_RADIUS });
   const decorationSpecs = Object.fromEntries(Object.values(locations).map((location, index) => [location.id, {
     seed: location.heightSeed,
-    decalCount: location.kind === 'camp' ? 32 : location.biome === 'home' ? 18 : 22,
-    grassCount: location.kind === 'camp' ? 34 : location.biome === 'home' ? 28 : 38,
+    decalCount: location.kind === 'camp' ? 48 : location.biome === 'quarry' ? 36 : 28,
+    grassCount: location.biome === 'meadow' ? 110 : location.biome === 'marsh' ? 95
+      : ['cave', 'vault', 'quarry'].includes(location.biome) ? 10 : location.biome === 'ridge' ? 18 : 64,
     exclusions: [
       ...(location.id === 'home' ? [{ x: scaled(-2.4), z: scaled(-2.4), radius: 2.7 }] : []),
       ...(location.id === 'forest' ? forestSpawns.map(point => ({ ...point, radius: 1.5 })) : []),
@@ -334,6 +303,8 @@ async function start() {
   let elapsed = 0;
   let transitionCooldown = 0;
   let victorySequenceActive = false;
+  const debugMode = new URLSearchParams(location.search).has('debug');
+  let simulationPaused = debugMode;
   const celebratedLocations = new Set();
   let protectedEntryFrom = null;
   const campSpawnPoints = campSpawns;
@@ -468,7 +439,7 @@ async function start() {
     campaignState.elapsed = elapsed;
     campaignState.world = Object.fromEntries(Object.values(locations).map(location => [location.id, {
       enemies: location.enemies.map(enemy => ({ id: enemy.id, x: enemy.x, z: enemy.z, vx: enemy.vx, vz: enemy.vz,
-        health: enemy.health, combatAwake: enemy.combatAwake, spawnReady: enemy.spawnReady })),
+        health: enemy.health, combatAwake: enemy.combatAwake, spawnReady: enemy.spawnReady, fell: enemy.fell })),
       defeats: location.defeats, goblinsSpawned: location.goblinsSpawned,
       reinforcementQueue: (location.reinforcementQueue ?? []).map(due => Math.max(0, due - elapsed)), bossSpawned: location.bossSpawned,
       initialized: location.initialized, combatTriggered: location.combatTriggered,
@@ -566,7 +537,9 @@ async function start() {
     return visual;
   }
   function makeCacheBody(location) {
-    const position = location.cachePosition ?? { x: scaled(3.4), z: 0 };
+    const position = location.cachePosition ?? [{ x: scaled(3.4), z: 0 }, { x: scaled(-3.4), z: 0 },
+      { x: 0, z: scaled(3.4) }, { x: 0, z: scaled(-3.4) }]
+      .find(point => isCampaignPositionSafe(location, point, 1.5)) ?? location.entry;
     const body = { id: `cache-${location.id}`, kind: 'cache-chest', team: 'neutral', locationId: location.id,
       x: position.x, z: position.z, vx: 0, vz: 0, radius: 1.12, fixed: true, opened: false };
     location.cacheBody = body;
@@ -616,7 +589,7 @@ async function start() {
     for (const figure of figures) {
       const active = figure.body === heroBody || figure.locationId === activeLocation.id;
       const spawning = Boolean(figure.spawnAnimation);
-      figure.group.visible = !figure.poolDormant && active && (!spawning || figure.spawnAnimation.age >= 0);
+      figure.group.visible = !figure.poolDormant && !figure.body.fell && active && (!spawning || figure.spawnAnimation.age >= 0);
       figure.healthHUD.visible = active && figure.body.health > 0 && !spawning;
       if (figure.enemyMarker) figure.enemyMarker.group.visible = active && !victorySequenceActive
         && figure.body.health > 0 && !spawning;
@@ -686,9 +659,13 @@ async function start() {
     if (!next) return;
     rememberExitPosition(activeLocation, locationId, heroBody);
     inputController.cancel();
+    heroFigure.victoryAnimation = null;
+    clearProjectiles();
     activeLocation = next;
     protectedEntryFrom = fromLocationId;
-    const arrival = lastExitPosition(activeLocation, fromLocationId) ?? locationArrival(activeLocation, fromLocationId);
+    const remembered = lastExitPosition(activeLocation, fromLocationId);
+    const arrival = remembered && isPlayableFloor(activeLocation, remembered.x, remembered.z, .2)
+      ? remembered : locationArrival(activeLocation, fromLocationId);
     heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
     heroBody.lastSafePosition = { x: arrival.x, z: arrival.z };
     const direction = locationEntryDirection(activeLocation, fromLocationId);
@@ -730,6 +707,32 @@ async function start() {
       .catch(error => console.error('Не удалось создать огра', error));
   }
   const bursts = [];
+  const projectiles = [];
+  const stoneGeometry = new THREE.IcosahedronGeometry(.17, 0);
+  const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0xb6ac91, roughness: .86 });
+  function clearProjectiles() {
+    for (const shot of projectiles) scene.remove(shot.mesh);
+    projectiles.length = 0;
+  }
+  function spawnStoneProjectile(shot) {
+    if (projectiles.length >= 16) return;
+    const mesh = new THREE.Mesh(stoneGeometry, stoneMaterial);
+    mesh.position.set(shot.x, .58, shot.z); mesh.castShadow = true; scene.add(mesh);
+    projectiles.push({ ...shot, mesh });
+  }
+  function updateProjectiles(dt) {
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const shot = projectiles[i];
+      const result = advanceStoneProjectile(shot, dt, heroBody, activeLocation.obstacles);
+      shot.mesh.position.set(shot.x, .55 + Math.sin(Math.min(1, shot.age / shot.lifetime) * Math.PI) * .4, shot.z);
+      shot.mesh.rotation.x += dt * 7;
+      if (result.hitPlayer && damage(heroBody, shot.damageQuarters, 8)) {
+        heroBody.vx += shot.vx * .24; heroBody.vz += shot.vz * .24;
+        burst(heroBody.x, heroBody.z, .6); vibrate([35, 20, 35]);
+      }
+      if (result.expired) { scene.remove(shot.mesh); projectiles.splice(i, 1); }
+    }
+  }
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
   const dustGeometry = new THREE.SphereGeometry(.045, 5, 4);
   const selectedColor = new THREE.Color(0x65d536);
@@ -750,7 +753,7 @@ async function start() {
   function spawnWorldLoot(location, sourceId, x, z, rewards) {
     if (!location || !rewards) return [];
     const drops = scatterWorldLoot({ sourceId, x, z, rewards,
-      isInside: (px, pz) => pointInWalkableArea(px, pz, location.walkablePoints),
+      isInside: (px, pz) => isPlayableFloor(location, px, pz, .45),
       spread: [1.15, 2.65] });
     location.loot.push(...drops);
     for (const item of drops) createLootVisual(location, item, { x, z });
@@ -833,7 +836,8 @@ async function start() {
     }
     if (target.team === 'enemy' && target.health === 0 && !target.lootDropped) {
       target.lootDropped = true;
-      spawnWorldLoot(locations[target.locationId], target.id, target.x, target.z, rollEnemyLoot());
+      const dropPosition = target.lootPosition ?? { x: target.x, z: target.z };
+      spawnWorldLoot(locations[target.locationId], target.id, dropPosition.x, dropPosition.z, rollEnemyLoot());
     }
     persistCampaign();
     return true;
@@ -846,6 +850,17 @@ async function start() {
     navigator.vibrate?.(pattern);
   }
   function recoverPlayerFromFall(body) {
+    if (body.team === 'enemy') {
+      if (body.health > 0) {
+        body.lootPosition = body.lastSafePosition ?? activeLocation.entry;
+        body.hitCooldown = 0;
+        damage(body, body.health, 18);
+      }
+      const figure = figures.find(item => item.body === body);
+      if (figure) { figure.fallAge = 0; setVisualState(figure, 'dead'); }
+      burst(body.x, body.z, .8);
+      return;
+    }
     if (body !== heroBody) return;
     const safe = body.lastSafePosition ?? activeLocation.entry;
     recoverAfterFall(body, safe);
@@ -873,7 +888,10 @@ async function start() {
         if (target.fixed) return;
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
         const bonus = attacker.team === 'player' ? campaignState.damageBonus : 0;
-        if (!damage(target, ricochetDamageQuarters(attacker.attackRicochets || 0) + bonus, speed)) return;
+        const hitDamage = attacker.archetype === 'boar'
+          ? Math.max(1, Math.floor((attacker.damageQuarters ?? 6) / 2 ** (attacker.attackRicochets || 0)))
+          : ricochetDamageQuarters(attacker.attackRicochets || 0);
+        if (!damage(target, hitDamage + bonus, speed)) return;
         attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
         const attackerFigure = figures.find(item => item.body === attacker);
         if (attackerFigure) attackerFigure.dealDamageAge = 0;
@@ -1037,9 +1055,46 @@ async function start() {
     showActiveLocationFigures(); rebuildBodies();
   }).catch(error => console.error('Не удалось восстановить состояние лагеря', error));
   loading.hidden = true;
+  if (debugMode) window.__CQ_DEBUG__ = {
+    locations: Object.keys(locations),
+    view(id, distance = 43) {
+      simulationPaused = true;
+      enterLocation(id, activeLocation.id);
+      dialoguePanel.hidden = true; inventoryPanel.hidden = true;
+      heroBody.x = 0; heroBody.z = 0; heroBody.vx = 0; heroBody.vz = 0;
+      heroBody.health = heroBody.maxHealth;
+      heroFigure.victoryAnimation = null;
+      const points = activeLocation.walkablePoints;
+      const minX = Math.min(...points.map(p => p.x)), maxX = Math.max(...points.map(p => p.x));
+      const minZ = Math.min(...points.map(p => p.z)), maxZ = Math.max(...points.map(p => p.z));
+      target.set((minX + maxX) / 2, .65, (minZ + maxZ) / 2);
+      orbit.distance = Math.max(distance, Math.max(maxX - minX, maxZ - minZ) * 1.45);
+      orbit.phi = .62; orbit.theta = .35; scene.fog.near = 120;
+      updateCamera();
+    },
+    pause(value = true) { simulationPaused = value; },
+    place(id, x, z, vx = 0, vz = 0) {
+      const body = id === 'hero' ? heroBody : activeLocation.enemies.find(enemy => enemy.id === id);
+      if (!body) throw new Error(`Unknown test unit: ${id}`);
+      Object.assign(body, { x, z, vx, vz });
+    },
+    snapshot() {
+      return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
+        hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health },
+        heroVictory: Boolean(heroFigure.victoryAnimation), hazards: activeLocation.hazards,
+        enemies: activeLocation.enemies.map(({ id, x, z, vx, vz, health, archetype, fell, aiPhase }) => ({ id, x, z, vx, vz, health, archetype, fell, aiPhase })),
+        projectiles: projectiles.length,
+        terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
+        loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
+    },
+    defeatEnemy(id) {
+      const enemy = activeLocation.enemies.find(body => body.id === id);
+      if (enemy) { enemy.hitCooldown = 0; damage(enemy, enemy.health, 12); }
+    },
+  };
   let previousTime = null;
   renderer.setAnimationLoop(time => {
-    const dt = previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
+    const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
@@ -1047,6 +1102,7 @@ async function start() {
     if (!victorySequenceActive && heroBody.health > 0 && !celebratedLocations.has(activeLocation.id)
       && canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL)) {
       celebratedLocations.add(activeLocation.id);
+      clearProjectiles();
       startUnitVictory(heroFigure);
     }
     for (const figure of figures) if (figure.spawnAnimation) {
@@ -1088,19 +1144,38 @@ async function start() {
       const figure = figures.find(item => item.body === body);
       const decision = advanceEnemyAI(body, state, figure, dt, randomBetween);
       if (decision.launched) burst(body.x, body.z, .45);
+      if (decision.shot) {
+        spawnStoneProjectile(decision.shot);
+        if (figure) figure.dealDamageAge = 0;
+      }
     }
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
       advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints, {
-        fallZones: activeLocation.dropZones, fallable: body => body === heroBody, onFall: recoverPlayerFromFall,
+        fallZones: activeLocation.dropZones, hazards: activeLocation.hazards,
+        fallable: body => body === heroBody || body.team === 'enemy', onFall: recoverPlayerFromFall,
       });
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
     updateWorldLoot(dt);
+    updateProjectiles(dt);
     if (isCampaignPositionSafe(activeLocation, heroBody)) heroBody.lastSafePosition = { x: heroBody.x, z: heroBody.z };
+    for (const enemy of activeLocation.enemies) if (enemy.health > 0 && isCampaignPositionSafe(activeLocation, enemy))
+      enemy.lastSafePosition = { x: enemy.x, z: enemy.z };
     for (const figure of figures) {
       if (figure.poolDormant) continue;
       const body = figure.body;
       if (body !== heroBody && figure.locationId !== activeLocation.id) continue;
+      if (body.fell) {
+        figure.healthHUD.visible = false;
+        if (figure.enemyMarker) figure.enemyMarker.group.visible = false;
+        if (typeof figure.fallAge !== 'number') { figure.group.visible = false; continue; }
+        figure.fallAge += dt;
+        const t = Math.min(1, figure.fallAge / .65);
+        figure.group.position.set(body.x, -3 * t, body.z);
+        figure.group.scale.setScalar(Math.max(.05, 1 - t * .85));
+        figure.group.visible = t < 1;
+        continue;
+      }
       if (figure.spawnAnimation) continue;
       figure.group.position.set(body.x, 0, body.z);
       const speed = Math.hypot(body.vx, body.vz);

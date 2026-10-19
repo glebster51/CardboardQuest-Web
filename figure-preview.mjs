@@ -3,9 +3,13 @@ import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=4';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=5';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
-const subjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }, { id: 'ogre', label: 'Огр' }];
+const allSubjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }, { id: 'ogre', label: 'Огр' },
+  { id: 'boar', label: 'Кабан' }, { id: 'slinger', label: 'Пращник' }];
+const selectedSubject = new URLSearchParams(location.search).get('subject');
+const subjects = selectedSubject ? allSubjects.filter(subject => subject.id === selectedSubject) : allSubjects.slice(0, 3);
 const views = [{ id: 'front', label: 'Спереди', angle: 0 }, { id: 'three-quarter', label: '¾', angle: Math.PI / 4 }, { id: 'back', label: 'Сзади', angle: Math.PI }];
 const status = document.querySelector('#status'), sheet = document.querySelector('#sheet');
+if (selectedSubject) sheet.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5)); renderer.setClearColor(0xf0e3c8); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.autoClear = false;
 renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none';
@@ -61,6 +65,15 @@ async function loadSubject(subject) {
       new THREE.MeshStandardMaterial({ color: 0x97713e }),
     ]);
     base.position.y = .115; group.add(base); art.group.position.y = 1.25; group.add(art.group);
+    if (states[si] === 'dead') {
+      let bottom = frameHeight - 1;
+      for (; bottom >= 0; bottom--) {
+        let opaque = false;
+        for (let x = 0; x < frameWidth; x++) if (frontArt.alphaPixels[(bottom * frameWidth + x) * 4 + 3] > 80) { opaque = true; break; }
+        if (opaque) break;
+      }
+      art.group.position.y = .215 - (.5 - bottom / frameHeight) * 2.05;
+    }
     built.set(`${subject.id}:${states[si]}`, { group, art });
     textures[si].dispose(); backTextures[si].dispose();
   }

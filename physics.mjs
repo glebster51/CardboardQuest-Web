@@ -1,3 +1,5 @@
+import { hazardAtPoint } from './game/world-hazards.mjs';
+
 // World-space XZ motion. Constant friction gives a finite, frame-independent stop.
 export const MAX_PULL = 1.8;
 // Distance under constant friction is proportional to speed squared.
@@ -125,8 +127,16 @@ export function collide(a, b, held = null) {
 export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoints = ARENA_POINTS, options = {}) {
   const fallZones = options.fallZones ?? [];
   const canFall = body => options.fallable?.(body) ?? false;
+  const fallIntoHole = body => {
+    if (!body.fell && canFall(body) && hazardAtPoint(body.x, body.z, options.hazards)) {
+      body.fell = true; body.vx = 0; body.vz = 0;
+      options.onFall?.(body);
+      return true;
+    }
+    return false;
+  };
   const confineBody = body => {
-    if (body.fell) return;
+    if (body.fell || fallIntoHole(body)) return;
     const strength = confine(body, arenaPoints, fallZones, canFall(body));
     if (body.fell) options.onFall?.(body);
     else if (strength > .4) onImpact?.(body, null, strength);
@@ -134,6 +144,7 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoin
   for (const body of bodies) if (!body.fixed && body !== held && !body.fell) {
     const strength = advance(body, dt, arenaPoints, fallZones, canFall(body));
     if (body.fell) { options.onFall?.(body); continue; }
+    if (fallIntoHole(body)) continue;
     if (strength > .4) onImpact?.(body, null, strength);
   }
   // Reconcile overlap with the table edges after each contact pass.

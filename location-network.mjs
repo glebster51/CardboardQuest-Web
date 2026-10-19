@@ -78,7 +78,14 @@ export function createLocationNetwork(scale = LOCATION_SCALE) {
 }
 
 export function findNearbyExit(location, body, radius = EXIT_ZONE_RADIUS) {
-  return location.exits.find(exit => Math.hypot(body.x - exit.x, body.z - exit.z) <= radius) ?? null;
+  return location.exits.find(exit => {
+    if (!exit.halfWidth) return Math.hypot(exit.x - body.x, exit.z - body.z) <= radius;
+    const length = Math.hypot(exit.x, exit.z) || 1;
+    const ux = exit.dirX ?? exit.x / length, uz = exit.dirZ ?? exit.z / length;
+    const dx = body.x - exit.x, dz = body.z - exit.z;
+    return Math.abs(dx * ux + dz * uz) <= (exit.halfDepth ?? radius)
+      && Math.abs(dx * uz - dz * ux) <= exit.halfWidth;
+  }) ?? null;
 }
 
 export function locationArrival(location, fromLocationId) {
@@ -89,6 +96,7 @@ export function locationEntryDirection(location, fromLocationId) {
   const entrance = location.exits?.find(exit => exit.to === fromLocationId);
   const center = location.entry ?? point(0, 0);
   if (!entrance) return point(0, 1);
+  if (Number.isFinite(entrance.dirX)) return point(-entrance.dirX, -entrance.dirZ);
   const dx = center.x - entrance.x, dz = center.z - entrance.z;
   const length = Math.hypot(dx, dz) || 1;
   return point(dx / length, dz / length);
@@ -105,6 +113,13 @@ export function lastExitPosition(location, fromLocationId) {
 
 export function shouldIgnoreEntryExit(location, fromLocationId, body, radius = EXIT_ZONE_RADIUS * 1.5) {
   const entrance = location.exits?.find(exit => exit.to === fromLocationId);
+  if (entrance?.halfWidth) {
+    const length = Math.hypot(entrance.x, entrance.z) || 1;
+    const ux = entrance.dirX ?? entrance.x / length, uz = entrance.dirZ ?? entrance.z / length;
+    const dx = body.x - entrance.x, dz = body.z - entrance.z;
+    return Math.abs(dx * ux + dz * uz) <= (entrance.halfDepth ?? 1) + radius
+      && Math.abs(dx * uz - dz * ux) <= entrance.halfWidth + radius;
+  }
   return Boolean(entrance && Math.hypot(body.x - entrance.x, body.z - entrance.z) <= radius);
 }
 

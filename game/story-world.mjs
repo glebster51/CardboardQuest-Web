@@ -1,4 +1,7 @@
-import { CAMPAIGN, CAMPAIGN_EDGES } from './story-campaign.mjs';
+import { CAMPAIGN, CAMPAIGN_EDGES } from './story-campaign.mjs?v=3';
+import { createLocationArt } from './location-art.mjs';
+import { createAuthoredLayout } from './location-layout.mjs';
+import { hazardAtPoint } from './world-hazards.mjs';
 
 function pointInside(point, polygon) {
   let inside = false;
@@ -25,6 +28,7 @@ export function isCampaignPositionSafe(location, point, clearance = 1.2) {
   const points = location?.walkablePoints ?? [];
   return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.z) && points.length >= 3
     && pointInside(point, points) && boundaryClearance(point, points) >= clearance
+    && !hazardAtPoint(point.x, point.z, location.hazards, clearance)
     && !(location.exits ?? []).some(exit => Math.hypot(point.x - exit.x, point.z - exit.z) <= 2.1));
 }
 
@@ -58,30 +62,6 @@ export function resolveCampaignPlayerStart(location, { health, maxHealth, positi
   return { health: restoredHealth, position: spawn ?? { x: 0, z: 0 }, recovered: numericHealth <= 0 || !isSafe(position) };
 }
 
-const COMPASS = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
-const smoothPeak = delta => {
-  const t = Math.min(1, Math.abs(delta) / .3);
-  const smooth = t * t * (3 - 2 * t);
-  return 1 - smooth;
-};
-
-function footprint(directions, scale) {
-  const points = [];
-  const count = 96;
-  for (let index = 0; index < count; index++) {
-    const angle = index / count * Math.PI * 2;
-    let gate = 0;
-    for (const direction of directions) {
-      const delta = Math.atan2(Math.sin(angle - direction), Math.cos(angle - direction));
-      gate = Math.max(gate, smoothPeak(delta));
-    }
-    const variation = 1 + .055 * Math.sin(angle * 3 + .7) + .035 * Math.sin(angle * 7 - 1.1);
-    const radius = (8.1 * variation + 3.6 * gate) * scale;
-    points.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius });
-  }
-  return points;
-}
-
 /** Expand the authored story graph into small playable arenas and throat exits. */
 export function createCampaignLocations(locations, scale = 1.5) {
   if (!locations || !locations.home || !Number.isFinite(scale) || scale <= 0) {
@@ -97,31 +77,25 @@ export function createCampaignLocations(locations, scale = 1.5) {
       bossSpawned: false, initialized: false,
     };
     const neighbors = exitsById.get(authored.id);
-    const directions = neighbors.map((_, index) => COMPASS[index % COMPASS.length]);
-    const walkablePoints = footprint(directions, scale);
+    const art = createLocationArt(authored.id, scale);
+    const layout = createAuthoredLayout(authored.id, art, scale);
+    if (layout.exits.length !== neighbors.length) throw new Error(`Exit layout does not match story graph: ${authored.id}`);
+    const walkablePoints = layout.points;
     const exits = neighbors.map((to, index) => ({
-      x: Math.cos(directions[index]) * 10.15 * scale,
-      z: Math.sin(directions[index]) * 10.15 * scale,
+      ...layout.exits[index],
       to,
       label: 'Проход между холмами',
     }));
-    const angularDistance = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-    const dropAngle = Array.from({ length: 24 }, (_, index) => index / 24 * Math.PI * 2)
-      .map(angle => ({ angle, clearance: exits.length
-        ? Math.min(...exits.map(exit => angularDistance(angle, Math.atan2(exit.z, exit.x)))) : Math.PI }))
-      .sort((a, b) => b.clearance - a.clearance)[0].angle;
-    const dropPoint = walkablePoints.reduce((best, point) => {
-      const delta = Math.atan2(Math.sin(Math.atan2(point.z, point.x) - dropAngle),
-        Math.cos(Math.atan2(point.z, point.x) - dropAngle));
-      return !best || Math.abs(delta) < best.delta ? { x: point.x, z: point.z, delta: Math.abs(delta) } : best;
-    }, null);
+    const dropZones = (art.falls ?? []).map(([angle, kind, radius]) => {
+      const candidates = walkablePoints.filter(point => exits.every(exit => Math.hypot(exit.x - point.x, exit.z - point.z) > radius + 4));
+      const point = candidates.sort((a, b) => Math.abs(Math.atan2(Math.sin(Math.atan2(a.z, a.x) - angle), Math.cos(Math.atan2(a.z, a.x) - angle)))
+        - Math.abs(Math.atan2(Math.sin(Math.atan2(b.z, b.x) - angle), Math.cos(Math.atan2(b.z, b.x) - angle))))[0];
+      return point ? { ...point, radius, kind } : null;
+    }).filter(Boolean);
     const arrivals = {};
     for (const [from, to] of CAMPAIGN_EDGES) if (to === authored.id) {
-      const arrivalAngle = directions[neighbors.indexOf(from)];
-      if (Number.isFinite(arrivalAngle)) arrivals[from] = {
-        x: Math.cos(arrivalAngle) * 6.6 * scale,
-        z: Math.sin(arrivalAngle) * 6.6 * scale,
-      };
+      const gate = layout.exits[neighbors.indexOf(from)];
+      if (gate) arrivals[from] = { ...gate.arrival };
     }
     Object.assign(location, {
       id: authored.id,
@@ -133,7 +107,9 @@ export function createCampaignLocations(locations, scale = 1.5) {
       campaignOptions: authored.options,
       secret: authored.options === 'secret',
       exits,
-      dropZones: [{ x: dropPoint.x, z: dropPoint.z, radius: 2.35 }],
+      dropZones,
+      hazards: art.hazards,
+      art,
       arrivals,
       entry: { x: 0, z: 0 },
       walkablePoints,

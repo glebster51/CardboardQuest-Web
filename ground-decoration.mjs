@@ -1,3 +1,4 @@
+import { hazardAtPoint } from './game/world-hazards.mjs';
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 export function pointInWalkableArea(x, z, polygon) {
@@ -77,7 +78,7 @@ function createWalkPath(center, anchor, seed) {
 
 export function createLocationWalkPaths(location, extraDestinations = []) {
   if (!location?.walkablePoints || location.walkablePoints.length < 3) throw new TypeError('Location needs a walkable polygon');
-  const center = polygonCentroid(location.walkablePoints);
+  const center = location.entry ?? polygonCentroid(location.walkablePoints);
   const anchors = [
     ...Object.values(location.arrivals ?? {}),
     ...(location.exits ?? []).map(({ x, z }) => ({ x, z })),
@@ -89,7 +90,53 @@ export function createLocationWalkPaths(location, extraDestinations = []) {
       || distance(center, anchor) < 1.2 || unique.some(other => distance(anchor, other) < .5)) continue;
     unique.push(anchor);
   }
-  return unique.map((anchor, index) => createWalkPath(center, anchor, 719 + index * 97));
+  return unique.map((anchor, index) => {
+    const direct = createWalkPath(center, anchor, 719 + index * 97);
+    if (!direct.some(point => !pointInWalkableArea(point.x, point.z, location.walkablePoints)
+      || hazardAtPoint(point.x, point.z, location.hazards, 1))) return direct;
+    return findGroundRoute(location, location.entry ?? center, anchor);
+  }).filter(path => path.length > 1);
+}
+
+/** Route trails around real holes rather than stamping dirt over water. */
+export function findGroundRoute(location, start, end, clearance = 1) {
+  const bounds = areaBounds(location.walkablePoints), spacing = .7;
+  const cols = Math.ceil((bounds.maxX - bounds.minX) / spacing) + 1;
+  const rows = Math.ceil((bounds.maxZ - bounds.minZ) / spacing) + 1;
+  const position = index => ({ x: bounds.minX + index % cols * spacing,
+    z: bounds.minZ + Math.floor(index / cols) * spacing });
+  const safe = index => {
+    const point = position(index);
+    return pointInWalkableArea(point.x, point.z, location.walkablePoints)
+      && distanceToBoundary(point.x, point.z, location.walkablePoints) >= .82
+      && !hazardAtPoint(point.x, point.z, location.hazards, clearance);
+  };
+  const nearest = point => {
+    let best = -1, bestDistance = Infinity;
+    for (let index = 0; index < cols * rows; index++) {
+      const p = position(index), d = distance(p, point);
+      if (d < bestDistance && safe(index)) { best = index; bestDistance = d; }
+    }
+    return best;
+  };
+  const first = nearest(start), last = nearest(end);
+  if (first < 0 || last < 0) return [];
+  const queue = [first], parent = new Int32Array(cols * rows).fill(-1);
+  parent[first] = first;
+  for (let head = 0; head < queue.length && parent[last] < 0; head++) {
+    const index = queue[head], x = index % cols, z = Math.floor(index / cols);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const nx = x + dx, nz = z + dz, next = nz * cols + nx;
+      if (nx < 0 || nx >= cols || nz < 0 || nz >= rows || parent[next] >= 0 || !safe(next)) continue;
+      if (dx && dz && (!safe(z * cols + nx) || !safe(nz * cols + x))) continue;
+      parent[next] = index; queue.push(next);
+    }
+  }
+  if (parent[last] < 0) return [];
+  const path = [end];
+  for (let index = last; index !== first; index = parent[index]) path.push(position(index));
+  path.push(start);
+  return path.reverse();
 }
 
 function pathDistance(point, paths) {
@@ -113,6 +160,7 @@ export function scatterGroundDetails({
     'ground-v2-twig', 'ground-v2-hooves', 'ground-v2-stones', 'ground-v2-cracks-broad'];
   const accepts = (point, edge, path, placements, spacing) => pointInWalkableArea(point.x, point.z, polygon)
     && distanceToBoundary(point.x, point.z, polygon) >= edge
+    && !hazardAtPoint(point.x, point.z, location.hazards, edge + .3)
     && pathDistance(point, paths) >= path
     && !exclusions.some(exclusion => distance(point, exclusion) < exclusion.radius)
     && placements.every(other => distance(point, other) >= spacing);
@@ -137,13 +185,14 @@ export function scatterGroundDetails({
     for (let index = 1; index < path.length; index++) {
       const a = path[index - 1], b = path[index], length = distance(a, b);
       carry += length;
-      if (carry < .46) continue;
+      if (carry < .9) continue;
       carry = 0;
       const tangent = Math.atan2(b.x - a.x, b.z - a.z);
-      if (random() < .8) trail.push({ x: (a.x + b.x) / 2 + (random() - .5) * .12,
+      if (hazardAtPoint((a.x + b.x) / 2, (a.z + b.z) / 2, location.hazards, .5)) continue;
+      if (random() < .58) trail.push({ x: (a.x + b.x) / 2 + (random() - .5) * .12,
         z: (a.z + b.z) / 2 + (random() - .5) * .12,
         kind: random() < .7 ? 'ground-v2-dirt-patch' : 'ground-v2-scuff',
-        width: 1.02 + random() * .42, height: .72 + random() * .3,
+        width: .65 + random() * .4, height: .45 + random() * .3,
         rotation: tangent + (random() - .5) * .28, opacity: .65 + random() * .18 });
       if (Math.floor(index * .46 / 1.55) !== Math.floor((index - 1) * .46 / 1.55) && random() < .72) {
         trail.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2,
