@@ -138,3 +138,13 @@ export function takeDueReinforcement(location, now, livingCount) {
   location.pendingSpawns++;
   return true;
 }
+
+export function finishCampReinforcement(location, now, spawned) {
+  if (location.kind !== 'camp' || location.pendingSpawns <= 0) return false;
+  location.pendingSpawns--;
+  if (spawned) location.goblinsSpawned++;
+  else if ((location.goblinsSpawned ?? 0) + location.pendingSpawns < CAMP_GOBLIN_TOTAL) {
+    location.reinforcementQueue.unshift(now + CAMP_REINFORCEMENT_DELAY);
+  }
+  return true;
+}

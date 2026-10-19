@@ -14,7 +14,7 @@ import { createLocationWalkPaths, scatterGroundDetails } from './ground-decorati
 import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
-  recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=5';
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=6';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -397,7 +397,8 @@ async function start() {
     transitionCooldown = .85;
     if (activeLocation.kind === 'camp' && !activeLocation.initialized) {
       activeLocation.initialized = true;
-      for (const figure of figures.filter(item => item.locationId === 'camp' && !item.body.boss && !item.body.spawnReady)) {
+      for (const figure of figures.filter(item => item.locationId === 'camp' && !item.poolDormant
+        && !item.body.boss && !item.body.spawnReady && !item.spawnAnimation)) {
         beginSpawn(figure, figure.spawnSource);
       }
     }
@@ -407,9 +408,15 @@ async function start() {
     refreshLocationInfo();
   }
   function startQueuedReinforcement() {
-    activeLocation.pendingSpawns = Math.max(0, activeLocation.pendingSpawns - 1);
-    activeLocation.goblinsSpawned++;
-    spawnCampGoblin().catch(error => console.error('Не удалось создать гоблина лагеря', error));
+    const camp = locations.camp;
+    const finish = spawned => {
+      finishCampReinforcement(camp, elapsed, spawned);
+      if (activeLocation.id === camp.id) refreshLocationInfo();
+    };
+    spawnCampGoblin().then(figure => finish(Boolean(figure))).catch(error => {
+      finish(false);
+      console.error('Не удалось создать гоблина лагеря', error);
+    });
   }
   function spawnCampBoss() {
     spawnCampGoblin({ x: 0, z: scaled(-4.2), hutX: 0, hutZ: scaled(-7.4) }, true)
