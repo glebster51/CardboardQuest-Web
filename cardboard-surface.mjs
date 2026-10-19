@@ -37,8 +37,7 @@ export function createCardboardGrainTexture({ THREE, texture }) {
 }
 
 export function makePlayfieldCardboardMaterial(THREE, map, color, stencil) {
-  return new THREE.MeshPhysicalMaterial({ color, map, roughness: .34, clearcoat: .78,
-    clearcoatRoughness: .16, ...stencil });
+  return new THREE.MeshStandardMaterial({ color, map, roughness: .96, ...stencil });
 }
 
 export function makeRoughCardboardMaterial(THREE, map, color, stencil) {
