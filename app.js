@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS } from './physics.mjs?v=11';
+import { clampPull, launch, advanceWorld, facingAngle, turnToward, isAttacking, MAX_PULL, ARENA_POINTS } from './physics.mjs?v=12';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -535,7 +535,8 @@ async function start() {
   }
   host.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
-    host.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    try { event.target.setPointerCapture(event.pointerId); } catch { /* Window listeners still track the drag. */ }
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size > 1) {
       stopAim();
@@ -564,7 +565,7 @@ async function start() {
       }
     }
   });
-  host.addEventListener('pointermove', event => {
+  addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId) || !gesture) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (gesture.mode === 'touchOrbit') {
@@ -631,9 +632,9 @@ async function start() {
     pointers.delete(event.pointerId);
     if (pointers.size === 0) gesture = null;
   }
-  host.addEventListener('pointerup', event => release(event, false));
-  host.addEventListener('pointercancel', event => release(event, true));
-  host.addEventListener('lostpointercapture', event => release(event, true));
+  addEventListener('pointerup', event => release(event, false));
+  addEventListener('pointercancel', event => release(event, true));
+  addEventListener('lostpointercapture', event => release(event, true));
   host.addEventListener('contextmenu', event => event.preventDefault());
   host.addEventListener('wheel', event => {
     event.preventDefault();
