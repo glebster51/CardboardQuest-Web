@@ -4,6 +4,7 @@ import { traceSpriteContours, validateSpriteFrames, unionSpriteAlpha, clipSprite
 import { createTerrainPeaks, makeNoisyBoundary, gaussianGrowthField, nearestPointOnPath } from './terrain-shapes.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=1';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -21,7 +22,7 @@ const GROUND_UI_Y = .026;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
-function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
+function legacySilhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);
   for (let i = 0; i < alpha.length; i++) alpha[i] = alphaPixels[i * 4 + 3];
   const contours = traceSpriteContours(alpha, width, height, worldWidth, worldHeight);
@@ -71,7 +72,7 @@ function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   return { shapes, rasterMask: maskContext.getImageData(0, 0, width, height).data };
 }
 
-function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
+function legacyMakeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
   const worldWidth = 2.05 * width / height;
   const worldHeight = 2.05;
   const depth = .144;
@@ -274,7 +275,7 @@ async function start() {
       if (!sourcePixels.some((_value, index) => index % 4 === 3 && sourcePixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}`);
       const cleanedMask = unionSpriteAlpha(sourcePixels, sourcePixels, frameWidth, frameHeight);
       const worldWidth = 2.05 * frameWidth / frameHeight;
-      const spriteGeometry = silhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
+      const spriteGeometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
       const alphaPixels = clipSpriteToAlphaMask(sourcePixels, spriteGeometry.rasterMask);
       sourceContext.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
       const front = new THREE.CanvasTexture(sourceCanvas); front.colorSpace = THREE.SRGBColorSpace;
@@ -288,7 +289,7 @@ async function start() {
       backContext.putImageData(new ImageData(clippedBack, frameWidth, frameHeight), 0, 0);
       const back = new THREE.CanvasTexture(backCanvas); back.colorSpace = THREE.SRGBColorSpace;
       back.anisotropy = front.anisotropy;
-      const art = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player', spriteGeometry.shapes, clippedBack);
+      const art = buildExtrudedSprite(alphaPixels, frameWidth, frameHeight, front, back, corrugation, body.team === 'player', spriteGeometry.shapes, clippedBack);
       art.group.position.y = 1.25;
       art.group.visible = visualState === 'idle';
       group.add(art.group);
