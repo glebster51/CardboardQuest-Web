@@ -257,6 +257,20 @@ async function start() {
       mesh.castShadow = true; mesh.receiveShadow = true; location.sceneGroup.add(mesh);
     }
   }
+  const figureArtCache = new Map();
+  const yieldFrameWork = () => new Promise(resolve => {
+    if (window.requestIdleCallback) window.requestIdleCallback(() => resolve(), { timeout: 120 });
+    else setTimeout(resolve, 16);
+  });
+  function cloneSpriteModel(model) {
+    const group = model.group.clone(true);
+    const frontFlashMesh = group.children.find(child => child.material === model.flashMaterial);
+    const backFlashMesh = group.children.find(child => child.material === model.backFlashMaterial);
+    const flashMaterial = model.flashMaterial.clone(), backFlashMaterial = model.backFlashMaterial.clone();
+    if (frontFlashMesh) frontFlashMesh.material = flashMaterial;
+    if (backFlashMesh) backFlashMesh.material = backFlashMaterial;
+    return { ...model, group, flashMaterial, backFlashMaterial };
+  }
   async function createFigure(body, prefix) {
     const group = new THREE.Group();
     scene.add(group);
@@ -276,62 +290,84 @@ async function start() {
     const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
     slot.position.y = .219; group.add(slot);
 
-    const loader = new THREE.TextureLoader();
-    const artStates = {};
-    const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=3`)));
-    const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=3`)));
-    const frameWidth = sources[0].image.width, frameHeight = sources[0].image.height;
-    if (sources.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)
-      || backTextures.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)) {
-      throw new Error(`Pose sheet cells must share one frame: ${prefix}`);
+    const cacheKey = `${prefix}:${body.team === 'player' ? 'player' : 'enemy'}`;
+    let templatePromise = figureArtCache.get(cacheKey);
+    if (!templatePromise) {
+      templatePromise = (async () => {
+        const loader = new THREE.TextureLoader();
+        const sources = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}.png?sheet=3`)));
+        const backTextures = await Promise.all(VISUAL_STATES.map(visualState => loader.loadAsync(`assets/${prefix}-${visualState}-back.png?sheet=3`)));
+        const frameWidth = sources[0].image.width, frameHeight = sources[0].image.height;
+        if (sources.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)
+          || backTextures.some(source => source.image.width !== frameWidth || source.image.height !== frameHeight)) {
+          throw new Error(`Pose sheet cells must share one frame: ${prefix}`);
+        }
+        const prepareFace = (image, visualState, side) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = frameWidth; canvas.height = frameHeight;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          const flipIdlePlayerFront = body.team === 'player' && visualState === 'idle' && side === 'front';
+          if (flipIdlePlayerFront) { context.translate(frameWidth, 0); context.scale(-1, 1); }
+          context.drawImage(image, 0, 0, frameWidth, frameHeight);
+          if (flipIdlePlayerFront) context.setTransform(1, 0, 0, 1, 0, 0);
+          const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
+          if (!pixels.some((_value, index) => index % 4 === 3 && pixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}-${side}`);
+          const cleanedMask = unionSpriteAlpha(pixels, pixels, frameWidth, frameHeight);
+          const worldWidth = 2.05 * frameWidth / frameHeight;
+          const geometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
+          const alphaPixels = clipSpriteToAlphaMask(pixels, geometry.rasterMask);
+          context.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
+          const faceTexture = new THREE.CanvasTexture(canvas); faceTexture.colorSpace = THREE.SRGBColorSpace;
+          faceTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+          const model = buildExtrudedSprite(alphaPixels, frameWidth, frameHeight, faceTexture, faceTexture,
+            corrugation, body.team === 'player', geometry.shapes, alphaPixels);
+          model.group.rotation.y = side === 'back' ? Math.PI : 0;
+          return { ...model, texture: faceTexture };
+        };
+        const artStates = {};
+        for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
+          const visualState = VISUAL_STATES[stateIndex];
+          const frontArt = prepareFace(sources[stateIndex].image, visualState, 'front');
+          await yieldFrameWork();
+          const backArt = prepareFace(backTextures[stateIndex].image, visualState, 'back');
+          await yieldFrameWork();
+          const artGroup = new THREE.Group(); artGroup.position.y = 1.25;
+          artGroup.add(frontArt.group, backArt.group);
+          frontArt.group.visible = true; backArt.group.visible = false;
+          artStates[visualState] = { group: artGroup, frontArt, backArt,
+            alphaPixels: frontArt.alphaPixels, width: frameWidth, height: frameHeight };
+          sources[stateIndex].dispose(); backTextures[stateIndex].dispose();
+        }
+        let deadBottomRow = frameHeight - 1;
+        for (let y = frameHeight - 1; y >= 0; y--) {
+          let hasVisiblePixel = false;
+          for (let x = 0; x < frameWidth; x++) if (artStates.dead.alphaPixels[(y * frameWidth + x) * 4 + 3] > 80) {
+            hasVisiblePixel = true; break;
+          }
+          if (hasVisiblePixel) { deadBottomRow = y; break; }
+        }
+        const deadBottomLocalY = (.5 - deadBottomRow / frameHeight) * 2.05;
+        return { artStates, deadGroundedY: .215 - deadBottomLocalY };
+      })();
+      figureArtCache.set(cacheKey, templatePromise);
+      templatePromise.catch(() => figureArtCache.delete(cacheKey));
     }
-    const prepareFace = (image, visualState, side) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = frameWidth; canvas.height = frameHeight;
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      const flipIdlePlayerFront = body.team === 'player' && visualState === 'idle' && side === 'front';
-      if (flipIdlePlayerFront) { context.translate(frameWidth, 0); context.scale(-1, 1); }
-      context.drawImage(image, 0, 0, frameWidth, frameHeight);
-      if (flipIdlePlayerFront) context.setTransform(1, 0, 0, 1, 0, 0);
-      const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
-      if (!pixels.some((_value, index) => index % 4 === 3 && pixels[index] > 80)) throw new Error(`Empty sprite: ${prefix}-${visualState}-${side}`);
-      const cleanedMask = unionSpriteAlpha(pixels, pixels, frameWidth, frameHeight);
-      const worldWidth = 2.05 * frameWidth / frameHeight;
-      const geometry = buildSilhouetteShapes(cleanedMask, frameWidth, frameHeight, worldWidth, 2.05);
-      const alphaPixels = clipSpriteToAlphaMask(pixels, geometry.rasterMask);
-      context.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
-      const faceTexture = new THREE.CanvasTexture(canvas); faceTexture.colorSpace = THREE.SRGBColorSpace;
-      faceTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      const model = buildExtrudedSprite(alphaPixels, frameWidth, frameHeight, faceTexture, faceTexture,
-        corrugation, body.team === 'player', geometry.shapes, alphaPixels);
-      model.group.rotation.y = side === 'back' ? Math.PI : 0;
-      return { ...model, texture: faceTexture };
-    };
-    for (let stateIndex = 0; stateIndex < VISUAL_STATES.length; stateIndex++) {
-      const visualState = VISUAL_STATES[stateIndex];
-      const frontArt = prepareFace(sources[stateIndex].image, visualState, 'front');
-      const backArt = prepareFace(backTextures[stateIndex].image, visualState, 'back');
+    const figureAssets = await templatePromise;
+    const artStates = {};
+    for (const visualState of VISUAL_STATES) {
+      const template = figureAssets.artStates[visualState];
+      const frontArt = cloneSpriteModel(template.frontArt), backArt = cloneSpriteModel(template.backArt);
       const artGroup = new THREE.Group(); artGroup.position.y = 1.25;
       artGroup.add(frontArt.group, backArt.group);
-      frontArt.group.visible = true; backArt.group.visible = false;
-      artGroup.visible = visualState === 'idle';
+      artGroup.visible = false;
       group.add(artGroup);
       artStates[visualState] = { group: artGroup, frontArt, backArt,
-        alphaPixels: frontArt.alphaPixels, width: frameWidth, height: frameHeight };
-      sources[stateIndex].dispose();
-      backTextures[stateIndex].dispose();
+        alphaPixels: frontArt.alphaPixels, width: frontArt.width, height: frontArt.height };
     }
     const initialArt = artStates.idle;
-    let deadBottomRow = frameHeight - 1;
-    for (let y = frameHeight - 1; y >= 0; y--) {
-      let hasVisiblePixel = false;
-      for (let x = 0; x < frameWidth; x++) if (artStates.dead.alphaPixels[(y * frameWidth + x) * 4 + 3] > 80) {
-        hasVisiblePixel = true; break;
-      }
-      if (hasVisiblePixel) { deadBottomRow = y; break; }
-    }
-    const deadBottomLocalY = (.5 - deadBottomRow / frameHeight) * 2.05;
-    const deadGroundedY = .215 - deadBottomLocalY;
+    initialArt.group.visible = true;
+    initialArt.frontArt.group.visible = true; initialArt.backArt.group.visible = false;
+    const deadGroundedY = figureAssets.deadGroundedY;
 
     const healthHUD = new THREE.Group();
     const initialHeartLevels = heartHealthLevels(body.health, body.maxHealth);
@@ -583,6 +619,39 @@ async function start() {
   let victorySequenceActive = false;
   let protectedEntryFrom = null;
   const campSpawnPoints = campSpawns;
+  const campGoblinPool = [];
+  let campOgrePool = null;
+  let campPreloadPromise = null;
+  async function preloadCampEnemies() {
+    if (campGoblinPool.length >= CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP && campOgrePool) return;
+    if (campPreloadPromise) return campPreloadPromise;
+    campPreloadPromise = (async () => {
+      while (campGoblinPool.length < CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP) {
+        const body = enemyBody(`camp-goblin-pool-${campGoblinPool.length + 1}`, 'camp', 0, 0,
+          { health: 0, maxHealth: 32, spawnReady: false, combatAwake: true });
+        const figure = await createFigure(body, 'goblin');
+        figure.locationId = 'camp'; figure.poolDormant = true;
+        figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+        figures.push(figure); campGoblinPool.push(figure);
+        await yieldFrameWork();
+      }
+      if (!campOgrePool) {
+        const body = enemyBody('camp-ogre-pool', 'camp', 0, 0,
+          { health: 0, maxHealth: 48, spawnReady: false, combatAwake: true, boss: true });
+        const figure = await createFigure(body, 'ogre');
+        figure.locationId = 'camp'; figure.poolDormant = true;
+        figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+        figures.push(figure); campOgrePool = figure;
+      }
+    })().catch(error => { campPreloadPromise = null; throw error; });
+    try { await campPreloadPromise; }
+    finally { campPreloadPromise = null; }
+  }
+  function scheduleCampPreload() {
+    const preload = () => preloadCampEnemies().catch(error => console.error('Не удалось заранее подготовить лагерь', error));
+    if (window.requestIdleCallback) window.requestIdleCallback(preload, { timeout: 1200 });
+    else setTimeout(preload, 100);
+  }
   function refreshLocationInfo() {
     locationTitle.textContent = activeLocation.title;
     if (activeLocation.kind === 'home') locationDetail.textContent = 'Проход между холмами ведёт в лес';
@@ -601,7 +670,7 @@ async function start() {
     for (const figure of figures) {
       const active = figure.body === heroBody || figure.locationId === activeLocation.id;
       const spawning = Boolean(figure.spawnAnimation);
-      figure.group.visible = active && (!spawning || figure.spawnAnimation.age >= 0);
+      figure.group.visible = !figure.poolDormant && active && (!spawning || figure.spawnAnimation.age >= 0);
       figure.healthHUD.visible = active && figure.body.health > 0 && !spawning;
       if (figure.enemyMarker) figure.enemyMarker.group.visible = active && !victorySequenceActive
         && figure.body.health > 0 && !spawning;
@@ -641,16 +710,22 @@ async function start() {
     if (figure.enemyMarker) figure.enemyMarker.group.visible = false;
   }
   async function spawnCampGoblin(source = null, boss = false) {
+    await preloadCampEnemies();
+    const figure = boss ? campOgrePool : campGoblinPool.pop();
+    if (!figure) return null;
     const spawn = source ?? campSpawnPoints[Math.floor(Math.random() * campSpawnPoints.length)];
-    const index = locations.camp.enemies.filter(body => body.id.startsWith('camp-goblin-')).length + 1;
-    const body = enemyBody(boss ? 'camp-ogre' : `camp-goblin-${index}-${Math.round(elapsed * 1000)}`,
+    if (boss) campOgrePool = null;
+    const body = enemyBody(boss ? 'camp-ogre' : `camp-goblin-${locations.camp.goblinsSpawned}`,
       'camp', spawn.x, spawn.z, boss
         ? { health: 48, maxHealth: 48, combatAwake: true, spawnReady: false, boss: true }
         : { combatAwake: true, spawnReady: false });
     body.aiPhase = 'pause'; body.aiTimer = randomBetween(.4, 1.2);
+    figure.body = body; figure.group.userData.figure = figure; figure.poolDormant = false;
+    figure.spawnAnimation = null; figure.victoryAnimation = null; figure.bossScale = boss ? 1.35 : 1;
+    figure.hitAge = 10; figure.hitStrength = 0; figure.hurtAge = 10; figure.dealDamageAge = 10;
+    figure.viewBack = false; setVisualState(figure, 'idle');
     locations.camp.enemies.push(body);
-    const figure = await createFigure(body, boss ? 'ogre' : 'goblin');
-    figure.locationId = 'camp'; figures.push(figure);
+    figure.locationId = 'camp';
     if (boss) {
       figure.bossScale = 1.35;
       figure.spawnSource = { x: 0, z: scaled(-6.1) };
@@ -681,6 +756,7 @@ async function start() {
         beginSpawn(figure, figure.spawnSource);
       }
     }
+    if (next.id === 'forest') scheduleCampPreload();
     showActiveLocationFigures();
     rebuildBodies();
     refreshLocationInfo();
@@ -1099,6 +1175,7 @@ async function start() {
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
     for (const figure of figures) {
+      if (figure.poolDormant) continue;
       const body = figure.body;
       if (body !== heroBody && figure.locationId !== activeLocation.id) continue;
       if (figure.spawnAnimation) continue;
@@ -1226,6 +1303,7 @@ async function start() {
       back.visible = !cameraOnFront;
     }
     for (const figure of figures) {
+      if (figure.poolDormant) continue;
       if (figure.body !== heroBody && figure.locationId !== activeLocation.id) continue;
       figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);
       figure.healthHUD.quaternion.copy(camera.quaternion);
