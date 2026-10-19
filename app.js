@@ -7,7 +7,7 @@ import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from './figure-model.mjs?v=4';
 import { CAMP_BOSS_DEFEATS, CAMP_LIVING_CAP, createLocationNetwork, findNearbyExit,
-  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=2';
+  locationArrival, recordCampDefeat, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=3';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -481,18 +481,6 @@ async function start() {
     { path: 'assets/env-bushes.png', weight: .2, size: [1.4, 2.6] },
   ];
   await Promise.all(propTypes.map(type => loadSceneryTemplate(type.path)));
-  const addTrail = (group, start, end, color = 0xa9824f) => {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: 1, ...sceneStencil });
-    const length = Math.hypot(end.x - start.x, end.z - start.z);
-    const count = Math.max(4, Math.ceil(length / .7));
-    for (let index = 0; index <= count; index++) {
-      const t = index / count;
-      const stone = new THREE.Mesh(new THREE.CylinderGeometry(.2, .23, .035, 6), material);
-      stone.position.set(start.x + (end.x - start.x) * t, .025, start.z + (end.z - start.z) * t);
-      stone.rotation.y = (index % 2 ? 1 : -1) * .13;
-      stone.receiveShadow = true; group.add(stone);
-    }
-  };
   const populateForestEdge = async (location, count, seedOffset = 0) => {
     const group = locationGroups[location.id];
     const random = (() => { let seed = (0x4f1bbcdc + seedOffset) >>> 0; return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); })();
@@ -521,9 +509,6 @@ async function start() {
     createScenery('assets/env-troll-hut.png', 8.5, 5.4, 3.2, campGroup, true),
     populateForestEdge(locations.camp, 18, 37),
   ];
-  addTrail(homeGroup, { x: 0, z: -2.2 }, { x: 0, z: -5.8 }, 0xb9935d);
-  addTrail(forestGroup, { x: 0, z: -6 }, { x: 0, z: 6 }, 0xb9935d);
-  addTrail(campGroup, { x: 0, z: -2.1 }, { x: 0, z: -5.9 }, 0x986d45);
   await Promise.all(sceneDetails);
   const homeSign = homeGroup.children.find(child => child.position?.x === 0 && child.position?.z === -1.7);
   if (homeSign) homeSign.rotation.y = 0;
@@ -552,9 +537,9 @@ async function start() {
   ];
   function refreshLocationInfo() {
     locationTitle.textContent = activeLocation.title;
-    if (activeLocation.kind === 'home') locationDetail.textContent = 'Тропа на севере ведёт в лес';
+    if (activeLocation.kind === 'home') locationDetail.textContent = 'Проход между холмами ведёт в лес';
     else if (activeLocation.kind === 'forest') locationDetail.textContent = activeLocation.combatTriggered
-      ? 'Гоблины напали. Сквозная тропа ведёт к лагерю'
+      ? 'Гоблины напали. Узкие проходы ведут домой и к лагерю'
       : 'Тихий лес. Подойди к гоблинам, чтобы начать бой';
     else locationDetail.textContent = activeLocation.bossSpawned
       ? `Вожак вышел! Победы: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS}`
