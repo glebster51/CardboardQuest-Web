@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { makeScenerySprite } from './scenery-model.mjs?v=2';
+import { makeScenerySprite } from './scenery-model.mjs?v=3';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
 
 const assets = [
@@ -74,7 +74,7 @@ async function loadAssets() {
     const flipMatches = model.backFlipMatches;
     audit.push({ id: asset.id, views: 4, extrusionDepth: depth * layout.scale,
       baseRadius: asset.radius ?? 0, baseTop, artBottom, groundGap: artBottom - baseTop, backFlipMatches: flipMatches });
-    if (!flipMatches) throw new Error(`${asset.label}: задняя сторона не совпадает со спрайтом, отражённым по X`);
+    if (!flipMatches) throw new Error(`${asset.label}: задняя сторона не совпадает со спрайтом, отражённым по X (audit=${String(flipMatches)})`);
     if (Math.abs(artBottom - baseTop) > 1e-8) throw new Error(`${asset.label}: основание проваливается или висит над шайбой`);
   }
 }
