@@ -9,6 +9,7 @@ import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildE
 import { makeScenerySprite } from './scenery-model-v4.mjs?v=4';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=1';
 import { createLocationWalkPaths, scatterGroundDetails } from './ground-decoration.mjs?v=1';
+import { advanceVictoryLoop, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=1';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=5';
@@ -573,6 +574,7 @@ async function start() {
   let selectionAge = .6;
   let elapsed = 0;
   let transitionCooldown = 0;
+  let victorySequenceActive = false;
   let protectedEntryFrom = null;
   const campSpawnPoints = campSpawns;
   function refreshLocationInfo() {
@@ -595,9 +597,34 @@ async function start() {
       const spawning = Boolean(figure.spawnAnimation);
       figure.group.visible = active && (!spawning || figure.spawnAnimation.age >= 0);
       figure.healthHUD.visible = active && figure.body.health > 0 && !spawning;
-      if (figure.enemyMarker) figure.enemyMarker.group.visible = active && figure.body.health > 0 && !spawning;
+      if (figure.enemyMarker) figure.enemyMarker.group.visible = active && !victorySequenceActive
+        && figure.body.health > 0 && !spawning;
     }
     for (const [id, group] of Object.entries(locationGroups)) group.visible = id === activeLocation.id;
+  }
+  function startUnitVictory(figure) {
+    if (figure.body.health <= 0) return;
+    figure.body.spawnReady = true;
+    figure.body.vx = 0; figure.body.vz = 0;
+    figure.body.aiPhase = 'victory';
+    figure.spawnAnimation = null;
+    figure.group.position.set(figure.body.x, 0, figure.body.z);
+    figure.victoryAnimation = createVictoryLoop();
+    figure.victoryBaseYaw = figure.group.rotation.y;
+    figure.group.visible = figure.body === heroBody || figure.locationId === activeLocation.id;
+    figure.healthHUD.visible = figure.group.visible;
+    if (figure.enemyMarker) figure.enemyMarker.group.visible = false;
+  }
+  function beginVictorySequence() {
+    if (victorySequenceActive) return;
+    victorySequenceActive = true;
+    stopAim();
+    gesture = null; pointers.clear(); selected = false;
+    playerMarker.group.visible = false;
+    heroBody.vx = 0; heroBody.vz = 0;
+    for (const location of Object.values(locations)) settleEnemiesForVictory(location.enemies);
+    for (const figure of figures) startUnitVictory(figure);
+    rebuildBodies();
   }
   function beginSpawn(figure, from) {
     figure.spawnSource = from;
@@ -623,6 +650,7 @@ async function start() {
       figure.spawnSource = { x: 0, z: scaled(-6.1) };
     } else figure.spawnSource = { x: spawn.hutX, z: spawn.hutZ };
     beginSpawn(figure, figure.spawnSource);
+    if (victorySequenceActive) startUnitVictory(figure);
     if (activeLocation.id === 'camp') refreshLocationInfo();
     return figure;
   }
@@ -837,7 +865,7 @@ async function start() {
     return closest;
   }
   function choose(figure) {
-    if (!figure || figure.body.team !== 'player') return;
+    if (victorySequenceActive || !figure || figure.body.health <= 0 || figure.body.team !== 'player') return;
     if (figure !== activeFigure) {
       activeFigure = figure; state = figure.body;
       selectionAge = 0;
@@ -984,6 +1012,7 @@ async function start() {
     previousTime = time;
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
+    if (heroBody.health <= 0) beginVictorySequence();
     for (const figure of figures) if (figure.spawnAnimation) {
       const animation = figure.spawnAnimation;
       animation.age += dt;
@@ -1005,11 +1034,11 @@ async function start() {
         }
       }
     }
-    if (activeLocation.kind === 'forest' && wakeForestCombat(activeLocation, heroBody)) {
+    if (!victorySequenceActive && activeLocation.kind === 'forest' && wakeForestCombat(activeLocation, heroBody)) {
       for (const enemy of activeLocation.enemies) enemy.aiTimer = randomBetween(.5, 1.4);
       refreshLocationInfo();
     }
-    if (activeLocation.kind === 'camp') {
+    if (!victorySequenceActive && activeLocation.kind === 'camp') {
       const living = activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length;
       if (takeDueReinforcement(activeLocation, elapsed, living)) startQueuedReinforcement();
     }
@@ -1020,6 +1049,7 @@ async function start() {
       advanceChargeRecharge(body, dt);
       if (body.team !== 'enemy') continue;
       if (body.health <= 0) continue;
+      if (victorySequenceActive) continue;
       if (!body.combatAwake) {
         const dx = state.x - body.x, dz = state.z - body.z;
         const figure = figures.find(item => item.body === body);
@@ -1060,6 +1090,7 @@ async function start() {
     }
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
       advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints);
+      if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
     for (const figure of figures) {
       const body = figure.body;
@@ -1067,10 +1098,13 @@ async function start() {
       if (figure.spawnAnimation) continue;
       figure.group.position.set(body.x, 0, body.z);
       const speed = Math.hypot(body.vx, body.vz);
-      if (body.health > 0 && body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
+      const victoryPose = body.health > 0 && figure.victoryAnimation
+        ? advanceVictoryLoop(figure.victoryAnimation, dt) : null;
+      if (victoryPose) figure.group.rotation.y = figure.victoryBaseYaw + victoryPose.spinY;
+      else if (body.health > 0 && body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
         figure.facing = facingAngle(body.vx, body.vz, figure.facing);
       }
-      if (body.health > 0) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
+      if (body.health > 0 && !victoryPose) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
       const cameraDx = camera.position.x - figure.group.position.x, cameraDz = camera.position.z - figure.group.position.z;
       const cameraDistance = Math.max(.001, Math.hypot(cameraDx, cameraDz));
       const facingDot = (cameraDx * Math.sin(figure.group.rotation.y) + cameraDz * Math.cos(figure.group.rotation.y)) / cameraDistance;
@@ -1084,7 +1118,8 @@ async function start() {
       figure.hurtAge += dt;
       figure.dealDamageAge += dt;
       const visualState = body.health <= 0 ? 'dead'
-        : figure.hurtAge < .55 ? 'on-hit'
+        : victoryPose ? victoryPose.sprite
+          : figure.hurtAge < .55 ? 'on-hit'
           : figure.dealDamageAge < .32 ? 'deal-damage'
             : body === held || (body.team === 'enemy' && body.aiPhase === 'aim') ? 'aiming'
               : isAttacking(body) && body !== held ? 'attack' : 'idle';
@@ -1098,6 +1133,10 @@ async function start() {
       if (visualState === 'dead') {
         figure.artGroup.scale.set(artScale, artScale, artScale);
         figure.artGroup.position.y = figure.deadGroundedY;
+        figure.artGroup.rotation.set(0, 0, 0);
+      } else if (victoryPose) {
+        figure.artGroup.scale.set(artScale * victoryPose.scaleX, artScale * victoryPose.scaleY, artScale);
+        figure.artGroup.position.y = 1.25 + victoryPose.lift;
         figure.artGroup.rotation.set(0, 0, 0);
       } else {
         figure.artGroup.scale.set(artScale * (1 + squash * .7), artScale * (1 - squash), artScale);
@@ -1130,10 +1169,10 @@ async function start() {
         base.material.opacity = .4;
       });
       if (figure.enemyMarker) {
-        const aiming = body.health > 0 && body.aiPhase === 'aim';
+        const aiming = !victorySequenceActive && body.health > 0 && body.aiPhase === 'aim';
         figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
         figure.enemyMarker.group.rotation.y = aiming ? body.aiAimAngle : figure.facing;
-        figure.enemyMarker.group.visible = body.health > 0;
+        figure.enemyMarker.group.visible = !victorySequenceActive && body.health > 0;
         figure.enemyMarker.setExtension(aiming ? MAX_AIM_MARKER_EXTENSION : 0);
         figure.enemyMarker.setProgress(aiming ? 1 - body.aiTimer / body.aiAimDuration : 0);
         figure.enemyMarker.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
