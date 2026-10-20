@@ -9,7 +9,7 @@ import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createStoryActors } from './render/story-actors.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
-import { createScenerySystem } from './render/scenery-system.mjs?v=5';
+import { createScenerySystem } from './render/scenery-system.mjs?v=6';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=2';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=8';
@@ -21,6 +21,7 @@ import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
+import { CACHE_OPEN_FRAME_DELAY, CACHE_SQUASH_DURATION, cacheSquashScale } from './game/cache-animation.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation } from './game/story-campaign.mjs?v=5';
@@ -229,7 +230,7 @@ async function start() {
     createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });
   const scenerySystem = createScenerySystem({ THREE, renderer, scene, locations, corrugation,
     paper, terrainCorrugation, sceneStencil });
-  const { create: createScenery, loadTemplate: loadSceneryTemplate, facePairs: sceneryFacePairs } = scenerySystem;
+  const { create: createScenery, loadTemplate: loadSceneryTemplate, loadStateTemplates, facePairs: sceneryFacePairs } = scenerySystem;
   const figures = [];
   const heroFigure = await createFigure(heroBody, 'hero');
   heroFigure.facing = 0;
@@ -522,9 +523,6 @@ async function start() {
   const chestVisuals = new Map();
   const worldItemVisuals = new Map();
   const storyPickupVisuals = new Map();
-  const chestMaterial = new THREE.MeshStandardMaterial({ color: 0x94623a, roughness: .78, map: paper });
-  const chestLidMaterial = new THREE.MeshStandardMaterial({ color: 0xb18450, roughness: .72, map: paper });
-  const chestLatchMaterial = new THREE.MeshStandardMaterial({ color: 0xd5b354, roughness: .38, metalness: .12 });
   const lootItemIds = ['berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard'];
   const lootAtlas = await new THREE.TextureLoader().loadAsync('assets/loot-atlas.png?v=1');
   lootAtlas.colorSpace = THREE.SRGBColorSpace;
@@ -628,15 +626,15 @@ async function start() {
     storyPickupVisuals.set(pickup.id, visual);
     return visual;
   }
-  function makeCacheBody(location) {
+  async function makeCacheBody(location, chestTemplates) {
     const position = location.cachePosition ?? [{ x: scaled(3.4), z: 0 }, { x: scaled(-3.4), z: 0 },
       { x: 0, z: scaled(3.4) }, { x: 0, z: scaled(-3.4) }]
       .find(point => isCampaignPositionSafe(location, point, 1.5)) ?? location.entry;
+    const opened = Boolean(campaignState.collected[location.id]);
     const body = { id: `cache-${location.id}`, kind: 'cache-chest', team: 'neutral', locationId: location.id,
-      x: position.x, z: position.z, vx: 0, vz: 0, radius: 1.12, fixed: true, opened: false };
+      x: position.x, z: position.z, vx: 0, vz: 0, radius: 1.12, fixed: true, opened };
     location.cacheBody = body;
-    if (campaignState.collected[location.id]) return;
-    location.obstacles.push(body);
+    if (!opened) location.obstacles.push(body);
     const group = new THREE.Group(); group.name = body.id;
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.22, 48), ambientShadowMaterial);
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = .008; group.add(shadow);
@@ -646,18 +644,22 @@ async function start() {
       new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
     ]);
     puck.position.y = .1; puck.castShadow = true; puck.receiveShadow = true; group.add(puck);
-    const box = new THREE.Mesh(new THREE.BoxGeometry(.98, .42, .7), chestMaterial);
-    box.position.y = .4; box.castShadow = true; box.receiveShadow = true; group.add(box);
-    const lidPivot = new THREE.Group(); lidPivot.position.set(0, .61, -.35); group.add(lidPivot);
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(1.04, .16, .78), chestLidMaterial);
-    lid.position.set(0, .06, .37); lid.castShadow = true; lidPivot.add(lid);
-    const latch = new THREE.Mesh(new THREE.BoxGeometry(.13, .2, .04), chestLatchMaterial);
-    latch.position.set(0, .39, .36); group.add(latch);
+    const artHolder = new THREE.Group(); artHolder.position.y = .21; group.add(artHolder);
+    const stateArt = chestTemplates.map((template, index) => {
+      const art = template.clone(true);
+      const spriteHeight = 1.72, scale = spriteHeight / 2.05;
+      art.scale.set(scale, scale, 1); art.position.y = spriteHeight / 2;
+      art.visible = index === (opened ? 1 : 0); artHolder.add(art);
+      sceneryFacePairs.push({ prop: group, front: art.getObjectByName('scenery-front'), back: art.getObjectByName('scenery-back') });
+      return art;
+    });
     group.position.set(body.x, 0, body.z); location.sceneGroup.add(group);
-    chestVisuals.set(location.id, { body, group, lidPivot });
+    chestVisuals.set(location.id, { body, group, artHolder, stateArt, openingAge: null });
   }
+  const chestTemplates = Object.values(locations).some(location => location.secret)
+    ? await loadStateTemplates('assets/chest-states.png', 2) : [];
   for (const location of Object.values(locations)) {
-    if (location.secret) makeCacheBody(location);
+    if (location.secret) await makeCacheBody(location, chestTemplates);
     for (const item of location.loot) createLootVisual(location, item);
     for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag])
       createStoryPickupVisual(location, pickup);
@@ -864,7 +866,11 @@ async function start() {
     body.opened = true;
     activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== body);
     const visual = chestVisuals.get(activeLocation.id);
-    if (visual) visual.lidPivot.rotation.x = -1.1;
+    if (visual) {
+      visual.openingAge = 0;
+      visual.stateArt[0].visible = true;
+      visual.stateArt[1].visible = false;
+    }
     spawnWorldLoot(activeLocation, body.id, body.x, body.z, result.rewards);
     rebuildBodies();
     burst(body.x, body.z, 1.2);
@@ -927,6 +933,23 @@ async function start() {
       showStoryCard({ title: activeLocation.title, text: 'Ты подобрал вещь, которую дед потерял у ручья.',
         lines: getStoryDialogue(campaignState, activeLocation.id, 'pickup') });
       break;
+    }
+  }
+  function updateCacheAnimation(dt) {
+    const visual = chestVisuals.get(activeLocation.id);
+    if (!visual || visual.openingAge === null) return;
+    visual.openingAge += dt;
+    if (visual.openingAge >= CACHE_OPEN_FRAME_DELAY) {
+      visual.stateArt[0].visible = false;
+      visual.stateArt[1].visible = true;
+    }
+    const scale = cacheSquashScale(visual.openingAge);
+    visual.artHolder.scale.set(scale.x, scale.y, scale.z);
+    if (visual.openingAge >= CACHE_SQUASH_DURATION) {
+      visual.openingAge = null;
+      visual.artHolder.scale.set(1, 1, 1);
+      visual.stateArt[0].visible = false;
+      visual.stateArt[1].visible = true;
     }
   }
   function damage(target, damageQuarters, speed) {
@@ -1215,6 +1238,7 @@ async function start() {
       orbit.distance = 3.5; orbit.theta = .35; orbit.phi = .74;
       updateCamera();
     },
+    openCache() { return openCache(activeLocation.cacheBody); },
     place(id, x, z, vx = 0, vz = 0) {
       const body = id === 'hero' ? heroBody : activeLocation.enemies.find(enemy => enemy.id === id);
       if (!body) throw new Error(`Unknown test unit: ${id}`);
@@ -1237,6 +1261,10 @@ async function start() {
           ({ id, x, z, vx, vz, health, archetype, fell, aiPhase, aiTimer, charges, rechargeTimer })),
         projectiles: projectiles.length,
         shots: projectiles.map(({ x, z, age }) => ({ x, z, age })),
+        cache: activeLocation.cacheBody ? { opened: activeLocation.cacheBody.opened,
+          openingAge: chestVisuals.get(activeLocation.id)?.openingAge ?? null,
+          scale: chestVisuals.get(activeLocation.id)?.artHolder.scale.toArray() ?? null,
+          openSprite: chestVisuals.get(activeLocation.id)?.stateArt[1].visible ?? false } : null,
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
         loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
     },
@@ -1249,6 +1277,7 @@ async function start() {
   renderer.setAnimationLoop(time => {
     const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
+    updateCacheAnimation(dt);
     if (dialogue.isOpen() || !inventoryPanel.hidden) {
       updateCamera(); renderer.render(scene, camera); return;
     }
@@ -1312,6 +1341,7 @@ async function start() {
       });
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
+    updateCacheAnimation(dt);
     if (dialogue.isOpen()) { updateCamera(); renderer.render(scene, camera); return; }
     updateWorldLoot(dt);
     updateProjectiles(dt);

@@ -7,6 +7,7 @@ import { nearestPointOnPath } from '../terrain-shapes.mjs';
 export function createScenerySystem({ THREE, renderer, scene, locations, corrugation, paper,
   terrainCorrugation, sceneStencil, assetBase = 'assets/' }) {
   const templates = new Map();
+  const stateTemplates = new Map();
   const facePairs = [];
 
   function loadTemplate(path) {
@@ -19,6 +20,31 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     })();
     templates.set(path, pending);
     pending.catch(() => templates.delete(path));
+    return pending;
+  }
+
+  function loadStateTemplates(path, frameCount = 2) {
+    const key = `${path}:${frameCount}`;
+    if (stateTemplates.has(key)) return stateTemplates.get(key);
+    const pending = (async () => {
+      const source = await new THREE.TextureLoader().loadAsync(`${assetBase}${path.replace(/^assets\//, '')}?states=1`);
+      const image = source.image;
+      if (!Number.isInteger(frameCount) || frameCount < 2 || image.width % frameCount !== 0)
+        throw new Error(`State atlas ${path} must split into ${frameCount} equal horizontal frames`);
+      const width = image.width / frameCount, height = image.height;
+      const result = [];
+      try {
+        for (let index = 0; index < frameCount; index++) {
+          const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          context.drawImage(image, index * width, 0, width, height, 0, 0, width, height);
+          result.push(makeScenerySprite(canvas, corrugation, renderer.capabilities.getMaxAnisotropy()).group);
+        }
+      } finally { source.dispose(); }
+      return result;
+    })();
+    stateTemplates.set(key, pending);
+    pending.catch(() => stateTemplates.delete(key));
     return pending;
   }
 
@@ -62,5 +88,5 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     return prop;
   }
 
-  return { create, loadTemplate, facePairs };
+  return { create, loadTemplate, loadStateTemplates, facePairs };
 }
