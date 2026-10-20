@@ -55,6 +55,7 @@ function contourKey(point) { return `${Math.round(point.x * 10000)},${Math.round
 export function extractTerrainContours(map, threshold) {
   const segments = [];
   const { columns, rows, values, minX, minZ, cellSize } = map;
+  const cellSizeX = map.cellSizeX ?? cellSize, cellSizeZ = map.cellSizeZ ?? cellSize;
   const sample = (x, z) => values[z * columns + x];
   const edgePoint = (a, b, va, vb) => {
     const amount = Math.max(0, Math.min(1, (threshold - va) / (vb - va)));
@@ -81,10 +82,10 @@ export function extractTerrainContours(map, threshold) {
   };
   for (let z = 0; z < rows - 1; z++) for (let x = 0; x < columns - 1; x++) {
     const points = [
-      { x: minX + x * cellSize, z: minZ + z * cellSize },
-      { x: minX + (x + 1) * cellSize, z: minZ + z * cellSize },
-      { x: minX + (x + 1) * cellSize, z: minZ + (z + 1) * cellSize },
-      { x: minX + x * cellSize, z: minZ + (z + 1) * cellSize },
+      { x: minX + x * cellSizeX, z: minZ + z * cellSizeZ },
+      { x: minX + (x + 1) * cellSizeX, z: minZ + z * cellSizeZ },
+      { x: minX + (x + 1) * cellSizeX, z: minZ + (z + 1) * cellSizeZ },
+      { x: minX + x * cellSizeX, z: minZ + (z + 1) * cellSizeZ },
     ];
     const valuesAtCorners = [sample(x, z), sample(x + 1, z), sample(x + 1, z + 1), sample(x, z + 1)];
     const mask = valuesAtCorners.reduce((bits, value, index) => bits | (value >= threshold ? 1 << index : 0), 0);
@@ -220,6 +221,45 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
   map.layers = Array.from({ length: layerCount }, (_, index) => {
     const threshold = (index + (authoredRelief ? .5 : 1)) * step;
     return { threshold, height: authoredRelief ? (index + 1) * step : threshold + step, contours: extractTerrainContours(map, threshold) };
+  });
+  return map;
+}
+
+/** Build the same renderer contract from an authored grayscale depth-map document. */
+export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []) {
+  if (document?.schema !== 'cardboardquest.depth-map.v1') throw new TypeError('Unsupported terrain depth-map schema');
+  const { world, grid, elevation } = document;
+  const columns = grid?.columns, rows = grid?.rows, samples = grid?.samples;
+  if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 2 || rows < 2
+    || columns > 256 || rows > 256 || !Array.isArray(samples) || samples.length !== columns * rows)
+    throw new RangeError('Depth map grid must be 2..256 samples per axis with a complete sample array');
+  if (![world?.originX, world?.originZ, world?.width, world?.depth, elevation?.maxHeight, elevation?.step]
+    .every(Number.isFinite) || world.width <= 0 || world.depth <= 0 || elevation.maxHeight <= 0 || elevation.step <= 0)
+    throw new RangeError('Depth map world extent and elevation settings must be positive finite numbers');
+  if (samples.some(value => !Number.isInteger(value) || value < 0 || value > 255))
+    throw new RangeError('Depth map samples must be integer bytes from 0 to 255');
+
+  const minX = world.originX, minZ = world.originZ;
+  const cellSizeX = world.width / (columns - 1), cellSizeZ = world.depth / (rows - 1);
+  const cellSize = Math.min(cellSizeX, cellSizeZ), maxHeight = elevation.maxHeight, step = elevation.step;
+  const values = Float32Array.from(samples, (value, index) => {
+    const x = minX + index % columns * cellSizeX, z = minZ + Math.floor(index / columns) * cellSizeZ;
+    return walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints) ? 0 : value / 255 * maxHeight;
+  });
+  const sample = (x, z) => {
+    if (walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints)) return 0;
+    const gx = Math.max(0, Math.min(columns - 1.001, (x - minX) / cellSizeX));
+    const gz = Math.max(0, Math.min(rows - 1.001, (z - minZ) / cellSizeZ));
+    const x0 = Math.floor(gx), z0 = Math.floor(gz), tx = gx - x0, tz = gz - z0;
+    const a = values[z0 * columns + x0] * (1 - tx) + values[z0 * columns + x0 + 1] * tx;
+    const b = values[(z0 + 1) * columns + x0] * (1 - tx) + values[(z0 + 1) * columns + x0 + 1] * tx;
+    const height = a * (1 - tz) + b * tz;
+    return height < step * .5 ? 0 : Math.min(maxHeight, Math.round(height / step) * step);
+  };
+  const map = { minX, minZ, columns, rows, cellSize, cellSizeX, cellSizeZ, step, maxHeight, values, sample };
+  map.layers = Array.from({ length: Math.max(1, Math.ceil(maxHeight / step)) }, (_, index) => {
+    const threshold = (index + .5) * step;
+    return { threshold, height: Math.min(maxHeight, (index + 1) * step), contours: extractTerrainContours(map, threshold) };
   });
   return map;
 }

@@ -11,10 +11,7 @@ export const LOCATION_LAYOUTS = {
   'squirrel-cache': plan([[[0, 0], [-5, 0], [-5, -11]]], [[-1, 1.5, 5.6, 4.5]], 2.1),
   brook: plan([[[0, 0], [0, -12]], [[0, 0], [6, -1], [11, 3]], [[0, 0], [3, 6], [0, 13]]], [[0, 0, 4.5, 4.5]]),
   'cave-cache': plan([[[0, 0], [-5, 0], [-5, -11]]], [[0, 0, 6.2, 5.3]], 2.2),
-  'broken-bridge': plan([
-    [[0, -7], [-12, -7.8], [-23, -7.2], [-29, -5.5]],
-    [[0, -7], [12, -7.8], [23, -7.2], [29, -5.5]],
-  ], [[0, 0, 31.5, 19]], 2.5),
+  'broken-bridge': plan([[[0, 0], [0, -12]], [[0, 0], [9, 0], [10, 7], [0, 10], [0, 15]]], [[0, -2, 7.4, 4.1]], 2.5),
   'moss-shrine': plan([[[0, 0], [-7, 0], [-7, -10]], [[0, 0], [4, 3], [4, 12]]], [[0, -1, 5.8, 5.5]]),
   camp: plan([[[0, 0], [0, -13]], [[0, 0], [5, 8], [5, 14]]], [[0, 0, 9.1, 8.2]], 2.6),
   'ash-road': plan([[[0, 0], [0, -6], [-4, -14]], [[0, 0], [4, 3], [9, 8]], [[0, 0], [-4, 5], [-8, 12]]], [[0, 0, 4.8, 6.5]], 2.1),
@@ -85,10 +82,6 @@ export function createAuthoredLayout(id, art, scale = 1.5) {
       field = Math.max(field, (organic - Math.hypot((x - cx) / rx, (z - cz) / rz)) * Math.min(rx, rz));
     }
     for (const hazard of art.hazards) {
-      // Water and cliff polygons are negative space: including them in the
-      // union would grow the floor around their edges and let routes bypass
-      // a river that is meant to meet the level boundary.
-      if (hazard.kind === 'water' || hazard.kind === 'cliff') continue;
       const distance = distanceToPolygon(x, z, hazard.points), inside = pointInPolygon(x, z, hazard.points);
       field = Math.max(field, 2.05 * scale + (inside ? distance : -distance));
     }

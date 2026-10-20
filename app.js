@@ -12,9 +12,10 @@ import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=8';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=3';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=8';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=9';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=21';
-import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes.mjs?v=7';
+import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from './terrain-shapes.mjs?v=8';
+import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
@@ -65,6 +66,7 @@ async function start() {
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
   const campaignState = createCampaignState(savedCampaign);
   const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE);
+  await loadLocationDepthMaps(locations);
   campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
   for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
     const location = locations[id];
@@ -223,7 +225,7 @@ async function start() {
   terrainCorrugation.repeat.set(1, 1);
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
-  createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
+  createTerrainRenderer({ THREE, locations, createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours,
     paper, playfieldCardboard: cardboardGrain, roughCardboard: cardboardGrain,
     terrainCorrugation, sceneStencil });
   const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,

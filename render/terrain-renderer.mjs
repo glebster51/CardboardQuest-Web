@@ -135,60 +135,9 @@ function addHazardBasins(THREE, location, paper, corrugation) {
     surface.name = `hazard-${hazard.id}`; surface.receiveShadow = true;
     location.sceneGroup.add(surface);
   }
-  const bank = location.art?.terrain?.cliffBank;
-  if (bank) {
-    const color = [0x9b8059, 0x8b704e, 0x7b6043, 0x6c533c];
-    const count = Math.max(1, Math.trunc(bank.layers ?? 18));
-    const wallPositions = [], wallIndices = [], wallUvs = [];
-    const wallSegments = 60;
-    for (let index = 0; index <= wallSegments; index++) {
-      const t = index / wallSegments, x = bank.minX + t * (bank.maxX - bank.minX);
-      const noise = Math.sin(x * .21 + (bank.seed ?? 1)) * .24 + Math.sin(x * .43 - 1.1) * .12;
-      const z = bank.frontZ + noise, peak = bank.height * (.82 + .18 * Math.sin(t * Math.PI * 2.3 + .6));
-      wallPositions.push(x, 0, -z, x, peak, -z);
-      wallUvs.push(t * 8, 0, t * 8, peak * .45);
-      if (index < wallSegments) {
-        const a = index * 2, b = a + 2;
-        wallIndices.push(a, b, a + 1, b, b + 1, a + 1);
-      }
-    }
-    const wallGeometry = new THREE.BufferGeometry();
-    wallGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
-    wallGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(wallUvs, 2));
-    wallGeometry.setIndex(wallIndices); wallGeometry.computeVertexNormals();
-    const wall = new THREE.Mesh(wallGeometry, makeRoughCardboardMaterial(THREE, corrugation, 0x604832));
-    wall.material.side = THREE.DoubleSide;
-    wall.castShadow = true; wall.receiveShadow = true;
-    wall.name = `river-cliff-face-${location.id}`;
-    location.sceneGroup.add(wall);
-    for (let tier = 0; tier < count; tier++) {
-      const progress = tier / Math.max(1, count - 1);
-      const halfWidth = (bank.maxX - bank.minX) * (.5 - progress * .075);
-      const steps = 30, front = [], rear = [];
-      for (let index = 0; index <= steps; index++) {
-        const x = -halfWidth + index / steps * halfWidth * 2;
-        const noise = Math.sin(x * .21 + (bank.seed ?? 1)) * .24 + Math.sin(x * .43 - 1.1) * .12;
-        const z = bank.frontZ + noise + progress * 6;
-        front.push({ x, z });
-        rear.push({ x: x * .985, z: z + .48 + .14 * Math.sin(x * .09 + tier * .17) });
-      }
-      const shape = terrainShape(THREE, [...front, ...rear.reverse()]);
-      const depth = .3, top = (tier + 1) * (bank.height / count);
-      const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 });
-      geometry.rotateX(-Math.PI / 2);
-      const mesh = new THREE.Mesh(geometry, [
-        makeRoughCardboardMaterial(THREE, paper, color[tier % color.length]),
-        makeRoughCardboardMaterial(THREE, corrugation, 0x59412e),
-      ]);
-      mesh.position.y = top - depth;
-      mesh.castShadow = true; mesh.receiveShadow = true;
-      mesh.name = `river-cliff-tier-${location.id}-${tier}`;
-      location.sceneGroup.add(mesh);
-    }
-  }
 }
 
-export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
+export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, createTerrainHeightMapFromDepthMap = createTerrainHeightMap, extractTerrainContours,
   paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6 }) {
   for (const location of Object.values(locations)) {
     const seed = location.heightSeed ?? (location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731);
@@ -197,7 +146,9 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       minZ: Math.min(result.minZ, point.z), maxZ: Math.max(result.maxZ, point.z),
     }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
     const terrainMargin = 30;
-    const heightMap = createTerrainHeightMap(seed, location.walkablePoints,
+    const heightMap = location.art?.depthMap
+      ? createTerrainHeightMapFromDepthMap(location.art.depthMap, location.walkablePoints)
+      : createTerrainHeightMap(seed, location.walkablePoints,
       { minX: bounds.minX - terrainMargin, maxX: bounds.maxX + terrainMargin,
         minZ: bounds.minZ - terrainMargin, maxZ: bounds.maxZ + terrainMargin,
         cellSize: .7, step: .24, maxHeight, ...location.art?.terrain,

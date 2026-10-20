@@ -2,7 +2,7 @@
 export const STORY_ENCOUNTERS = [
   { location: 'broken-bridge', units: [
     { id: 'goblin-1', type: 'goblin', x: -3.2, z: -1.6 },
-    { id: 'goblin-2', type: 'slinger', x: 3.5, z: -2.2 },
+    { id: 'goblin-2', type: 'slinger', x: 3.5, z: 5.2 },
   ] },
   { location: 'ash-road', units: [{ id: 'boar-1', type: 'boar', x: 0, z: 3.9 }] },
   { location: 'goblin-watch', units: [
