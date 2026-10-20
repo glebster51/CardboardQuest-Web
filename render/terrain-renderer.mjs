@@ -57,6 +57,29 @@ function shapesFromContours(THREE, contours) {
   });
 }
 
+/** A solid footprint beneath the noisy terrace islands, so low valleys cannot show through. */
+export function createTerrainBackingOutline(contours, padding = .75) {
+  const points = contours.flatMap(contour => contour.flatMap(point => [
+    { x: point.x - padding, z: point.z - padding }, { x: point.x + padding, z: point.z - padding },
+    { x: point.x + padding, z: point.z + padding }, { x: point.x - padding, z: point.z + padding },
+  ])).sort((a, b) => a.x - b.x || a.z - b.z);
+  if (points.length < 3) return [];
+  const cross = (a, b, c) => (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+  const lower = [];
+  for (const point of points) {
+    while (lower.length >= 2 && cross(lower.at(-2), lower.at(-1), point) <= 0) lower.pop();
+    lower.push(point);
+  }
+  const upper = [];
+  for (let index = points.length - 1; index >= 0; index--) {
+    const point = points[index];
+    while (upper.length >= 2 && cross(upper.at(-2), upper.at(-1), point) <= 0) upper.pop();
+    upper.push(point);
+  }
+  lower.pop(); upper.pop();
+  return [...lower, ...upper];
+}
+
 const TERRAIN_PALETTES = {
   home: { tops: [0x84964c, 0x9ca657, 0xb4a868, 0xc0a873], side: 0x805b39 },
   forest: { tops: [0x647e43, 0x78884b, 0x9c975b, 0xb29d70], side: 0x67472e },
@@ -111,7 +134,7 @@ function addHazardBasins(THREE, location, paper, corrugation) {
   }
 }
 
-export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap,
+export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
   paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6 }) {
   for (const location of Object.values(locations)) {
     const seed = location.heightSeed ?? (location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731);
@@ -128,6 +151,20 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
     location.terrainHeightMap = heightMap;
     location.sceneGroup.userData.terrainHeightMap = heightMap;
     const palette = TERRAIN_PALETTES[location.terrainStyle ?? location.id] ?? TERRAIN_PALETTES.forest;
+    const backingOutline = createTerrainBackingOutline(extractTerrainContours(heightMap, .001));
+    if (backingOutline.length >= 3) {
+      const shape = terrainShape(THREE, backingOutline, [location.walkablePoints]);
+      const depth = .3;
+      const backing = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 }), [
+        makeRoughCardboardMaterial(THREE, roughCardboard, palette.tops[0], sceneStencil),
+        makeRoughCardboardMaterial(THREE, terrainCorrugation, palette.side, sceneStencil),
+      ]);
+      backing.rotation.x = -Math.PI / 2;
+      backing.position.y = -depth - .015;
+      backing.receiveShadow = true;
+      backing.name = `terrain-backing-${location.id}`;
+      location.sceneGroup.add(backing);
+    }
     const layers = [{
       shapes: [terrainShape(THREE, location.walkablePoints, (location.hazards ?? []).map(hazard => hazard.points))], depth: .3, top: 0,
       topColor: palette.tops[0], sideColor: palette.side,

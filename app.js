@@ -12,9 +12,9 @@ import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=5';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=2';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=7';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=8';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=21';
-import { createTerrainHeightMap } from './terrain-shapes.mjs?v=6';
+import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes.mjs?v=7';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
@@ -221,7 +221,7 @@ async function start() {
   terrainCorrugation.repeat.set(1, 1);
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
-  createTerrainRenderer({ THREE, locations, createTerrainHeightMap,
+  createTerrainRenderer({ THREE, locations, createTerrainHeightMap, extractTerrainContours,
     paper, playfieldCardboard: cardboardGrain, roughCardboard: cardboardGrain,
     terrainCorrugation, sceneStencil });
   const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
