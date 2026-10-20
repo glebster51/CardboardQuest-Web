@@ -61,12 +61,15 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   }
   sideGeometry.computeBoundingSphere(); extruded.dispose();
   const stencil = { stencilWrite: true, stencilRef: stencilPlayer ? 1 : 0, stencilFunc: THREE.AlwaysStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
-  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide, ...stencil });
+  // Artwork caps only render from outside. DoubleSide on both caps exposes
+  // the inward print through cutouts and at oblique angles.
+  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide, shadowSide: THREE.DoubleSide, ...stencil });
   const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide, ...stencil });
   const body = new THREE.Mesh(sideGeometry, sideMaterial); body.castShadow = true; body.userData.sideWall = true;
   const capGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight), frontCap = new THREE.Mesh(capGeometry, frontMaterial);
   frontCap.position.z = depth / 2 + .001; frontCap.castShadow = true; frontCap.userData.print = true;
-  const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight), new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide, ...stencil }));
+  const backMaterial = new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, shadowSide: THREE.DoubleSide, ...stencil });
+  const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight), backMaterial);
   backPlane.position.z = -depth / 2 - .001; backPlane.userData.print = true;
   const flashGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight), whiteMask = document.createElement('canvas'); whiteMask.width = width; whiteMask.height = height;
   const whiteContext = whiteMask.getContext('2d'); whiteContext.fillStyle = '#fff'; whiteContext.fillRect(0, 0, width, height);

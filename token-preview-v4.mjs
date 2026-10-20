@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { makeScenerySprite } from './scenery-model-v4.mjs?v=4';
+import { makeScenerySprite } from './scenery-model-v4.mjs?v=5';
 import { CARDBOARD_EXTRUSION_DEPTH, PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=2';
 
 const assets = [
@@ -15,6 +15,8 @@ const assets = [
   { id: 'rock-cluster', label: 'Низкие валуны', path: 'assets/env-neutral-rock-cluster.png', height: 1.5 },
   { id: 'wildflowers', label: 'Лесные цветы', path: 'assets/env-neutral-wildflowers.png', height: 1.5 },
   { id: 'mushrooms', label: 'Грибы', path: 'assets/env-neutral-mushrooms.png', height: 1.3 },
+  { id: 'chest-closed', label: 'Сундук закрыт', path: 'assets/chest-states.png', frame: 0, height: 1.72 },
+  { id: 'chest-open', label: 'Сундук открыт', path: 'assets/chest-states.png', frame: 1, height: 1.72 },
   { id: 'fortress', label: 'Крепость', path: 'assets/env-fortress.png', height: 3.1 },
   { id: 'grandpa-alive', label: 'Дед Егор', path: 'assets/npc-grandpa-idle.png', height: 1.8, radius: .8 },
   { id: 'grandpa-dead', label: 'Последняя тишина', path: 'assets/npc-grandpa-dead.png', height: .85, radius: .8 },
@@ -60,7 +62,15 @@ async function loadAssets() {
   const loader = new THREE.TextureLoader();
   for (const asset of assets) {
     const source = await loader.loadAsync(`${asset.path}?art=4`);
-    const model = makeScenerySprite(source.image, corrugation, renderer.capabilities.getMaxAnisotropy()); source.dispose();
+    let image = source.image;
+    if (asset.frame !== undefined) {
+      const frameCount = 2;
+      if (image.width % frameCount) throw new Error(`${asset.label}: atlas has uneven frames`);
+      const frame = document.createElement('canvas'); frame.width = image.width / frameCount; frame.height = image.height;
+      frame.getContext('2d').drawImage(image, asset.frame * frame.width, 0, frame.width, frame.height, 0, 0, frame.width, frame.height);
+      image = frame;
+    }
+    const model = makeScenerySprite(image, corrugation, renderer.capabilities.getMaxAnisotropy()); source.dispose();
     model.geometry.computeBoundingBox();
     const depth = model.geometry.boundingBox.max.z - model.geometry.boundingBox.min.z;
     if (!(depth >= .14)) throw new Error(`${asset.label}: выдавливание пропало (глубина ${depth.toFixed(3)})`);

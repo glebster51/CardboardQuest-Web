@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=5';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=6';
 import { flipSpriteRgbaX } from './sprite-geometry.mjs?v=6';
 
 export function extractMainScenerySprite(image) {
