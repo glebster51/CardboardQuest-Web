@@ -41,7 +41,7 @@ function addInstances(THREE, parent, kind, marks, materials, upright = false) {
 
 /** Load shared decal resources once and build per-location instanced scenery. */
 export async function createGroundRenderer({ THREE, renderer, locations, specsByLocation,
-  pathTargets = {}, createLocationWalkPaths, scatterGroundDetails, assetBase = 'assets/' }) {
+  pathTargets = {}, createLocationWalkPaths, scatterGroundDetails, assetBase = 'assets/', resources, geometryClient, yieldWork = async () => {} }) {
   const textureCache = new Map();
   const loadTexture = path => {
     if (!textureCache.has(path)) {
@@ -53,14 +53,18 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
     }
     return textureCache.get(path);
   };
-  const textures = new Map(await Promise.all(DECAL_ASSETS.map(async name =>
+  const textures = resources?.textures ?? new Map(await Promise.all(DECAL_ASSETS.map(async name =>
     [name, await loadTexture(`assets/${name}.png`)])));
-  const materials = new Map(DECAL_ASSETS.map(name => [name,
+  const materials = resources?.materials ?? new Map(DECAL_ASSETS.map(name => [name,
     makeMarkMaterial(THREE, textures.get(name), name.startsWith('grass-tuft-v2-') ? .94 : .8)]));
 
   for (const location of Object.values(locations)) {
-    const paths = createLocationWalkPaths(location, pathTargets[location.id] ?? []);
-    const details = scatterGroundDetails({ location, ...specsByLocation[location.id], paths });
+    const generated = geometryClient ? await geometryClient.run('ground', {
+      location: { walkablePoints: location.walkablePoints, hazards: location.hazards, dropZones: location.dropZones,
+        exits: location.exits, arrivals: location.arrivals, obstacles: location.obstacles, entry: location.entry },
+      specs: specsByLocation[location.id], targets: pathTargets[location.id] ?? [] }) : null;
+    const paths = generated?.paths ?? createLocationWalkPaths(location, pathTargets[location.id] ?? []);
+    const details = generated?.details ?? scatterGroundDetails({ location, ...specsByLocation[location.id], paths });
     const group = new THREE.Group();
     group.name = `ground-details-${location.id}`;
     group.userData.walkPaths = paths;
@@ -68,9 +72,11 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
     const marks = [...details.decals, ...details.trail];
     for (const kind of GROUND_DECALS) {
       addInstances(THREE, group, kind, marks.filter(mark => mark.kind === kind), materials);
+      await yieldWork();
     }
     for (const kind of GRASS_DECALS) {
       addInstances(THREE, group, kind, details.grass.filter(mark => mark.kind === kind), materials, true);
+      await yieldWork();
     }
     location.groundDetails = { ...details, paths };
   }

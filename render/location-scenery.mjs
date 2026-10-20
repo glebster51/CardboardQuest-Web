@@ -10,10 +10,10 @@ const sizes = { tree: [3, 4.4], evergreen: [2.8, 4.5], birch: [3.2, 5], fern: [1
   'charred-tree': [2.5, 4.1], totem: [2.3, 3.6], shrine: [1.5, 2.5], 'root-arch': [2.3, 3.2],
   'fallen-log': [1.4, 2.4], 'rock-cluster': [.9, 1.8], wildflowers: [.9, 1.5], mushrooms: [.8, 1.4] };
 
-export async function populateNarrativeScenery({ locations, createScenery, loadTemplate, scale, hutAnchors, puckRadius }) {
+export async function populateNarrativeScenery({ locations, createScenery, loadTemplate, scale, hutAnchors, puckRadius, yieldWork = async () => {} }) {
   const assets = new Set(Object.values(locations).flatMap(location => location.art.props.map(sceneryAsset)));
   for (const location of Object.values(locations)) if (location.art.focal) assets.add(sceneryAsset(location.art.focal[0]));
-  assets.add('assets/env-troll-hut.png');
+  if (locations.camp) assets.add('assets/env-troll-hut.png');
   await Promise.all([...assets].map(loadTemplate));
   for (const location of Object.values(locations)) {
     let seed = location.heightSeed >>> 0;
@@ -37,6 +37,7 @@ export async function populateNarrativeScenery({ locations, createScenery, loadT
     }
     const count = location.art.density;
     for (let attempt = 0, countPlaced = 0; attempt < count * 35 && countPlaced < count; attempt++) {
+      if (attempt % 16 === 0) await yieldWork();
       const boundary = location.walkablePoints, index = Math.floor(random() * boundary.length), edge = boundary[index];
       const before = boundary[(index + boundary.length - 1) % boundary.length], after = boundary[(index + 1) % boundary.length];
       const length = Math.hypot(after.x - before.x, after.z - before.z) || 1;

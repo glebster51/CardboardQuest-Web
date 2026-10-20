@@ -1,4 +1,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import { createLocationStreaming } from './game/location-streaming.mjs';
+import { createGeometryClient } from './render/geometry-client.mjs';
+import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
+import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
@@ -7,15 +11,13 @@ import { createPointerInput } from './game/pointer-input.mjs?v=2';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
-import { createStoryActors } from './render/story-actors.mjs?v=1';
-import { createFigureFactory } from './render/figure-factory.mjs?v=1';
-import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
-import { createScenerySystem } from './render/scenery-system.mjs?v=8';
-import { populateNarrativeScenery } from './render/location-scenery.mjs?v=3';
+import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
+import { createFigureFactory } from './render/figure-factory.mjs?v=2';
+import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
+import { createScenerySystem } from './render/scenery-system.mjs?v=9';
+import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=10';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=21';
-import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from './terrain-shapes.mjs?v=9';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress, shouldMaintainFullCharges } from './charge-recharge.mjs?v=2';
@@ -29,7 +31,7 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, c
   collectCampaignStoryPickup, consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=6';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=8';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=9';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=8';
@@ -66,12 +68,13 @@ async function start() {
   let savedCampaign = null;
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
   const campaignState = createCampaignState(savedCampaign);
-  const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE);
-  await loadLocationDepthMaps(locations);
+  campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
+  const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE, [campaignState.currentLocationId]);
+  await loadLocationDepthMaps({ [campaignState.currentLocationId]: locations[campaignState.currentLocationId] });
   // Rebuild authored footprints now that raster-derived features (notably the
   // black river mask) are available to gameplay collision and floor cutting.
-  createCampaignLocations(locations, LOCATION_SCALE);
-  campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
+  if (locations[campaignState.currentLocationId].art.depthMap)
+    createCampaignLocations(locations, LOCATION_SCALE, [campaignState.currentLocationId]);
   for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
     const location = locations[id];
     location.defeats = stored.defeats ?? location.defeats;
@@ -126,12 +129,7 @@ async function start() {
       return { ...result, lines };
     },
   });
-  const locationGroups = Object.fromEntries(Object.values(locations).map(location => {
-    const group = new THREE.Group(); group.visible = location.id === activeLocation.id; scene.add(group);
-    location.sceneGroup = group;
-    group.userData.walkablePoints = location.walkablePoints;
-    return [location.id, group];
-  }));
+  const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   const target = new THREE.Vector3(0, .65, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
@@ -235,14 +233,19 @@ async function start() {
   terrainCorrugation.repeat.set(1, 1);
   const sceneStencil = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.AlwaysStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
-  createTerrainRenderer({ THREE, locations, createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours,
-    paper, playfieldCardboard: cardboardGrain, roughCardboard: cardboardGrain,
-    terrainCorrugation, sceneStencil });
+  let frameWorkStarted = false, sliceStarted = performance.now();
+  const yieldLocationWork = async () => {
+    if (!frameWorkStarted || performance.now() - sliceStarted < 3) return;
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    sliceStarted = performance.now();
+  };
+  const geometryClient = createGeometryClient(THREE,
+    { paper, grain: cardboardGrain, corrugation, terrainCorrugation }, yieldLocationWork);
   const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
-    corrugation, paper, sceneStencil, heartMaterials,
+    corrugation, paper, sceneStencil, heartMaterials, geometryClient,
     createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });
   const scenerySystem = createScenerySystem({ THREE, renderer, scene, locations, corrugation,
-    paper, terrainCorrugation, sceneStencil });
+    paper, terrainCorrugation, sceneStencil, geometryClient });
   const { create: createScenery, loadTemplate: loadSceneryTemplate, loadStateTemplates,
     createSprite: createScenerySpriteModel, facePairs: sceneryFacePairs } = scenerySystem;
   const figures = [];
@@ -257,7 +260,13 @@ async function start() {
     return {
     id, team: 'enemy', locationId, x: stored?.x ?? x, z: stored?.z ?? z, vx: stored?.vx ?? 0, vz: stored?.vz ?? 0,
     health: Math.min(options.maxHealth ?? 32, stored?.health ?? options.health ?? 32), maxHealth: options.maxHealth ?? 32,
-    charges: 3, maxCharges: 3, rechargeTimer: 0, aiPhase: 'pause', aiTimer: randomBetween(1, 4),
+    charges: stored?.charges ?? 3, maxCharges: 3, rechargeTimer: stored?.rechargeTimer ?? 0,
+    aiPhase: stored?.aiPhase ?? 'pause', aiTimer: stored?.aiTimer ?? randomBetween(1, 4),
+    aiAimAngle: stored?.aiAimAngle, aiAimDuration: stored?.aiAimDuration,
+    aiTargetX: stored?.aiTargetX, aiTargetZ: stored?.aiTargetZ, aiStunRemaining: stored?.aiStunRemaining ?? 0,
+    directHitProtection: stored?.directHitProtection ?? false, attackRicochets: stored?.attackRicochets ?? 0,
+    lootDropped: stored?.lootDropped ?? false, defeatRecorded: stored?.defeatRecorded ?? false,
+    hitCooldown: stored?.hitCooldown ?? 0,
     combatAwake: stored?.combatAwake ?? options.combatAwake ?? false,
     spawnReady: stored?.spawnReady ?? options.spawnReady ?? true,
     boss: options.boss ?? false,
@@ -266,41 +275,49 @@ async function start() {
     };
   };
   const forestSpawns = [{ x: scaled(-3.1), z: scaled(.3) }, { x: scaled(3.1), z: scaled(.3) }];
-  for (let index = 0; index < forestSpawns.length; index++) {
-    const point = forestSpawns[index];
-    const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z,
-      { combatAwake: locations.forest.combatTriggered });
-    locations.forest.enemies.push(body);
-    const figure = await createFigure(body, 'goblin');
-    figure.locationId = 'forest'; figure.group.visible = false; figure.healthHUD.visible = false;
-    figure.enemyMarker.group.visible = false; figures.push(figure);
-  }
   const campSpawns = CAMP_GOBLIN_SPAWNS.map((spawn, index) => ({
     x: scaled(spawn.x), z: scaled(spawn.z),
     hutX: scaled(CAMP_HUT_ANCHORS[index].x), hutZ: scaled(CAMP_HUT_ANCHORS[index].z),
   }));
-  for (let index = 0; index < campSpawns.length; index++) {
-    const point = campSpawns[index];
-    const body = enemyBody(`camp-goblin-${index + 1}`, 'camp', point.x, point.z, { spawnReady: false, combatAwake: true });
-    locations.camp.enemies.push(body);
-    const figure = await createFigure(body, 'goblin');
-    figure.locationId = 'camp'; figure.spawnSource = { x: point.hutX, z: point.hutZ }; figure.spawnStarted = false;
-    figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
-    figures.push(figure);
+  async function createLocationEnemies(location) {
+    if (location.id === 'forest')
+    for (let index = 0; index < forestSpawns.length; index++) {
+      const point = forestSpawns[index];
+      const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z,
+        { combatAwake: locations.forest.combatTriggered });
+      locations.forest.enemies.push(body);
+      const figure = await createFigure(body, 'goblin');
+      figure.locationId = 'forest'; figure.group.visible = false; figure.healthHUD.visible = false;
+      figure.enemyMarker.group.visible = false; figures.push(figure);
+    }
+    if (location.id === 'camp')
+    for (let index = 0; index < campSpawns.length; index++) {
+      const point = campSpawns[index];
+      const body = enemyBody(`camp-goblin-${index + 1}`, 'camp', point.x, point.z, { spawnReady: false, combatAwake: true });
+      locations.camp.enemies.push(body);
+      const figure = await createFigure(body, 'goblin');
+      figure.locationId = 'camp'; figure.spawnSource = { x: point.hutX, z: point.hutZ }; figure.spawnStarted = false;
+      figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+      figures.push(figure);
+    }
+    for (const encounter of STORY_ENCOUNTERS.filter(encounter => encounter.location === location.id)) for (const unit of encounter.units) {
+      const body = enemyBody(`${encounter.location}-${unit.id}`, encounter.location,
+        scaled(unit.x), scaled(unit.z), { combatAwake: true, archetype: unit.type, ...ENEMY_STATS[unit.type] });
+      body.lastSafePosition = { x: body.x, z: body.z };
+      locations[encounter.location].enemies.push(body);
+      const figure = await createFigure(body, unit.type);
+      figure.locationId = encounter.location; figure.group.visible = false;
+      figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
+      figures.push(figure);
+    }
   }
-  for (const encounter of STORY_ENCOUNTERS) for (const unit of encounter.units) {
-    const body = enemyBody(`${encounter.location}-${unit.id}`, encounter.location,
-      scaled(unit.x), scaled(unit.z), { combatAwake: true, archetype: unit.type, ...ENEMY_STATS[unit.type] });
-    body.lastSafePosition = { x: body.x, z: body.z };
-    locations[encounter.location].enemies.push(body);
-    const figure = await createFigure(body, unit.type);
-    figure.locationId = encounter.location; figure.group.visible = false;
-    figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
-    figures.push(figure);
-  }
-  await populateNarrativeScenery({ locations, createScenery, loadTemplate: loadSceneryTemplate,
-    scale: LOCATION_SCALE, hutAnchors: CAMP_HUT_ANCHORS, puckRadius: PUCK_RADIUS });
-  const storyActors = await createStoryActors({ locations, createScenery, scale: LOCATION_SCALE, campaign: campaignState });
+  const storyActors = { actors: [], update() {
+    for (const actor of this.actors) {
+      const visible = isStoryActorVisible(actor.spec, campaignState);
+      actor.prop.visible = visible; actor.body.active = visible;
+      actor.prop.position.x = actor.body.x; actor.prop.position.z = actor.body.z;
+    }
+  } };
   const decorationSpecs = Object.fromEntries(Object.values(locations).map((location, index) => [location.id, {
     seed: location.heightSeed,
     decalCount: location.kind === 'camp' ? 48 : location.biome === 'quarry' ? 36 : 28,
@@ -316,9 +333,6 @@ async function start() {
       { x: 0, z: 0, radius: 1.45 },
     ],
   }]));
-  await createGroundRenderer({ THREE, renderer, locations, specsByLocation: decorationSpecs,
-    pathTargets: { camp: CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) },
-    createLocationWalkPaths, scatterGroundDetails });
   refreshLocationInfo();
   const initialVisit = visitCampaignLocation(campaignState, activeLocation.id);
   const initialStoryCard = initialVisit?.firstVisit ? { title: activeLocation.title, text: activeLocation.campaignIntro,
@@ -375,6 +389,7 @@ async function start() {
   let selectionAge = .6;
   let elapsed = 0;
   let transitionCooldown = 0;
+  let locationTransition = false;
   let victorySequenceActive = false;
   const debugMode = new URLSearchParams(location.search).has('debug');
   let simulationPaused = debugMode;
@@ -400,11 +415,11 @@ async function start() {
     try { return await campOgrePreloadPromise; }
     finally { campOgrePreloadPromise = null; }
   }
-  async function preloadCampEnemies() {
-    if (campGoblinPool.length >= CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP) return;
+  async function preloadCampEnemies(required = CAMP_GOBLIN_TOTAL - Math.max(CAMP_LIVING_CAP, locations.camp.goblinsSpawned)) {
+    if (campGoblinPool.length >= required) return;
     if (campPreloadPromise) return campPreloadPromise;
     campPreloadPromise = (async () => {
-      while (campGoblinPool.length < CAMP_GOBLIN_TOTAL - CAMP_LIVING_CAP) {
+      while (campGoblinPool.length < required) {
         const body = enemyBody(`camp-goblin-pool-${campGoblinPool.length + 1}`, 'camp', 0, 0,
           { health: 0, maxHealth: 32, spawnReady: false, combatAwake: true });
         const figure = await createFigure(body, 'goblin');
@@ -416,11 +431,6 @@ async function start() {
     })().catch(error => { campPreloadPromise = null; throw error; });
     try { await campPreloadPromise; }
     finally { campPreloadPromise = null; }
-    const preloadOgre = () => preloadCampOgre().catch(error => {
-      console.error('Не удалось заранее подготовить огра', error);
-    });
-    if (window.requestIdleCallback) window.requestIdleCallback(preloadOgre, { timeout: 1600 });
-    else setTimeout(preloadOgre, 100);
   }
   let campRestorePromise = null;
   async function restoreSavedCampEnemies() {
@@ -428,7 +438,8 @@ async function start() {
     if (!storedEnemies?.length) return;
     if (campRestorePromise) return campRestorePromise;
     campRestorePromise = (async () => {
-      await preloadCampEnemies();
+      await preloadCampEnemies(storedEnemies.filter(enemy => enemy.id !== 'camp-ogre'
+        && !locations.camp.enemies.some(body => body.id === enemy.id)).length);
       if (campaignState.world?.camp?.bossSpawned) await preloadCampOgre();
       for (const saved of storedEnemies) {
         if (locations.camp.enemies.some(enemy => enemy.id === saved.id)) continue;
@@ -453,11 +464,6 @@ async function start() {
       if (activeLocation.id === 'camp') { showActiveLocationFigures(); rebuildBodies(); refreshLocationInfo(); }
     })().finally(() => { campRestorePromise = null; });
     return campRestorePromise;
-  }
-  function scheduleCampPreload() {
-    const preload = () => preloadCampEnemies().catch(error => console.error('Не удалось заранее подготовить лагерь', error));
-    if (window.requestIdleCallback) window.requestIdleCallback(preload, { timeout: 1200 });
-    else setTimeout(preload, 100);
   }
   function renderInventory() {
     const items = document.querySelector('#inventory-items');
@@ -488,28 +494,30 @@ async function start() {
   function showStoryCard(card) {
     dialogue.show({ ...card, title: card.title ?? activeLocation.title });
   }
+  function snapshotLocation(location) {
+    if (!location.runtimeReady) return campaignState.world?.[location.id] ?? {};
+    return {
+      actors: storyActors.actors.filter(actor => actor.spec.location === location.id)
+        .map(actor => ({ id: actor.spec.id, x: actor.body.x, z: actor.body.z })),
+      enemies: location.enemies.map(enemy => ({ ...enemy })),
+      defeats: location.defeats, goblinsSpawned: location.goblinsSpawned,
+      reinforcementQueue: (location.reinforcementQueue ?? []).map(due => Math.max(0, due - elapsed)), bossSpawned: location.bossSpawned,
+      initialized: location.initialized, combatTriggered: location.combatTriggered,
+      lastExitPositions: location.lastExitPositions,
+      loot: location.loot.map(({ id, itemId, x, z }) => ({ id, itemId, x, z })),
+    };
+  }
   function persistCampaign() {
     campaignState.currentLocationId = activeLocation.id;
     campaignState.playerHealth = heroBody.health;
     campaignState.playerPosition = { x: heroBody.x, z: heroBody.z };
     campaignState.lastSafePosition = { ...heroBody.lastSafePosition };
     campaignState.elapsed = elapsed;
-    campaignState.world = Object.fromEntries(Object.values(locations).map(location => [location.id, {
-      actors: storyActors.actors.filter(actor => actor.spec.location === location.id)
-        .map(actor => ({ id: actor.spec.id, x: actor.body.x, z: actor.body.z })),
-      enemies: location.enemies.map(enemy => ({ id: enemy.id, x: enemy.x, z: enemy.z, vx: enemy.vx, vz: enemy.vz,
-        health: enemy.health, combatAwake: enemy.combatAwake, spawnReady: enemy.spawnReady, fell: enemy.fell })),
-      defeats: location.defeats, goblinsSpawned: location.goblinsSpawned,
-      reinforcementQueue: (location.reinforcementQueue ?? []).map(due => Math.max(0, due - elapsed)), bossSpawned: location.bossSpawned,
-      initialized: location.initialized, combatTriggered: location.combatTriggered,
-      lastExitPositions: location.lastExitPositions,
-      loot: location.loot.map(({ id, itemId, x, z }) => ({ id, itemId, x, z })),
-    }]));
+    campaignState.world = Object.fromEntries(Object.values(locations).map(location => [location.id, snapshotLocation(location)]));
     try { localStorage.setItem(CAMPAIGN_SAVE_KEY, JSON.stringify(campaignState)); } catch (error) {
       console.warn('Не удалось сохранить поход', error);
     }
   }
-  if (savedCampaign && playerStart.recovered) persistCampaign();
   document.querySelector('#inventory-toggle').addEventListener('click', () => {
     if (dialogue.isOpen()) return;
     inputController?.cancel();
@@ -543,18 +551,26 @@ async function start() {
   const worldItemVisuals = new Map();
   const storyPickupVisuals = new Map();
   const lootItemIds = ['berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard'];
-  const lootAtlas = await new THREE.TextureLoader().loadAsync('assets/loot-atlas.png?v=1');
-  lootAtlas.colorSpace = THREE.SRGBColorSpace;
-  lootAtlas.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  const lootCellWidth = lootAtlas.image.width / 4, lootCellHeight = lootAtlas.image.height / 2;
-  const lootSpriteModels = new Map(lootItemIds.map((id, index) => {
-    const canvas = document.createElement('canvas'); canvas.width = lootCellWidth; canvas.height = lootCellHeight;
-    canvas.getContext('2d', { willReadFrequently: true }).drawImage(lootAtlas.image,
-      (index % 4) * lootCellWidth, Math.floor(index / 4) * lootCellHeight, lootCellWidth, lootCellHeight,
-      0, 0, lootCellWidth, lootCellHeight);
-    return [id, createScenerySpriteModel(canvas)];
-  }));
-  lootAtlas.dispose();
+  const lootSpriteModels = new Map();
+  let lootAssetsPromise = null;
+  function ensureLootSprites() {
+    if (lootAssetsPromise) return lootAssetsPromise;
+    lootAssetsPromise = (async () => {
+      const lootAtlas = await new THREE.TextureLoader().loadAsync('assets/loot-atlas.png?v=1');
+      lootAtlas.colorSpace = THREE.SRGBColorSpace;
+      lootAtlas.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      const lootCellWidth = lootAtlas.image.width / 4, lootCellHeight = lootAtlas.image.height / 2;
+      for (const [index, id] of lootItemIds.entries()) {
+        const canvas = document.createElement('canvas'); canvas.width = lootCellWidth; canvas.height = lootCellHeight;
+        canvas.getContext('2d', { willReadFrequently: true }).drawImage(lootAtlas.image,
+          (index % 4) * lootCellWidth, Math.floor(index / 4) * lootCellHeight, lootCellWidth, lootCellHeight,
+          0, 0, lootCellWidth, lootCellHeight);
+        lootSpriteModels.set(id, await createScenerySpriteModel(canvas));
+      }
+      lootAtlas.dispose();
+    })().catch(error => { lootAssetsPromise = null; throw error; });
+    return lootAssetsPromise;
+  }
   function makeMittenTexture() {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
     const context = canvas.getContext('2d');
@@ -676,14 +692,101 @@ async function start() {
     group.position.set(body.x, 0, body.z); location.sceneGroup.add(group);
     chestVisuals.set(location.id, { body, group, artHolder, stateArt, openingAge: null });
   }
-  const chestTemplates = Object.values(locations).some(location => location.secret)
-    ? await loadStateTemplates('assets/chest-states.png', 2) : [];
-  for (const location of Object.values(locations)) {
-    if (location.secret) await makeCacheBody(location, chestTemplates);
-    for (const item of location.loot) createLootVisual(location, item);
-    for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag])
-      createStoryPickupVisual(location, pickup);
+  let groundResources = null;
+  async function buildLocation(id, stillWanted) {
+    const location = locations[id];
+    const checkpoint = async () => {
+      await yieldLocationWork();
+      if (!stillWanted()) throw new Error('Location preparation cancelled');
+    };
+    await checkpoint();
+    let rebuildLayout = !location.layoutReady;
+    if (location.art.depthMapUrl && !location.art.depthMap) {
+      await loadLocationDepthMaps({ [id]: location });
+      rebuildLayout = true;
+    }
+    const terrain = await geometryClient.run('terrain', {
+      id, scale: LOCATION_SCALE, layoutReady: !rebuildLayout,
+      heightSeed: location.heightSeed, walkablePoints: location.walkablePoints,
+      exits: location.exits, dropZones: location.dropZones, hazards: location.hazards,
+      art: location.art, terrainStyle: location.terrainStyle });
+    if (terrain.layout) Object.assign(location, terrain.layout);
+    location.sceneGroup = terrain.group; locationGroups[id] = terrain.group;
+    terrain.group.visible = false; scene.add(terrain.group);
+    location.terrainHeightMap = restoreTerrainSampler(terrain.heightMap,
+      { rounded: terrain.rounded, depthMap: Boolean(location.art.depthMap), walkablePoints: location.walkablePoints });
+    delete location.terrainHeightMap.layers;
+    terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
+    terrain.group.userData.walkablePoints = location.walkablePoints;
+    await checkpoint();
+    await createLocationEnemies(location);
+    if (id === 'camp') {
+      location.reinforcementQueue = (campaignState.world?.camp?.reinforcementQueue ?? []).map(due => due + elapsed);
+      await restoreSavedCampEnemies();
+      await preloadCampEnemies();
+      if (!location.bossSpawned) await preloadCampOgre();
+    }
+    await checkpoint();
+    if (location.enemies.length || location.secret || location.loot.length) await ensureLootSprites();
+    await populateNarrativeScenery({ locations: { [id]: location }, createScenery, loadTemplate: loadSceneryTemplate,
+      scale: LOCATION_SCALE, hutAnchors: CAMP_HUT_ANCHORS, puckRadius: PUCK_RADIUS, yieldWork: checkpoint });
+    const actors = await createStoryActors({ locations: { [id]: location }, createScenery, scale: LOCATION_SCALE, campaign: campaignState });
+    storyActors.actors.push(...actors.actors);
+    await checkpoint();
+    groundResources = await createGroundRenderer({ THREE, renderer, locations: { [id]: location }, specsByLocation: decorationSpecs,
+      pathTargets: { camp: CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) },
+      createLocationWalkPaths, scatterGroundDetails, resources: groundResources, geometryClient, yieldWork: checkpoint });
+    if (location.secret) await makeCacheBody(location, await loadStateTemplates('assets/chest-states.png', 2));
+    for (const item of location.loot) { createLootVisual(location, item); await checkpoint(); }
+    for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) createStoryPickupVisual(location, pickup);
+    // Upload each bitmap while the scene is hidden, instead of uploading all of
+    // a neighboring location's textures in its first visible frame.
+    const roots = [location.sceneGroup, ...figures.filter(figure => figure.locationId === id).map(figure => figure.group)];
+    if (!frameWorkStarted) roots.push(heroFigure.group);
+    for (const resource of sceneResources(roots)) if (resource.isTexture) { renderer.initTexture(resource); await checkpoint(); }
+    await checkpoint();
+    location.runtimeReady = true;
+    return location;
   }
+  async function releaseLocation(id) {
+    const location = locations[id], removed = [];
+    if (location.runtimeReady) campaignState.world[id] = snapshotLocation(location);
+    if (location.sceneGroup) { removed.push(location.sceneGroup); scene.remove(location.sceneGroup); }
+    for (let index = figures.length - 1; index >= 0; index--) {
+      const figure = figures[index];
+      if (figure === heroFigure || figure.locationId !== id) continue;
+      for (const group of [figure.group, figure.healthHUD, figure.enemyMarker?.group].filter(Boolean)) {
+        scene.remove(group); removed.push(group);
+      }
+      figures.splice(index, 1);
+    }
+    const belongs = object => removed.some(root => { for (let p = object; p; p = p.parent) if (p === root) return true; return false; });
+    for (let index = sceneryFacePairs.length - 1; index >= 0; index--)
+      if (belongs(sceneryFacePairs[index].prop)) sceneryFacePairs.splice(index, 1);
+    for (const cache of [worldItemVisuals, storyPickupVisuals]) for (const [key, visual] of cache)
+      if (belongs(visual.group)) cache.delete(key);
+    for (let index = storyActors.actors.length - 1; index >= 0; index--)
+      if (storyActors.actors[index].spec.location === id) storyActors.actors.splice(index, 1);
+    chestVisuals.delete(id); delete locationGroups[id];
+    delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails; delete location.cacheBody;
+    location.enemies = []; location.obstacles = []; location.runtimeReady = false;
+    if (id === 'camp') { campGoblinPool.length = 0; campOgrePool = null; }
+    const retained = [scene, ...[...lootSpriteModels.values()].map(model => model.group)];
+    removed.push(...await createFigure.releaseUnused(new Set(figures.map(figure => figure.prefix))));
+    removed.push(...await scenerySystem.releaseUnused(retained));
+    disposeUnusedScenes(removed, retained, [paper, cardboardGrain, corrugation, terrainCorrugation,
+      ambientShadowMaterial, contactShadowMaterial, ...heartMaterials,
+      ...heartTextures, puckAmbientShadow, figureContactShadow, lootBeamGeometry, lootBeamMaterial, lootBeamTexture,
+      storyPickupIconGeometry, storyPickupIconMaterial, storyPickupIconMaterial.map,
+      ...[...(groundResources?.materials.values() ?? [])], ...[...(groundResources?.textures.values() ?? [])]]);
+    if (location.art.depthMapUrl) delete location.art.depthMap;
+    renderer.renderLists.dispose();
+  }
+  const locationStreaming = createLocationStreaming({
+    neighbors: id => locations[id].exits.map(exit => exit.to), build: buildLocation, release: releaseLocation,
+    schedule: callback => requestAnimationFrame(() => setTimeout(callback, 0)),
+    onError: error => console.error('Не удалось подготовить соседнюю локацию', error),
+  });
 
   function refreshLocationInfo() {
     locationTitle.textContent = activeLocation.title;
@@ -770,46 +873,57 @@ async function start() {
     if (activeLocation.id === 'camp') refreshLocationInfo();
     return figure;
   }
-  function enterLocation(locationId, fromLocationId) {
+  async function enterLocation(locationId, fromLocationId) {
     const next = locations[locationId];
-    if (!next) return;
+    if (!next || locationTransition) return;
     rememberExitPosition(activeLocation, locationId, heroBody);
     inputController.cancel();
-    heroFigure.victoryAnimation = null;
-    clearProjectiles();
-    activeLocation = next;
-    dialogue.close();
-    protectedEntryFrom = fromLocationId;
-    const remembered = lastExitPosition(activeLocation, fromLocationId);
-    const arrival = remembered && isPlayableFloor(activeLocation, remembered.x, remembered.z, .2)
-      ? remembered : locationArrival(activeLocation, fromLocationId);
-    heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
-    heroBody.lastSafePosition = { x: arrival.x, z: arrival.z };
-    const direction = locationEntryDirection(activeLocation, fromLocationId);
-    const heading = Math.atan2(direction.x, direction.z);
-    heroFigure.facing = heading; heroFigure.group.rotation.y = heading;
-    orbit.theta = heading + Math.PI;
-    target.set(heroBody.x, .65, heroBody.z);
-    transitionCooldown = .85;
-    const visit = visitCampaignLocation(campaignState, activeLocation.id);
-    storyActors.update();
-    if (activeLocation.kind === 'camp') {
-      restoreSavedCampEnemies().catch(error => console.error('Не удалось восстановить состояние лагеря', error));
-      activeLocation.initialized = true;
-      for (const figure of figures.filter(item => item.locationId === 'camp' && !item.poolDormant
-        && !item.body.boss && item.body.health > 0 && !item.body.spawnReady && !item.spawnAnimation)) {
-        beginSpawn(figure, figure.spawnSource);
-      }
-    }
-    if (next.id === 'forest') scheduleCampPreload();
-    showActiveLocationFigures();
-    rebuildBodies();
-    refreshLocationInfo();
-    renderInventory();
     persistCampaign();
-    prepareScenePresentation();
-    if (visit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro,
-      lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') });
+    locationTransition = true;
+    loading.hidden = locationStreaming.isReady(locationId);
+    try {
+      const prepared = await locationStreaming.retain(locationId);
+      if (!prepared) return false;
+      heroFigure.victoryAnimation = null;
+      clearProjectiles();
+      activeLocation = next;
+      dialogue.close();
+      protectedEntryFrom = fromLocationId;
+      const remembered = lastExitPosition(activeLocation, fromLocationId);
+      const arrival = remembered && isPlayableFloor(activeLocation, remembered.x, remembered.z, .2)
+        ? remembered : locationArrival(activeLocation, fromLocationId);
+      heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
+      heroBody.lastSafePosition = { x: arrival.x, z: arrival.z };
+      const direction = locationEntryDirection(activeLocation, fromLocationId);
+      const heading = Math.atan2(direction.x, direction.z);
+      heroFigure.facing = heading; heroFigure.group.rotation.y = heading;
+      orbit.theta = heading + Math.PI;
+      target.set(heroBody.x, .65, heroBody.z);
+      transitionCooldown = .85;
+      const visit = visitCampaignLocation(campaignState, activeLocation.id);
+      storyActors.update();
+      if (activeLocation.kind === 'camp') {
+        activeLocation.initialized = true;
+        for (const figure of figures.filter(item => item.locationId === 'camp' && !item.poolDormant
+          && !item.body.boss && item.body.health > 0 && !item.body.spawnReady && !item.spawnAnimation)) {
+          beginSpawn(figure, figure.spawnSource);
+        }
+      }
+      showActiveLocationFigures();
+      rebuildBodies();
+      refreshLocationInfo();
+      renderInventory();
+      persistCampaign();
+      prepareScenePresentation();
+      if (visit?.firstVisit) showStoryCard({ title: activeLocation.title, text: activeLocation.campaignIntro,
+        lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') });
+      return true;
+    } catch (error) {
+      console.error('Не удалось открыть локацию', error);
+      document.querySelector('#error').hidden = false;
+      document.querySelector('#error').textContent = `Не удалось подготовить локацию: ${error.message}. Попробуй перейти ещё раз.`;
+      return false;
+    } finally { locationTransition = false; loading.hidden = true; }
   }
   function startQueuedReinforcement() {
     const camp = locations.camp;
@@ -929,6 +1043,7 @@ async function start() {
       const facePairIndex = sceneryFacePairs.indexOf(visual.facePair);
       if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
       worldItemVisuals.delete(item.id);
+      visual.glow.geometry.dispose(); visual.glow.material.dispose();
       addItems(campaignState, { [pickup.itemId]: 1 });
       renderInventory();
       burst(item.x, item.z, .48);
@@ -949,6 +1064,7 @@ async function start() {
       const collected = collectCampaignStoryPickup(campaignState, activeLocation.id, pickup.id);
       if (!collected) continue;
       activeLocation.sceneGroup.remove(visual.group); storyPickupVisuals.delete(pickup.id);
+      visual.glow.geometry.dispose(); visual.glow.material.dispose();
       burst(pickup.x, pickup.z, .7); vibrate(24); persistCampaign();
       showStoryCard({ title: activeLocation.title, text: 'Ты подобрал вещь, которую дед потерял у ручья.',
         lines: getStoryDialogue(campaignState, activeLocation.id, 'pickup') });
@@ -1186,7 +1302,7 @@ async function start() {
     host.classList.remove('aiming');
   }
   inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
-    isBlocked: () => dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen(),
+    isBlocked: () => locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen(),
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
@@ -1210,21 +1326,24 @@ async function start() {
     camera.updateProjectionMatrix(); updateCamera();
   }
   addEventListener('resize', resize); resize();
+  await locationStreaming.retain(activeLocation.id, false);
   showActiveLocationFigures();
   rebuildBodies();
   prepareScenePresentation();
-  if (activeLocation.id === 'forest') scheduleCampPreload();
-  if (activeLocation.id === 'camp') restoreSavedCampEnemies().then(() => {
-    showActiveLocationFigures(); rebuildBodies();
-  }).catch(error => console.error('Не удалось восстановить состояние лагеря', error));
+  if (activeLocation.id === 'camp') {
+    activeLocation.initialized = true;
+    for (const figure of figures.filter(item => item.locationId === 'camp' && !item.poolDormant
+      && !item.body.boss && item.body.health > 0 && !item.body.spawnReady)) beginSpawn(figure, figure.spawnSource);
+  }
   loading.hidden = true;
+  persistCampaign();
   if (initialStoryCard) showStoryCard(initialStoryCard);
   if (debugMode) window.__CQ_DEBUG__ = {
     locations: Object.keys(locations),
-    enter(id) { enterLocation(id, activeLocation.id); },
-    view(id, distance = 43) {
+    enter(id) { return enterLocation(id, activeLocation.id); },
+    async view(id, distance = 43) {
       simulationPaused = true;
-      enterLocation(id, activeLocation.id);
+      await enterLocation(id, activeLocation.id);
       dialogue.close(); inventoryPanel.hidden = true;
       heroBody.x = 0; heroBody.z = 0; heroBody.vx = 0; heroBody.vz = 0;
       heroBody.health = heroBody.maxHealth;
@@ -1270,6 +1389,8 @@ async function start() {
     },
     snapshot() {
       return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
+        streaming: locationStreaming.snapshot(), memory: { ...renderer.info.memory },
+        residentLocations: Object.keys(locationGroups), figureCount: figures.length,
         hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer,
           renderedX: heroFigure.group.position.x, renderedZ: heroFigure.group.position.z, viewBack: heroFigure.viewBack,
           visualState: heroFigure.visualState },
@@ -1302,7 +1423,7 @@ async function start() {
     const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
     updateCacheAnimation(dt);
-    if (dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen()) {
+    if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen()) {
       updateCamera(); renderer.render(scene, camera); return;
     }
     elapsed += dt;
@@ -1533,6 +1654,11 @@ async function start() {
     }
     renderer.render(scene, camera);
   });
+  frameWorkStarted = true;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!locationTransition) locationStreaming.retain(activeLocation.id)
+      .catch(error => console.error('Не удалось подготовить соседние места', error));
+  }));
 }
 
 start().catch(error => {

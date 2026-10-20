@@ -64,14 +64,33 @@ export function resolveCampaignPlayerStart(location, { health, maxHealth, positi
 }
 
 /** Expand the authored story graph into small playable arenas and throat exits. */
-export function createCampaignLocations(locations, scale = 1.5) {
+export function createCampaignLocations(locations, scale = 1.5, ids = null) {
   if (!locations || !locations.home || !Number.isFinite(scale) || scale <= 0) {
     throw new TypeError('Campaign locations need the base game world and a positive scale');
   }
   const exitsById = new Map(CAMPAIGN.map(location => [location.id, []]));
   for (const [from, to] of CAMPAIGN_EDGES) exitsById.get(from).push(to);
 
+  // Lightweight catalog for the map/save system. Unprepared places have no
+  // authored floor contours, height grids, meshes, or spawned enemies yet.
+  for (const authored of CAMPAIGN) if (!locations[authored.id]?.layoutReady) {
+    const location = locations[authored.id] ?? { enemies: [], obstacles: [], scenery: [], combatTriggered: false,
+      defeats: 0, goblinsSpawned: 0, reinforcementQueue: [], pendingSpawns: 0, bossSpawned: false, initialized: false };
+    Object.assign(location, {
+      id: authored.id, title: authored.title, biome: authored.biome,
+      kind: ['home', 'forest', 'camp'].includes(authored.id) ? authored.id : 'story',
+      campaignIntro: authored.intro, campaignScene: authored.scene, campaignOptions: authored.options,
+      secret: authored.options === 'secret', art: location.art ?? createLocationArt(authored.id, scale),
+      exits: exitsById.get(authored.id).map(to => ({ to })),
+      lastExitPositions: location.lastExitPositions ?? {},
+      heightSeed: 7049 + [...authored.id].reduce((seed, char) => (Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0), 2166136261),
+      terrainStyle: authored.biome,
+    });
+    locations[authored.id] = location;
+  }
+
   for (const authored of CAMPAIGN) {
+    if (ids && !ids.includes(authored.id)) continue;
     const location = locations[authored.id] ?? {
       id: authored.id, enemies: [], obstacles: [], scenery: [], combatTriggered: false,
       defeats: 0, goblinsSpawned: 0, reinforcementQueue: [], pendingSpawns: 0,
@@ -109,6 +128,7 @@ export function createCampaignLocations(locations, scale = 1.5) {
       if (gate) arrivals[from] = { ...gate.arrival };
     }
     Object.assign(location, {
+      layoutReady: true,
       id: authored.id,
       title: authored.title,
       kind: authored.id === 'home' || authored.id === 'forest' || authored.id === 'camp' ? authored.id : 'story',

@@ -2,10 +2,11 @@ import { makeScenerySprite } from '../scenery-model-v4.mjs?v=4';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=2';
 import { WALKABLE_POINTS } from '../physics.mjs';
 import { nearestPointOnPath } from '../terrain-shapes.mjs';
+import { sceneResources } from './scene-resources.mjs';
 
 /** Own scenery asset templates and construct location props from them. */
 export function createScenerySystem({ THREE, renderer, scene, locations, corrugation, paper,
-  terrainCorrugation, sceneStencil, assetBase = 'assets/' }) {
+  terrainCorrugation, sceneStencil, assetBase = 'assets/', geometryClient }) {
   const templates = new Map();
   const stateTemplates = new Map();
   const facePairs = [];
@@ -13,6 +14,11 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
   function loadTemplate(path) {
     if (templates.has(path)) return templates.get(path);
     const pending = (async () => {
+      if (geometryClient) {
+        const url = new URL(`${assetBase}${path.replace(/^assets\//, '')}?art=4`, location.href).href;
+        const result = await geometryClient.run('scenery', { url });
+        return result.group.children[0];
+      }
       const source = await new THREE.TextureLoader().loadAsync(`${assetBase}${path.replace(/^assets\//, '')}?art=4`);
       const art = makeScenerySprite(source.image, corrugation, renderer.capabilities.getMaxAnisotropy());
       source.dispose();
@@ -27,6 +33,11 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     const key = `${path}:${frameCount}`;
     if (stateTemplates.has(key)) return stateTemplates.get(key);
     const pending = (async () => {
+      if (geometryClient) {
+        const url = new URL(`${assetBase}${path.replace(/^assets\//, '')}?states=1`, location.href).href;
+        const result = await geometryClient.run('scenery', { url, frameCount });
+        return [...result.group.children];
+      }
       const source = await new THREE.TextureLoader().loadAsync(`${assetBase}${path.replace(/^assets\//, '')}?states=1`);
       const image = source.image;
       if (!Number.isInteger(frameCount) || frameCount < 2 || image.width % frameCount !== 0)
@@ -49,7 +60,19 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
   }
 
   function createSprite(image) {
+    if (geometryClient) return createImageBitmap(image).then(bitmap => geometryClient.run('scenery', { bitmap }, [bitmap]))
+      .then(result => ({ group: result.group.children[0] }));
     return makeScenerySprite(image, corrugation, renderer.capabilities.getMaxAnisotropy());
+  }
+
+  async function releaseUnused(roots) {
+    const live = sceneResources(roots), removed = [];
+    for (const cache of [templates, stateTemplates]) for (const [key, pending] of cache) {
+      const groups = [await pending].flat();
+      const used = [...sceneResources(groups)].some(resource => resource.isBufferGeometry && live.has(resource));
+      if (!used) { cache.delete(key); removed.push(...groups); }
+    }
+    return removed;
   }
 
   async function create(path, x, z, size, parent = scene, allowFlat = false, options = {}) {
@@ -92,5 +115,5 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     return prop;
   }
 
-  return { create, loadTemplate, loadStateTemplates, createSprite, facePairs };
+  return { create, loadTemplate, loadStateTemplates, createSprite, facePairs, releaseUnused };
 }

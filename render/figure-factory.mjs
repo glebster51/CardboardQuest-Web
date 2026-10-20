@@ -23,14 +23,44 @@ function yieldFrameWork() {
 
 /** Build display instances from cached pose geometry and source textures. */
 export function createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
-  corrugation, paper, sceneStencil, heartMaterials, createEnemyMarker, groundUiY, assetBase = 'assets/' }) {
+  corrugation, paper, sceneStencil, heartMaterials, createEnemyMarker, groundUiY, assetBase = 'assets/', geometryClient }) {
   const artCache = new Map();
+
+  async function loadWorkerArt(body, prefix) {
+    const states = {};
+    const prepared = await Promise.all(VISUAL_STATES.flatMap(visualState => ['front', 'back'].map(side => {
+      const url = new URL(`${assetBase}${prefix}-${visualState}${side === 'back' ? '-back' : ''}.png?sheet=3`, location.href).href;
+      return geometryClient.run('figure', { url, player: body.team === 'player',
+        flip: body.team === 'player' && visualState === 'idle' && side === 'front' });
+    })));
+    let faceIndex = 0;
+    for (const visualState of VISUAL_STATES) {
+      const faces = [];
+      for (const side of ['front', 'back']) {
+        const model = prepared[faceIndex++];
+        model.flashMaterial = model.byUuid.get(model.flashUuid).material;
+        model.backFlashMaterial = model.byUuid.get(model.backFlashUuid).material;
+        model.group.rotation.y = side === 'back' ? Math.PI : 0;
+        faces.push(model);
+      }
+      const [frontArt, backArt] = faces, group = new THREE.Group(); group.position.y = 1.25;
+      group.add(frontArt.group, backArt.group); backArt.group.visible = false;
+      states[visualState] = { group, frontArt, backArt, alphaPixels: frontArt.alphaPixels,
+        width: frontArt.width, height: frontArt.height };
+    }
+    const { width, height, alphaPixels } = states.dead;
+    let bottomRow = height - 1;
+    outer: for (let y = height - 1; y >= 0; y--) for (let x = 0; x < width; x++)
+      if (alphaPixels[(y * width + x) * 4 + 3] > 80) { bottomRow = y; break outer; }
+    return { states, deadGroundedY: .215 - (.5 - bottomRow / height) * 2.05 };
+  }
 
   async function loadFigureArt(body, prefix) {
     const key = `${prefix}:${body.team === 'player' ? 'player' : 'enemy'}`;
     let pending = artCache.get(key);
     if (!pending) {
       pending = (async () => {
+        if (geometryClient) return loadWorkerArt(body, prefix);
         const loader = new THREE.TextureLoader();
         const frontSources = await Promise.all(VISUAL_STATES.map(state =>
           loader.loadAsync(`${assetBase}${prefix}-${state}.png?sheet=3`)));
@@ -98,8 +128,9 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     return pending;
   }
 
-  return async function createFigure(body, prefix) {
+  const createFigure = async function(body, prefix) {
     const group = new THREE.Group();
+    group.visible = !geometryClient || body.team === 'player';
     scene.add(group);
     const ambientShadow = new THREE.Mesh(new THREE.CircleGeometry(1.02, 64), ambientShadowMaterial);
     ambientShadow.rotation.x = -Math.PI / 2; ambientShadow.position.y = .008; ambientShadow.renderOrder = 1;
@@ -165,7 +196,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
       enemyMarker.group.position.set(body.x, groundUiY, body.z);
       scene.add(enemyMarker.group);
     }
-    const figure = { group, artGroup: initialArt.group, artStates, visualState: 'idle', body,
+    const figure = { group, prefix, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
       healthHUD, heartIcons, chargePips, enemyMarker, deadGroundedY: assets.deadGroundedY,
       flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
@@ -174,4 +205,13 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     group.position.set(body.x, 0, body.z);
     return figure;
   };
+  createFigure.releaseUnused = async prefixes => {
+    const removed = [];
+    for (const [key, pending] of artCache) if (!prefixes.has(key.split(':')[0])) {
+      const art = await pending;
+      removed.push(...Object.values(art.states).map(state => state.group)); artCache.delete(key);
+    }
+    return removed;
+  };
+  return createFigure;
 }

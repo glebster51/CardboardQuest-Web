@@ -20,6 +20,7 @@ export async function createStoryActors({ locations, createScenery, scale, campa
   const actors = [];
   for (const spec of STORY_ACTORS) {
     const location = locations[spec.location];
+    if (!location) continue;
     const saved = campaign.world?.[spec.location]?.actors?.find(actor => actor.id === spec.id);
     const position = spec.dead && saved && Number.isFinite(saved.x) && Number.isFinite(saved.z)
       && isPlayableFloor(location, saved.x, saved.z, spec.radius)
