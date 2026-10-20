@@ -18,6 +18,7 @@ import { createTerrainHeightMap, extractTerrainContours } from './terrain-shapes
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
+import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
@@ -1025,12 +1026,14 @@ async function start() {
           return;
         }
         if (target.fixed) return;
+        if (!canEnemyDamagePlayer(attacker, target)) return;
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
         const bonus = attacker.team === 'player' ? campaignState.damageBonus : 0;
         const hitDamage = attacker.archetype === 'boar'
           ? Math.max(1, Math.floor((attacker.damageQuarters ?? 6) / 2 ** (attacker.attackRicochets || 0)))
           : ricochetDamageQuarters(attacker.attackRicochets || 0);
         if (!damage(target, hitDamage + bonus, speed)) return;
+        markDirectPlayerHit(attacker, target);
         attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
         const attackerFigure = figures.find(item => item.body === attacker);
         if (attackerFigure) attackerFigure.dealDamageAge = 0;
@@ -1341,6 +1344,8 @@ async function start() {
       });
       if (victorySequenceActive) for (const body of bodies) if (!body.fixed) body.vx = body.vz = 0;
     }
+    for (const enemy of activeLocation.enemies)
+      clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
     updateCacheAnimation(dt);
     if (dialogue.isOpen()) { updateCamera(); renderer.render(scene, camera); return; }
     updateWorldLoot(dt);
