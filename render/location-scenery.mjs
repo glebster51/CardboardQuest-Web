@@ -20,10 +20,9 @@ export async function populateNarrativeScenery({ locations, createScenery, loadT
       const [name, x, z, size] = focal;
       const house = name === 'hero-house';
       const options = house ? { fixedRadius: 1.2, base: true }
-        : name === 'broken-bridge' ? { yaw: Math.PI / 2, elevation: 0, flat: true }
+        : name === 'broken-bridge' ? { yaw: 0, elevation: 0 }
           : name === 'cart' ? { elevation: -.35 } : { fixedRadius: .7 };
-      tasks.push(createScenery(sceneryAsset(name), x * scale, z * scale,
-        name === 'broken-bridge' ? 2.15 : size, location.sceneGroup, true, options));
+      tasks.push(createScenery(sceneryAsset(name), x * scale, z * scale, size, location.sceneGroup, true, options));
       placed.push({ x: x * scale, z: z * scale, radius: 2.6 });
     }
     if (location.id === 'camp') for (const anchor of hutAnchors) {

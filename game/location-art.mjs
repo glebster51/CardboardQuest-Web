@@ -12,7 +12,7 @@ export const LOCATION_ART = {
   'squirrel-cache': profile(7.2, 9.2, .9, ['birch', 'stump', 'bushes'], { phase: .7, density: 45, focal: ['birch', -3, -2, 4.4], mood: 'Длинная берёзовая роща, маленькие кочки и склад под корнями.' }),
   brook: profile(8.8, 7.5, .85, wetland, { phase: 2.8, density: 48, hazards: [['water', -4.1, 2.1, 2.3, 4.5, .2]], mood: 'Мелкий извилистый ручей слева, низкий пологий берег и заросли папоротника.' }),
   'cave-cache': profile(6.7, 7.1, 2.7, ['moss-rocks', 'reeds', 'fern'], { phase: 1.5, cliff: 1.4, density: 28, hazards: [['abyss', 3.8, 2, 1.7, 2.7, -.4]], mood: 'Нора в крутом берегу: каменная спина за тайником, тёмный провал сбоку.' }),
-  'broken-bridge': profile(10.3, 8.9, 1.65, ['reeds', 'moss-rocks', 'charred-tree', 'birch'], { phase: .4, density: 44, riverCrossing: true, focal: ['broken-bridge', 0, 2.2, 6.6], mood: 'Речная промоина пересекает поляну; сломанный мост над водой, обход по правому берегу.' }),
+  'broken-bridge': profile(12.6, 8.9, 1.65, ['reeds', 'moss-rocks', 'charred-tree', 'birch'], { phase: .4, density: 44, riverCrossing: true, focal: ['broken-bridge', 0, 2.2, 6.6], mood: 'Широкая река режет поляну почти от края до края; слева и справа остаются два тесных обхода, а старый мост рухнул посередине.' }),
   'moss-shrine': profile(8.2, 8.5, 1.35, ['birch', 'shrine', 'fern', 'moss-rocks'], { phase: 2.7, density: 42, focal: ['shrine', 0, -3.8, 3.7], mood: 'Круглая тихая священная роща; алтарь под берёзами и поросшие мхом уступы.' }),
   camp: profile(10, 9.1, 1.55, ['totem', 'charred-tree', 'stump', 'evergreen'], { phase: .8, density: 42, mood: 'Широкая истоптанная поляна; частокол из тотемов, вырубка и хижины.' }),
   'ash-road': profile(7.2, 10, 2, ['charred-tree', 'moss-rocks', 'stump'], { phase: 2, density: 44, falls: [[Math.PI, 'abyss', 3.4]], mood: 'Серый длинный склон после пожара; обугленные стволы, справа пологие гряды, слева осыпь.' }),
@@ -58,8 +58,8 @@ export function createLocationArt(id, scale = 1.5) {
     id: `${id}-hazard-${index}`, kind, points: organicOval(x * scale, z * scale, rx * scale, rz * scale, phase),
   }));
   if (art.riverCrossing) hazards.push({ id: 'broken-bridge-river', kind: 'water', points: [
-    [-8.2, 1.1], [-5.6, .6], [-2, 1.15], [1.1, .85], [4.4, 1.3], [6.9, 1.05],
-    [7.15, 3], [4.7, 3.6], [1.2, 3.15], [-2.4, 3.7], [-5.8, 3], [-8.4, 3.6],
+    [-10.8, 2.35], [-9.2, 1.85], [-6.4, 2.15], [-3.3, 1.75], [-.2, 2.05], [3.2, 1.8], [6.4, 2.2], [9.2, 1.9], [10.8, 2.3],
+    [10.9, 3.65], [8.9, 4.05], [6, 3.8], [2.9, 4.2], [-.4, 3.9], [-3.6, 4.25], [-6.7, 3.95], [-9.3, 4.35], [-10.9, 3.95],
   ].map(([x, z]) => ({ x: x * scale, z: z * scale })) });
   return { ...art, hazards, terrain: { maxHeight: art.relief, step: .24,
     edgeHeight: art.cliff ?? .245, nearSlope: art.cliff ? 2.1 : 6.8,
