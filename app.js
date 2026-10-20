@@ -523,62 +523,62 @@ async function start() {
   const chestMaterial = new THREE.MeshStandardMaterial({ color: 0x94623a, roughness: .78, map: paper });
   const chestLidMaterial = new THREE.MeshStandardMaterial({ color: 0xb18450, roughness: .72, map: paper });
   const chestLatchMaterial = new THREE.MeshStandardMaterial({ color: 0xd5b354, roughness: .38, metalness: .12 });
-  const lootColors = { berries: 0xe45148, hardtack: 0xe1bd63, jerky: 0x985437,
-    bandage: 0xf5e8c7, scrap: 0xd29a46, nuts: 0x91683a, bladeShard: 0x95b4ba };
-  const lootMaterials = new Map(Object.entries(lootColors).map(([id, color]) =>
-    [id, new THREE.MeshStandardMaterial({ color, roughness: .5, metalness: id === 'scrap' || id === 'bladeShard' ? .25 : 0,
-      emissive: color, emissiveIntensity: .12 })]));
-  const lootBeamMaterials = new Map();
-  const makeLootBeamMaterial = color => {
-    if (!lootBeamMaterials.has(color)) lootBeamMaterials.set(color, new THREE.MeshBasicMaterial({ color,
-      transparent: true, opacity: .24, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
-    return lootBeamMaterials.get(color);
-  };
+  const lootItemIds = ['berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard'];
+  const lootAtlas = await new THREE.TextureLoader().loadAsync('assets/loot-atlas.png?v=1');
+  lootAtlas.colorSpace = THREE.SRGBColorSpace;
+  lootAtlas.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  const lootIconMaterial = new THREE.MeshBasicMaterial({ map: lootAtlas, transparent: true, alphaTest: .12,
+    side: THREE.DoubleSide, depthTest: true, depthWrite: true, toneMapped: false });
+  const lootIconGeometries = new Map(lootItemIds.map((id, index) => {
+    const geometry = new THREE.PlaneGeometry(1, 1), uv = geometry.attributes.uv;
+    const column = index % 4, row = Math.floor(index / 4), u0 = column / 4, v0 = 1 - (row + 1) / 2;
+    for (let vertex = 0; vertex < uv.count; vertex++) {
+      uv.setXY(vertex, u0 + uv.getX(vertex) / 4, v0 + uv.getY(vertex) / 2);
+    }
+    uv.needsUpdate = true;
+    return [id, geometry];
+  }));
+  function makeLootBeamTexture() {
+    const canvas = document.createElement('canvas'); canvas.width = 160; canvas.height = 320;
+    const context = canvas.getContext('2d'), image = context.createImageData(canvas.width, canvas.height);
+    const center = canvas.width / 2;
+    for (let y = 0; y < canvas.height; y++) {
+      const upward = (canvas.height - 1 - y) / (canvas.height - 1);
+      const halfWidth = 4 + 70 * upward ** .82;
+      for (let x = 0; x < canvas.width; x++) {
+        const edge = Math.abs(x + .5 - center) / halfWidth;
+        if (edge >= 1) continue;
+        const softEdge = 1 - THREE.MathUtils.smoothstep(edge, .68, 1);
+        const alpha = Math.round(255 * softEdge * (.42 * Math.exp(-upward * 2.35)));
+        const offset = (y * canvas.width + x) * 4, warmth = Math.min(1, edge * 1.15);
+        image.data[offset] = 255;
+        image.data[offset + 1] = Math.round(250 - warmth * 35);
+        image.data[offset + 2] = Math.round(216 - warmth * 76);
+        image.data[offset + 3] = alpha;
+      }
+    }
+    context.putImageData(image, 0, 0);
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+  const lootBeamTexture = makeLootBeamTexture();
+  const lootBeamMaterial = new THREE.MeshBasicMaterial({ map: lootBeamTexture, transparent: true,
+    opacity: .9, side: THREE.DoubleSide, depthTest: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false });
+  const lootBeamGeometry = new THREE.PlaneGeometry(1, 1);
   function createLootVisual(location, item, source = null) {
     const group = new THREE.Group();
     group.name = item.id;
-    const material = lootMaterials.get(item.itemId);
-    const add = (geometry, x, y, z, scale = [1, 1, 1]) => {
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(x, y, z); mesh.scale.set(...scale); mesh.castShadow = true; mesh.receiveShadow = true;
-      group.add(mesh); return mesh;
-    };
-    const glow = new THREE.Mesh(new THREE.CircleGeometry(.34, 28),
-      new THREE.MeshBasicMaterial({ color: 0xffdf8a, transparent: true, opacity: .28, depthWrite: false }));
+    const icon = new THREE.Mesh(lootIconGeometries.get(item.itemId) ?? lootIconGeometries.get('scrap'), lootIconMaterial);
+    icon.scale.set(.54, .54, 1); icon.position.y = .30; icon.renderOrder = 6; group.add(icon);
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(.22, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffd879, transparent: true, opacity: .05, depthWrite: false, toneMapped: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
-    const token = new THREE.Mesh(new THREE.CylinderGeometry(.24, .27, .095, 24),
-      new THREE.MeshStandardMaterial({ color: 0xe8d3a4, roughness: .83, map: paper }));
-    token.position.y = .07; token.receiveShadow = true; group.add(token);
-    if (item.itemId === 'berries') {
-      for (const [x, z] of [[-.075, -.035], [.065, -.025], [0, .075]])
-        add(new THREE.SphereGeometry(.085, 10, 8), x, .205, z);
-      const leaf = new THREE.Mesh(new THREE.ConeGeometry(.055, .11, 5),
-        new THREE.MeshStandardMaterial({ color: 0x668a43, roughness: .9 }));
-      leaf.position.set(0, .287, -.01); group.add(leaf);
-    } else if (item.itemId === 'hardtack') {
-      add(new THREE.CylinderGeometry(.15, .17, .085, 8), 0, .17, 0, [1.15, 1, .82]);
-    } else if (item.itemId === 'jerky') {
-      add(new THREE.BoxGeometry(.28, .085, .14), 0, .17, 0, [1, 1, 1]);
-    } else if (item.itemId === 'bandage') {
-      add(new THREE.BoxGeometry(.28, .075, .22), 0, .17, 0);
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(.055, .082, .224),
-        new THREE.MeshStandardMaterial({ color: 0xb85842, roughness: .8 }));
-      stripe.position.set(0, .17, 0); group.add(stripe);
-    } else if (item.itemId === 'nuts') {
-      add(new THREE.SphereGeometry(.12, 10, 8), 0, .18, 0, [.78, 1.2, .85]);
-    } else {
-      add(new THREE.TetrahedronGeometry(.17, 0), 0, .2, 0, [1.2, .7, .65]);
-    }
-    const color = lootColors[item.itemId] ?? 0xffdf8a;
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(.035, .2, 1.55, 16, 1, true), makeLootBeamMaterial(0xffd879));
-    beam.position.y = .98; group.add(beam);
-    const core = new THREE.Mesh(new THREE.CylinderGeometry(.012, .045, 1.65, 12, 1, true), makeLootBeamMaterial(color));
-    core.material = core.material.clone(); core.material.opacity = .52; core.position.y = 1.03; group.add(core);
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(.065, 10, 8), lootMaterials.get(item.itemId));
-    spark.position.y = 1.83; group.add(spark);
+    const beam = new THREE.Mesh(lootBeamGeometry, lootBeamMaterial);
+    beam.scale.set(.82, 1.44, 1); beam.position.set(0, 1.02, -.025); beam.renderOrder = 5; group.add(beam);
     group.position.set(item.x, 0, item.z);
     location.sceneGroup.add(group);
-    const visual = { group, beam, core, glow, spark, spawn: source ? { ...source, age: 0, duration: .62 } : null };
+    const visual = { group, icon, beam, glow, spin: 0, spawn: source ? { ...source, age: 0, duration: .62 } : null };
     worldItemVisuals.set(item.id, visual);
     return visual;
   }
@@ -839,19 +839,17 @@ async function start() {
           Math.sin(t * Math.PI) * .9,
           visual.spawn.z + (item.z - visual.spawn.z) * eased,
         );
-        visual.group.rotation.y += dt * 5;
+        visual.spin += dt * 5;
         if (t >= 1) { visual.group.position.y = 0; visual.spawn = null; }
       } else {
         visual.group.position.set(item.x, 0, item.z);
-        visual.group.rotation.y += dt * .45;
       }
+      visual.group.rotation.y = Math.atan2(camera.position.x - item.x, camera.position.z - item.z) + visual.spin;
       const pulse = .82 + Math.sin(elapsed * 3.4 + item.x * 2 + item.z) * .12;
-      visual.beam.scale.y = pulse;
-      visual.beam.position.y = .2 + .78 * pulse;
-      visual.core.scale.y = pulse;
-      visual.core.position.y = .2 + .83 * pulse;
-      visual.spark.position.y = 1.66 * pulse + .16;
-      visual.glow.material.opacity = .2 + (Math.sin(elapsed * 4 + item.z) + 1) * .07;
+      visual.beam.scale.y = 1.44 * pulse;
+      visual.beam.position.y = .30 + .72 * pulse;
+      visual.beam.material.opacity = .78 + (Math.sin(elapsed * 4 + item.z) + 1) * .1;
+      visual.glow.material.opacity = .035 + (Math.sin(elapsed * 4 + item.z) + 1) * .018;
       if (heroBody.health <= 0 || Math.hypot(heroBody.x - item.x, heroBody.z - item.z) > PUCK_RADIUS + .35) continue;
       const pickup = takeWorldLoot(activeLocation.loot, item.id);
       if (!pickup) continue;
@@ -1140,6 +1138,14 @@ async function start() {
       orbit.distance = 6; orbit.theta = angle; orbit.phi = .95;
       heroFigure.group.visible = false; playerMarker.group.visible = false;
       for (const figure of figures) figure.healthHUD.visible = false;
+      updateCamera();
+    },
+    lootView() {
+      const item = activeLocation.loot[0];
+      if (!item) throw new Error('No world loot is available to preview');
+      simulationPaused = true;
+      target.set(item.x, .42, item.z);
+      orbit.distance = 3.5; orbit.theta = .35; orbit.phi = .74;
       updateCamera();
     },
     place(id, x, z, vx = 0, vz = 0) {
