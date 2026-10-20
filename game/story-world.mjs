@@ -1,7 +1,8 @@
-import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=5';
-import { createLocationArt } from './location-art.mjs?v=2';
+import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=6';
+import { createLocationArt } from './location-art.mjs?v=3';
 import { createAuthoredLayout } from './location-layout.mjs';
 import { hazardAtPoint } from './world-hazards.mjs';
+import { extractDepthMapMaskContours } from '../terrain-shapes.mjs';
 
 function pointInside(point, polygon) {
   let inside = false;
@@ -77,7 +78,17 @@ export function createCampaignLocations(locations, scale = 1.5) {
       bossSpawned: false, initialized: false,
     };
     const neighbors = exitsById.get(authored.id);
+    const previousDepthMap = location.art?.depthMap;
     const art = createLocationArt(authored.id, scale);
+    if (previousDepthMap) {
+      art.depthMap = previousDepthMap;
+      if (authored.id === 'broken-bridge') {
+        const contours = extractDepthMapMaskContours(previousDepthMap, value => value <= 4);
+        art.waterContours = contours;
+        for (const [index, points] of contours.entries())
+          art.hazards.push({ id: `broken-bridge-water-${index}`, kind: 'depth-water', points });
+      }
+    }
     const layout = createAuthoredLayout(authored.id, art, scale);
     if (layout.exits.length !== neighbors.length) throw new Error(`Exit layout does not match story graph: ${authored.id}`);
     const walkablePoints = layout.points;
@@ -114,7 +125,7 @@ export function createCampaignLocations(locations, scale = 1.5) {
       })),
       art,
       arrivals,
-      entry: { x: 0, z: 0 },
+      entry: layout.entry ?? { x: 0, z: 0 },
       walkablePoints,
       lastExitPositions: location.lastExitPositions ?? {},
       heightSeed: 7049 + [...authored.id].reduce((seed, char) => (Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0), 2166136261),

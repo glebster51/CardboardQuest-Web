@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=77">
+  <link rel="stylesheet" href="style.css?v=78">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
@@ -13,6 +13,7 @@
   <button id="restart" type="button" aria-label="Начать игру заново">↻ <span>Заново</span></button>
   <div id="story-actions">
     <button id="interact" type="button" hidden>Осмотреть</button>
+    <button id="map-toggle" type="button" aria-haspopup="dialog" aria-expanded="false">Карта</button>
     <button id="inventory-toggle" type="button">Рюкзак</button>
   </div>
   <section id="story-dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="story-title" tabindex="-1">
@@ -36,9 +37,19 @@
       <button id="inventory-close" type="button">Закрыть</button>
     </article>
   </section>
+  <section id="world-map" hidden role="dialog" aria-modal="true" aria-labelledby="world-map-title">
+    <article>
+      <header>
+        <div><strong id="world-map-title">Дороги долины</strong><small id="world-map-progress"></small></div>
+        <button id="world-map-close" type="button" aria-label="Закрыть карту">×</button>
+      </header>
+      <div id="world-map-viewport"><svg id="world-map-graph" role="img"></svg></div>
+      <footer><span><i class="map-key current"></i>Ты здесь</span><span><i class="map-key visited"></i>Был здесь</span><span><i class="map-key"></i>Впереди</span></footer>
+    </article>
+  </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-<script type="module" src="app.js?v=96"></script>
+<script type="module" src="app.js?v=98"></script>
 </body>
 </html>
 

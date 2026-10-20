@@ -11,7 +11,9 @@ export const LOCATION_LAYOUTS = {
   'squirrel-cache': plan([[[0, 0], [-5, 0], [-5, -11]]], [[-1, 1.5, 5.6, 4.5]], 2.1),
   brook: plan([[[0, 0], [0, -12]], [[0, 0], [6, -1], [11, 3]], [[0, 0], [3, 6], [0, 13]]], [[0, 0, 4.5, 4.5]]),
   'cave-cache': plan([[[0, 0], [-5, 0], [-5, -11]]], [[0, 0, 6.2, 5.3]], 2.2),
-  'broken-bridge': plan([[[0, 0], [0, -12]], [[0, 0], [9, 0], [10, 7], [0, 10], [0, 15]]], [[0, -2, 7.4, 4.1]], 2.5),
+  // Both gates stay on the near (south) bank: enter from the south, then
+  // follow the shoreline sideways to the west. Nothing routes around the river.
+  'broken-bridge': plan([[[0, 11], [0, 18.5]], [[0, 11], [-7, 11], [-12, 8.5], [-14.5, 8.5]]], [[0, 11, 8.4, 7.2]], 2.5),
   'moss-shrine': plan([[[0, 0], [-7, 0], [-7, -10]], [[0, 0], [4, 3], [4, 12]]], [[0, -1, 5.8, 5.5]]),
   camp: plan([[[0, 0], [0, -13]], [[0, 0], [5, 8], [5, 14]]], [[0, 0, 9.1, 8.2]], 2.6),
   'ash-road': plan([[[0, 0], [0, -6], [-4, -14]], [[0, 0], [4, 3], [9, 8]], [[0, 0], [-4, 5], [-8, 12]]], [[0, 0, 4.8, 6.5]], 2.1),
@@ -82,6 +84,7 @@ export function createAuthoredLayout(id, art, scale = 1.5) {
       field = Math.max(field, (organic - Math.hypot((x - cx) / rx, (z - cz) / rz)) * Math.min(rx, rz));
     }
     for (const hazard of art.hazards) {
+      if (hazard.kind === 'depth-water') continue;
       const distance = distanceToPolygon(x, z, hazard.points), inside = pointInPolygon(x, z, hazard.points);
       field = Math.max(field, 2.05 * scale + (inside ? distance : -distance));
     }
@@ -99,5 +102,6 @@ export function createAuthoredLayout(id, art, scale = 1.5) {
       dirX: (end[0] - previous[0]) / length, dirZ: (end[1] - previous[1]) / length,
       halfWidth: width + .15, halfDepth: 1.3, arrival: { x: arrival.x * scale, z: arrival.z * scale } };
   });
-  return { points: sampleContour(outer), exits };
+  return { points: sampleContour(outer), exits,
+    ...(id === 'broken-bridge' ? { entry: { x: 0, z: 11 * scale } } : {}) };
 }

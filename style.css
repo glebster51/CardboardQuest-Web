@@ -13,7 +13,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #story-actions button:active, #story-dialogue button:active, #inventory-panel button:active { transform: scale(.96); }
 #story-actions #interact { background: #536b34f2; }
 #story-dialogue, #inventory-panel { position: fixed; z-index: 6; inset: 0; display: grid; align-items: end; justify-items: center; padding: 12px 12px calc(74px + env(safe-area-inset-bottom)); background: #21190c44; pointer-events: none; }
-#story-dialogue[hidden], #inventory-panel[hidden] { display: none; }
+#story-dialogue[hidden], #inventory-panel[hidden], #world-map[hidden] { display: none; }
 #story-dialogue article, #inventory-panel article { width: min(100%, 520px); max-height: min(52vh, 460px); overflow: auto; padding: 15px; border: 1px solid #fff0c5; border-radius: 17px; background: #463722f2; color: #fff4d8; box-shadow: 0 8px 24px #271a0b66; font: 14px/1.4 system-ui, sans-serif; pointer-events: auto; }
 #story-title, #inventory-panel article > strong { display: block; color: #ffe6a8; font-size: 16px; }
 #story-text { margin: 8px 0 12px; white-space: pre-line; }
@@ -35,6 +35,27 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #story-close, #inventory-close { display: block; margin: 10px 0 0 auto; }
 #inventory-items { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; margin: 12px 0; color: #f5e4bc; }
 #use-food { background: #536b34f2 !important; }
+#world-map { position: fixed; z-index: 7; inset: 0; display: grid; place-items: center; padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); background: #20170ccc; }
+#world-map article { width: min(100%, 560px); height: min(94dvh, 880px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border: 2px solid #e8c78a; border-radius: 20px; background: #c9b58d; color: #493824; box-shadow: 0 12px 36px #120c08aa; }
+#world-map header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid #8a694566; }
+#world-map-title { display: block; color: #493824; font: 750 18px/1.2 system-ui, sans-serif; }
+#world-map-progress { display: block; margin-top: 3px; color: #69543c; font: 600 12px/1.2 system-ui, sans-serif; }
+#world-map #world-map-close { width: 38px; height: 38px; min-height: 38px; padding: 0; border: 1px solid #fff4cf; border-radius: 50%; background: #493824; color: #fff7df; font: 26px/1 system-ui, sans-serif; }
+#world-map-viewport { overflow: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 8px 0; scrollbar-color: #82613d #c9b58d; }
+#world-map-graph { display: block; width: 100%; height: auto; overflow: visible; }
+.map-route { fill: none; stroke: #785633; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: .5; }
+.map-label { fill: #4b3824; stroke: #d9c69d; stroke-width: 3px; stroke-linejoin: round; paint-order: stroke; font: 700 12px/1 system-ui, sans-serif; }
+.map-pin-outer { fill: #e3d3ae; stroke: #745532; stroke-width: 3; }
+.map-pin-inner { fill: #8a6946; }
+.map-pin.is-visited .map-pin-outer { fill: #f1d69b; stroke: #7b5a33; }
+.map-pin.is-visited .map-pin-inner { fill: #66833d; }
+.map-pin.is-current .map-pin-outer { fill: #63ce32; stroke: #fff4cf; stroke-width: 4; }
+.map-pin.is-current .map-pin-inner { fill: #fff9df; }
+#world-map footer { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 15px; padding: 10px 12px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid #8a694566; color: #59442e; font: 600 11px/1 system-ui, sans-serif; }
+#world-map footer span { display: inline-flex; align-items: center; gap: 5px; }
+.map-key { width: 9px; height: 9px; display: inline-block; border: 2px solid #745532; border-radius: 50%; background: #e3d3ae; }
+.map-key.visited { background: #66833d; }
+.map-key.current { background: #63ce32; border-color: #fff4cf; }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
 #loading span { width: 28px; height: 28px; border: 3px solid #f8f0dd66; border-top-color: #5c6c40; border-radius: 50%; animation: spin .8s linear infinite; }
 #loading[hidden], #error[hidden] { display: none; }

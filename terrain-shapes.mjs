@@ -242,6 +242,11 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
   const sourceMinX = world.originX, sourceMinZ = world.originZ;
   const cellSizeX = world.width / (columns - 1), cellSizeZ = world.depth / (rows - 1);
   const cellSize = Math.min(cellSizeX, cellSizeZ), maxHeight = elevation.maxHeight, step = elevation.step;
+  const zeroLevel = Number.isFinite(elevation.zeroLevel) ? elevation.zeroLevel : 0;
+  const peakLevel = Number.isFinite(elevation.peakLevel) ? elevation.peakLevel : 255;
+  if (zeroLevel < 0 || zeroLevel > 254 || peakLevel <= zeroLevel || peakLevel > 255)
+    throw new RangeError('Depth map zeroLevel and peakLevel must be ordered byte values');
+  const heightFromByte = value => Math.max(0, Math.min(maxHeight, (value - zeroLevel) / (peakLevel - zeroLevel) * maxHeight));
   // Add a short fading skirt around the raster. Isolines that reach the source
   // image edge then close naturally instead of disappearing as open contours.
   const padding = 8, mapColumns = columns + padding * 2, mapRows = rows + padding * 2;
@@ -256,7 +261,7 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
     const distance = Math.hypot(Math.max(0, -sourceX, sourceX - columns + 1),
       Math.max(0, -sourceZ, sourceZ - rows + 1));
     const fade = Math.max(0, 1 - distance / padding);
-    values[z * mapColumns + x] = samples[nearestZ * columns + nearestX] / 255 * maxHeight * fade;
+    values[z * mapColumns + x] = heightFromByte(samples[nearestZ * columns + nearestX]) * fade;
   }
   const sample = (x, z) => {
     if (walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints)) return 0;
@@ -274,6 +279,24 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
     return { threshold, height: Math.min(maxHeight, (index + 1) * step), contours: extractTerrainContours(map, threshold) };
   });
   return map;
+}
+
+/** Trace a binary feature such as pure-black water directly from the authored raster. */
+export function extractDepthMapMaskContours(document, predicate = value => value === 0) {
+  const { world, grid } = document ?? {};
+  const { columns, rows, samples } = grid ?? {};
+  if (!Number.isInteger(columns) || !Number.isInteger(rows) || !Array.isArray(samples)
+    || samples.length !== columns * rows || !Number.isFinite(world?.width) || !Number.isFinite(world?.depth))
+    throw new RangeError('Depth map mask needs a valid world extent and complete sample grid');
+  const cellSizeX = world.width / (columns - 1), cellSizeZ = world.depth / (rows - 1), padding = 1;
+  const mapColumns = columns + padding * 2, mapRows = rows + padding * 2;
+  const values = new Float32Array(mapColumns * mapRows);
+  for (let z = 0; z < rows; z++) for (let x = 0; x < columns; x++)
+    values[(z + padding) * mapColumns + x + padding] = predicate(samples[z * columns + x]) ? 1 : 0;
+  return extractTerrainContours({
+    minX: world.originX - cellSizeX, minZ: world.originZ - cellSizeZ,
+    columns: mapColumns, rows: mapRows, values, cellSizeX, cellSizeZ,
+  }, .5);
 }
 
 function angleDistance(a, b) {

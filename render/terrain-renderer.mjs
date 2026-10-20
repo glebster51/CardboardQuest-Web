@@ -114,7 +114,9 @@ function addHazardBasins(THREE, location, paper, corrugation) {
       z: p.z + v.z / hazard.points.length }), { x: 0, z: 0 });
     const inset = amount => hazard.points.map(p => ({ x: center.x + (p.x - center.x) * amount,
       z: center.z + (p.z - center.z) * amount }));
-    for (let index = 0; index < 3; index++) {
+    // Raster-authored water is already at the ground datum. It is a flat
+    // surface mask, never an excavated bowl with stacked cardboard walls.
+    if (hazard.kind !== 'depth-water') for (let index = 0; index < 3; index++) {
       const shape = terrainShape(THREE, inset(1 - index * .055), [inset(1 - (index + 1) * .055)]);
       const geometry = new THREE.ExtrudeGeometry(shape, { depth: .2, bevelEnabled: false });
       geometry.rotateX(-Math.PI / 2);
@@ -125,8 +127,9 @@ function addHazardBasins(THREE, location, paper, corrugation) {
       location.sceneGroup.add(wall);
     }
     const water = hazard.kind !== 'abyss';
-    const surface = new THREE.Mesh(new THREE.ShapeGeometry(terrainShape(THREE, inset(.87))),
-      new THREE.MeshStandardMaterial({ color: hazard.kind === 'peat' ? 0x284745 : water ? 0x318a9c : 0x11151e,
+    const waterPoints = hazard.kind === 'depth-water' ? hazard.points : inset(.87);
+    const surface = new THREE.Mesh(new THREE.ShapeGeometry(terrainShape(THREE, waterPoints)),
+      new THREE.MeshStandardMaterial({ color: hazard.kind === 'depth-water' ? 0x318a9c : hazard.kind === 'peat' ? 0x284745 : water ? 0x318a9c : 0x11151e,
         roughness: water ? .72 : 1, metalness: 0, side: THREE.DoubleSide }));
     surface.rotation.x = -Math.PI / 2;
     // Keep water close under the playfield cut-out; dropping it below the
@@ -171,7 +174,8 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       location.sceneGroup.add(backing);
     }
     const layers = [{
-      shapes: [terrainShape(THREE, location.walkablePoints, (location.hazards ?? []).map(hazard => hazard.points))], depth: .3, top: 0,
+      shapes: [terrainShape(THREE, location.walkablePoints, (location.hazards ?? [])
+        .filter(hazard => hazard.kind !== 'depth-water').map(hazard => hazard.points))], depth: .3, top: 0,
       topColor: palette.tops[0], sideColor: palette.side,
     }, ...heightMap.layers.filter(layer => layer.contours.length).map((layer, index) => ({
       shapes: shapesFromContours(THREE, layer.contours),

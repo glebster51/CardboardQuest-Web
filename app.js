@@ -1,23 +1,24 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
-import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=1';
+import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=2';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
+import { createLocationMapView } from './render/location-map-view.mjs?v=1';
 import { createStoryActors } from './render/story-actors.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=8';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=3';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
-import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=9';
+import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=10';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=21';
-import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from './terrain-shapes.mjs?v=8';
+import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from './terrain-shapes.mjs?v=9';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
-import { advanceChargeRecharge, chargeRechargeProgress } from './charge-recharge.mjs?v=1';
+import { advanceChargeRecharge, chargeRechargeProgress, shouldMaintainFullCharges } from './charge-recharge.mjs?v=2';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
@@ -26,9 +27,9 @@ import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CACHE_OPEN_FRAME_DELAY, CACHE_SQUASH_DURATION, cacheSquashScale } from './game/cache-animation.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache,
-  visitCampaignLocation } from './game/story-campaign.mjs?v=5';
+  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=6';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=7';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=8';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=8';
@@ -67,6 +68,9 @@ async function start() {
   const campaignState = createCampaignState(savedCampaign);
   const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE);
   await loadLocationDepthMaps(locations);
+  // Rebuild authored footprints now that raster-derived features (notably the
+  // black river mask) are available to gameplay collision and floor cutting.
+  createCampaignLocations(locations, LOCATION_SCALE);
   campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
   for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
     const location = locations[id];
@@ -99,6 +103,12 @@ async function start() {
   const interactButton = document.querySelector('#interact');
   const dialoguePanel = document.querySelector('#story-dialogue');
   const inventoryPanel = document.querySelector('#inventory-panel');
+  const mapPanel = document.querySelector('#world-map');
+  const mapButton = document.querySelector('#map-toggle');
+  const locationMap = createLocationMapView({ root: mapPanel,
+    viewport: document.querySelector('#world-map-viewport'), graph: document.querySelector('#world-map-graph'),
+    progress: document.querySelector('#world-map-progress'), openButton: mapButton,
+    closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
   let inputController = null;
   const dialogue = createDialoguePanel({ root: dialoguePanel,
     onOpen() { inputController?.cancel(); inventoryPanel.hidden = true; },
@@ -504,6 +514,11 @@ async function start() {
     if (dialogue.isOpen()) return;
     inputController?.cancel();
     renderInventory(); inventoryPanel.hidden = false;
+  });
+  mapButton.addEventListener('click', () => {
+    if (dialogue.isOpen()) return;
+    inputController?.cancel(); inventoryPanel.hidden = true;
+    locationMap.show(campaignState);
   });
   document.querySelector('#inventory-close').addEventListener('click', () => { inventoryPanel.hidden = true; });
   document.querySelector('#use-food').addEventListener('click', () => {
@@ -1171,7 +1186,7 @@ async function start() {
     host.classList.remove('aiming');
   }
   inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
-    isBlocked: () => dialogue.isOpen() || !inventoryPanel.hidden,
+    isBlocked: () => dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen(),
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
@@ -1287,7 +1302,7 @@ async function start() {
     const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
     updateCacheAnimation(dt);
-    if (dialogue.isOpen() || !inventoryPanel.hidden) {
+    if (dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen()) {
       updateCamera(); renderer.render(scene, camera); return;
     }
     elapsed += dt;
@@ -1328,11 +1343,18 @@ async function start() {
       const living = activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length;
       if (takeDueReinforcement(activeLocation, elapsed, living)) startQueuedReinforcement();
     }
+    const encounterCleared = canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL);
+    const keepPlayerChargesFull = shouldMaintainFullCharges(activeLocation, encounterCleared);
     const held = inputController.getHeldBody();
     for (const body of bodies) {
       if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
-      advanceChargeRecharge(body, dt);
+      if (body === heroBody && keepPlayerChargesFull) {
+        body.charges = body.maxCharges;
+        body.rechargeTimer = 0;
+      } else {
+        advanceChargeRecharge(body, dt);
+      }
       if (body.team !== 'enemy') continue;
       if (victorySequenceActive) continue;
       const figure = figures.find(item => item.body === body);
