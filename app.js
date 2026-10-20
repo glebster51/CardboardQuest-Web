@@ -9,7 +9,7 @@ import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createStoryActors } from './render/story-actors.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
-import { createScenerySystem } from './render/scenery-system.mjs?v=6';
+import { createScenerySystem } from './render/scenery-system.mjs?v=7';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=3';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=8';
@@ -231,7 +231,8 @@ async function start() {
     createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });
   const scenerySystem = createScenerySystem({ THREE, renderer, scene, locations, corrugation,
     paper, terrainCorrugation, sceneStencil });
-  const { create: createScenery, loadTemplate: loadSceneryTemplate, loadStateTemplates, facePairs: sceneryFacePairs } = scenerySystem;
+  const { create: createScenery, loadTemplate: loadSceneryTemplate, loadStateTemplates,
+    createSprite: createScenerySpriteModel, facePairs: sceneryFacePairs } = scenerySystem;
   const figures = [];
   const heroFigure = await createFigure(heroBody, 'hero');
   heroFigure.facing = 0;
@@ -528,17 +529,15 @@ async function start() {
   const lootAtlas = await new THREE.TextureLoader().loadAsync('assets/loot-atlas.png?v=1');
   lootAtlas.colorSpace = THREE.SRGBColorSpace;
   lootAtlas.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  const lootIconMaterial = new THREE.MeshBasicMaterial({ map: lootAtlas, transparent: true, alphaTest: .12,
-    side: THREE.DoubleSide, depthTest: true, depthWrite: true, toneMapped: false });
-  const lootIconGeometries = new Map(lootItemIds.map((id, index) => {
-    const geometry = new THREE.PlaneGeometry(1, 1), uv = geometry.attributes.uv;
-    const column = index % 4, row = Math.floor(index / 4), u0 = column / 4, v0 = 1 - (row + 1) / 2;
-    for (let vertex = 0; vertex < uv.count; vertex++) {
-      uv.setXY(vertex, u0 + uv.getX(vertex) / 4, v0 + uv.getY(vertex) / 2);
-    }
-    uv.needsUpdate = true;
-    return [id, geometry];
+  const lootCellWidth = lootAtlas.image.width / 4, lootCellHeight = lootAtlas.image.height / 2;
+  const lootSpriteModels = new Map(lootItemIds.map((id, index) => {
+    const canvas = document.createElement('canvas'); canvas.width = lootCellWidth; canvas.height = lootCellHeight;
+    canvas.getContext('2d', { willReadFrequently: true }).drawImage(lootAtlas.image,
+      (index % 4) * lootCellWidth, Math.floor(index / 4) * lootCellHeight, lootCellWidth, lootCellHeight,
+      0, 0, lootCellWidth, lootCellHeight);
+    return [id, createScenerySpriteModel(canvas)];
   }));
+  lootAtlas.dispose();
   function makeMittenTexture() {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
     const context = canvas.getContext('2d');
@@ -600,8 +599,11 @@ async function start() {
   function createLootVisual(location, item, source = null) {
     const group = new THREE.Group();
     group.name = item.id;
-    const icon = new THREE.Mesh(lootIconGeometries.get(item.itemId) ?? lootIconGeometries.get('scrap'), lootIconMaterial);
-    icon.scale.set(.54, .54, 1); icon.position.y = .30; icon.renderOrder = 6; group.add(icon);
+    const model = lootSpriteModels.get(item.itemId) ?? lootSpriteModels.get('scrap');
+    const icon = model.group.clone(true), iconHeight = .54 * 3, iconScale = iconHeight / 2.05;
+    icon.scale.set(iconScale, iconScale, 1); icon.position.y = .11 + iconHeight / 2; group.add(icon);
+    const facePair = { prop: group, front: icon.getObjectByName('scenery-front'), back: icon.getObjectByName('scenery-back') };
+    sceneryFacePairs.push(facePair);
     const glow = new THREE.Mesh(new THREE.CircleGeometry(.22, 28),
       new THREE.MeshBasicMaterial({ color: 0xffd879, transparent: true, opacity: .05, depthWrite: false, toneMapped: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
@@ -609,7 +611,7 @@ async function start() {
     beam.scale.set(.82, 1.44, 1); beam.position.set(0, 1.02, -.025); beam.renderOrder = 5; group.add(beam);
     group.position.set(item.x, 0, item.z);
     location.sceneGroup.add(group);
-    const visual = { group, icon, beam, glow, spin: 0, spawn: source ? { ...source, age: 0, duration: .62 } : null };
+    const visual = { group, icon, beam, glow, facePair, spawn: source ? { ...source, age: 0, duration: .62 } : null };
     worldItemVisuals.set(item.id, visual);
     return visual;
   }
@@ -894,12 +896,10 @@ async function start() {
           Math.sin(t * Math.PI) * .9,
           visual.spawn.z + (item.z - visual.spawn.z) * eased,
         );
-        visual.spin += dt * 5;
         if (t >= 1) { visual.group.position.y = 0; visual.spawn = null; }
       } else {
         visual.group.position.set(item.x, 0, item.z);
       }
-      visual.group.rotation.y = Math.atan2(camera.position.x - item.x, camera.position.z - item.z) + visual.spin;
       const pulse = .82 + Math.sin(elapsed * 3.4 + item.x * 2 + item.z) * .12;
       visual.beam.scale.y = 1.44 * pulse;
       visual.beam.position.y = .30 + .72 * pulse;
@@ -909,6 +909,8 @@ async function start() {
       const pickup = takeWorldLoot(activeLocation.loot, item.id);
       if (!pickup) continue;
       activeLocation.sceneGroup.remove(visual.group);
+      const facePairIndex = sceneryFacePairs.indexOf(visual.facePair);
+      if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
       worldItemVisuals.delete(item.id);
       addItems(campaignState, { [pickup.itemId]: 1 });
       renderInventory();
@@ -1237,8 +1239,10 @@ async function start() {
       const item = activeLocation.loot[0];
       if (!item) throw new Error('No world loot is available to preview');
       simulationPaused = true;
-      target.set(item.x, .42, item.z);
-      orbit.distance = 3.5; orbit.theta = .35; orbit.phi = .74;
+      const visual = worldItemVisuals.get(item.id);
+      if (visual) { visual.spawn = null; visual.group.position.set(item.x, 0, item.z); }
+      target.set(item.x, .92, item.z);
+      orbit.distance = 5.3; orbit.theta = .9; orbit.phi = .9;
       updateCamera();
     },
     openCache() { return openCache(activeLocation.cacheBody); },

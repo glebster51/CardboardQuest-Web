@@ -48,6 +48,10 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     return pending;
   }
 
+  function createSprite(image) {
+    return makeScenerySprite(image, corrugation, renderer.capabilities.getMaxAnisotropy());
+  }
+
   async function create(path, x, z, size, parent = scene, allowFlat = false, options = {}) {
     const template = await loadTemplate(path);
     const art = template.clone(true);
@@ -88,5 +92,5 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     return prop;
   }
 
-  return { create, loadTemplate, loadStateTemplates, facePairs };
+  return { create, loadTemplate, loadStateTemplates, createSprite, facePairs };
 }
