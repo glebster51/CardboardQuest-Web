@@ -28,7 +28,7 @@ export const LOCATION_ART = {
   'squirrel-cache': profile(7.2, 9.2, .9, ['birch', 'bushes', 'fallen-log', 'mushrooms', 'wildflowers'], { phase: .7, density: 45, focal: ['birch', -3, -2, 4.4], mood: 'Длинная берёзовая роща, маленькие кочки и склад под корнями.' }),
   brook: profile(8.8, 7.5, .85, wetland, { phase: 2.8, density: 48, hazards: [['water', -4.1, 2.1, 2.3, 4.5, .2]], mood: 'Мелкий извилистый ручей слева, низкий пологий берег и заросли папоротника.' }),
   'cave-cache': profile(6.7, 7.1, 2.7, ['moss-rocks', 'reeds', 'fern', 'rock-cluster', 'mushrooms'], { phase: 1.5, cliff: 1.4, density: 28, hazards: [['abyss', 3.8, 2, 1.7, 2.7, -.4]], mood: 'Нора в крутом берегу: каменная спина за тайником, тёмный провал сбоку.' }),
-  'broken-bridge': profile(12.6, 8.9, 1.65, ['reeds', 'moss-rocks', 'charred-tree', 'birch', 'rock-cluster'], { phase: .4, density: 44, riverCrossing: true, focal: ['broken-bridge', 0, 2.2, 6.6], mood: 'Широкая река режет поляну почти от края до края; слева и справа остаются два тесных обхода, а старый мост рухнул посередине.' }),
+  'broken-bridge': profile(31.5, 19, 4.8, ['reeds', 'moss-rocks', 'charred-tree', 'birch', 'rock-cluster'], { phase: .4, cliff: .7, density: 44, riverCrossing: true, riverCliff: true, focal: ['broken-bridge', 0, 4.35, 3.3], mood: 'Широкая река без обхода по краям режет всю локацию поперёк. На ближнем берегу два боковых выхода — налево и направо; прямо путь закрывают вода и отвесный дальний берег. Обломок моста висит над рекой и не соединяет берега.' }),
   'moss-shrine': profile(8.2, 8.5, 1.35, ['birch', 'fern', 'moss-rocks', 'rock-cluster', 'wildflowers'], { phase: 2.7, density: 42, focal: ['shrine', 0, -3.8, 3.7], mood: 'Круглая тихая священная роща; алтарь под берёзами и поросшие мхом уступы.' }),
   camp: profile(10, 9.1, 1.55, ['charred-tree', 'evergreen', 'fallen-log', 'rock-cluster', 'mushrooms'], { phase: .8, density: 42, mood: 'Широкая истоптанная поляна; обломки частокола, вырубка и хижины.' }),
   'ash-road': profile(7.2, 10, 2, ['charred-tree', 'moss-rocks', 'fallen-log', 'rock-cluster'], { phase: 2, density: 44, falls: [[Math.PI, 'abyss', 3.4]], mood: 'Серый длинный склон после пожара; обугленные стволы, справа пологие гряды, слева осыпь.' }),
@@ -74,11 +74,20 @@ export function createLocationArt(id, scale = 1.5) {
     id: `${id}-hazard-${index}`, kind, points: organicOval(x * scale, z * scale, rx * scale, rz * scale, phase),
   }));
   if (art.riverCrossing) hazards.push({ id: 'broken-bridge-river', kind: 'water', points: [
-    [-10.8, 2.35], [-9.2, 1.85], [-6.4, 2.15], [-3.3, 1.75], [-.2, 2.05], [3.2, 1.8], [6.4, 2.2], [9.2, 1.9], [10.8, 2.3],
-    [10.9, 3.65], [8.9, 4.05], [6, 3.8], [2.9, 4.2], [-.4, 3.9], [-3.6, 4.25], [-6.7, 3.95], [-9.3, 4.35], [-10.9, 3.95],
+    [-35.5, 2.8], [-32, 2.45], [-28, 2.9], [-24, 2.55], [-20, 3.05], [-16, 2.7], [-12, 3.15], [-8, 2.8],
+    [-4, 3.2], [0, 2.85], [4, 3.35], [8, 3], [12, 3.45], [16, 3.1], [20, 3.5], [24, 3.2], [28, 3.55], [32, 3.2], [35.5, 3.35],
+    [35.5, 5.45], [32, 5.8], [28, 5.35], [24, 5.75], [20, 5.3], [16, 5.7], [12, 5.25], [8, 5.65],
+    [4, 5.2], [0, 5.6], [-4, 5.15], [-8, 5.55], [-12, 5.1], [-16, 5.5], [-20, 5.05], [-24, 5.45], [-28, 5.1], [-32, 5.5], [-35.5, 5.25],
+  ].map(([x, z]) => ({ x: x * scale, z: z * scale })) });
+  if (art.riverCliff) hazards.push({ id: 'broken-bridge-cliff', kind: 'cliff', points: [
+    [-31, 6.25], [-26, 6.45], [-21, 6.2], [-16, 6.5], [-11, 6.25], [-6, 6.5], [-1, 6.2], [4, 6.5],
+    [9, 6.2], [14, 6.45], [19, 6.25], [24, 6.5], [29, 6.25], [31, 6.45], [31, 7.2], [26, 7.35], [21, 7.1], [16, 7.4], [11, 7.15],
+    [6, 7.4], [1, 7.1], [-4, 7.4], [-9, 7.15], [-14, 7.4], [-19, 7.15], [-24, 7.4], [-29, 7.2], [-31, 7.35],
   ].map(([x, z]) => ({ x: x * scale, z: z * scale })) });
   return { ...art, hazards, terrain: { maxHeight: art.relief, step: .24,
     edgeHeight: art.cliff ?? .245, nearSlope: art.cliff ? 2.1 : 6.8,
     ridgeStrength: art.cliff ? .65 : .22, peakAmplitude: art.cliff ? 1.35 : .65,
-    peakCount: art.cliff ? 22 : 14, crestDistance: art.cliff ? 3.4 : 9.5 } };
+    peakCount: art.cliff ? 22 : 14, crestDistance: art.cliff ? 3.4 : 9.5,
+    cliffBank: art.riverCliff ? { minX: -31 * scale, maxX: 31 * scale,
+      frontZ: 6.3 * scale, height: 5.4, layers: 18, seed: 7049 } : null } };
 }

@@ -109,6 +109,7 @@ function addDropZoneUnderside(THREE, location) {
 
 function addHazardBasins(THREE, location, paper, corrugation) {
   for (const hazard of location.hazards ?? []) {
+    if (hazard.kind === 'cliff') continue;
     const center = hazard.points.reduce((p, v) => ({ x: p.x + v.x / hazard.points.length,
       z: p.z + v.z / hazard.points.length }), { x: 0, z: 0 });
     const inset = amount => hazard.points.map(p => ({ x: center.x + (p.x - center.x) * amount,
@@ -125,12 +126,65 @@ function addHazardBasins(THREE, location, paper, corrugation) {
     }
     const water = hazard.kind !== 'abyss';
     const surface = new THREE.Mesh(new THREE.ShapeGeometry(terrainShape(THREE, inset(.87))),
-      new THREE.MeshStandardMaterial({ color: hazard.kind === 'peat' ? 0x284745 : water ? 0x3b8490 : 0x11151e,
-        roughness: water ? .24 : 1, metalness: water ? .16 : 0, side: THREE.DoubleSide }));
+      new THREE.MeshStandardMaterial({ color: hazard.kind === 'peat' ? 0x284745 : water ? 0x318a9c : 0x11151e,
+        roughness: water ? .72 : 1, metalness: 0, side: THREE.DoubleSide }));
     surface.rotation.x = -Math.PI / 2;
-    surface.position.y = -.79;
+    // Keep water close under the playfield cut-out; dropping it below the
+    // cardboard backing makes shallow rivers disappear from an oblique view.
+    surface.position.y = hazard.kind === 'abyss' ? -.79 : .025;
     surface.name = `hazard-${hazard.id}`; surface.receiveShadow = true;
     location.sceneGroup.add(surface);
+  }
+  const bank = location.art?.terrain?.cliffBank;
+  if (bank) {
+    const color = [0x9b8059, 0x8b704e, 0x7b6043, 0x6c533c];
+    const count = Math.max(1, Math.trunc(bank.layers ?? 18));
+    const wallPositions = [], wallIndices = [], wallUvs = [];
+    const wallSegments = 60;
+    for (let index = 0; index <= wallSegments; index++) {
+      const t = index / wallSegments, x = bank.minX + t * (bank.maxX - bank.minX);
+      const noise = Math.sin(x * .21 + (bank.seed ?? 1)) * .24 + Math.sin(x * .43 - 1.1) * .12;
+      const z = bank.frontZ + noise, peak = bank.height * (.82 + .18 * Math.sin(t * Math.PI * 2.3 + .6));
+      wallPositions.push(x, 0, -z, x, peak, -z);
+      wallUvs.push(t * 8, 0, t * 8, peak * .45);
+      if (index < wallSegments) {
+        const a = index * 2, b = a + 2;
+        wallIndices.push(a, b, a + 1, b, b + 1, a + 1);
+      }
+    }
+    const wallGeometry = new THREE.BufferGeometry();
+    wallGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
+    wallGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(wallUvs, 2));
+    wallGeometry.setIndex(wallIndices); wallGeometry.computeVertexNormals();
+    const wall = new THREE.Mesh(wallGeometry, makeRoughCardboardMaterial(THREE, corrugation, 0x604832));
+    wall.material.side = THREE.DoubleSide;
+    wall.castShadow = true; wall.receiveShadow = true;
+    wall.name = `river-cliff-face-${location.id}`;
+    location.sceneGroup.add(wall);
+    for (let tier = 0; tier < count; tier++) {
+      const progress = tier / Math.max(1, count - 1);
+      const halfWidth = (bank.maxX - bank.minX) * (.5 - progress * .075);
+      const steps = 30, front = [], rear = [];
+      for (let index = 0; index <= steps; index++) {
+        const x = -halfWidth + index / steps * halfWidth * 2;
+        const noise = Math.sin(x * .21 + (bank.seed ?? 1)) * .24 + Math.sin(x * .43 - 1.1) * .12;
+        const z = bank.frontZ + noise + progress * 6;
+        front.push({ x, z });
+        rear.push({ x: x * .985, z: z + .48 + .14 * Math.sin(x * .09 + tier * .17) });
+      }
+      const shape = terrainShape(THREE, [...front, ...rear.reverse()]);
+      const depth = .3, top = (tier + 1) * (bank.height / count);
+      const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 });
+      geometry.rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geometry, [
+        makeRoughCardboardMaterial(THREE, paper, color[tier % color.length]),
+        makeRoughCardboardMaterial(THREE, corrugation, 0x59412e),
+      ]);
+      mesh.position.y = top - depth;
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.name = `river-cliff-tier-${location.id}-${tier}`;
+      location.sceneGroup.add(mesh);
+    }
   }
 }
 
