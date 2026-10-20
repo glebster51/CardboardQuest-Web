@@ -1,5 +1,5 @@
 import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=5';
-import { createLocationArt } from './location-art.mjs';
+import { createLocationArt } from './location-art.mjs?v=2';
 import { createAuthoredLayout } from './location-layout.mjs';
 import { hazardAtPoint } from './world-hazards.mjs';
 

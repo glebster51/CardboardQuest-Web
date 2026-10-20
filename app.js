@@ -28,7 +28,7 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, c
   collectCampaignStoryPickup, consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation } from './game/story-campaign.mjs?v=5';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=6';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=7';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=8';

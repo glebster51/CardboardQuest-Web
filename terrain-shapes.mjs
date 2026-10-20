@@ -239,25 +239,37 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
   if (samples.some(value => !Number.isInteger(value) || value < 0 || value > 255))
     throw new RangeError('Depth map samples must be integer bytes from 0 to 255');
 
-  const minX = world.originX, minZ = world.originZ;
+  const sourceMinX = world.originX, sourceMinZ = world.originZ;
   const cellSizeX = world.width / (columns - 1), cellSizeZ = world.depth / (rows - 1);
   const cellSize = Math.min(cellSizeX, cellSizeZ), maxHeight = elevation.maxHeight, step = elevation.step;
-  const values = Float32Array.from(samples, (value, index) => {
-    const x = minX + index % columns * cellSizeX, z = minZ + Math.floor(index / columns) * cellSizeZ;
-    return walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints) ? 0 : value / 255 * maxHeight;
-  });
+  // Add a short fading skirt around the raster. Isolines that reach the source
+  // image edge then close naturally instead of disappearing as open contours.
+  const padding = 8, mapColumns = columns + padding * 2, mapRows = rows + padding * 2;
+  const minX = sourceMinX - padding * cellSizeX, minZ = sourceMinZ - padding * cellSizeZ;
+  const values = new Float32Array(mapColumns * mapRows);
+  for (let z = 0; z < mapRows; z++) for (let x = 0; x < mapColumns; x++) {
+    const sourceX = x - padding, sourceZ = z - padding;
+    const nearestX = Math.max(0, Math.min(columns - 1, sourceX));
+    const nearestZ = Math.max(0, Math.min(rows - 1, sourceZ));
+    const worldX = minX + x * cellSizeX, worldZ = minZ + z * cellSizeZ;
+    if (walkablePoints.length >= 3 && pointInsidePolygon(worldX, worldZ, walkablePoints)) continue;
+    const distance = Math.hypot(Math.max(0, -sourceX, sourceX - columns + 1),
+      Math.max(0, -sourceZ, sourceZ - rows + 1));
+    const fade = Math.max(0, 1 - distance / padding);
+    values[z * mapColumns + x] = samples[nearestZ * columns + nearestX] / 255 * maxHeight * fade;
+  }
   const sample = (x, z) => {
     if (walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints)) return 0;
-    const gx = Math.max(0, Math.min(columns - 1.001, (x - minX) / cellSizeX));
-    const gz = Math.max(0, Math.min(rows - 1.001, (z - minZ) / cellSizeZ));
+    const gx = Math.max(0, Math.min(mapColumns - 1.001, (x - minX) / cellSizeX));
+    const gz = Math.max(0, Math.min(mapRows - 1.001, (z - minZ) / cellSizeZ));
     const x0 = Math.floor(gx), z0 = Math.floor(gz), tx = gx - x0, tz = gz - z0;
-    const a = values[z0 * columns + x0] * (1 - tx) + values[z0 * columns + x0 + 1] * tx;
-    const b = values[(z0 + 1) * columns + x0] * (1 - tx) + values[(z0 + 1) * columns + x0 + 1] * tx;
+    const a = values[z0 * mapColumns + x0] * (1 - tx) + values[z0 * mapColumns + x0 + 1] * tx;
+    const b = values[(z0 + 1) * mapColumns + x0] * (1 - tx) + values[(z0 + 1) * mapColumns + x0 + 1] * tx;
     const height = a * (1 - tz) + b * tz;
     return height < step * .5 ? 0 : Math.min(maxHeight, Math.round(height / step) * step);
   };
-  const map = { minX, minZ, columns, rows, cellSize, cellSizeX, cellSizeZ, step, maxHeight, values, sample };
-  map.layers = Array.from({ length: Math.max(1, Math.ceil(maxHeight / step)) }, (_, index) => {
+  const map = { minX, minZ, columns: mapColumns, rows: mapRows, cellSize, cellSizeX, cellSizeZ, step, maxHeight, values, sample };
+  map.layers = Array.from({ length: Math.max(1, Math.ceil(maxHeight / step - 1e-9)) }, (_, index) => {
     const threshold = (index + .5) * step;
     return { threshold, height: Math.min(maxHeight, (index + 1) * step), contours: extractTerrainContours(map, threshold) };
   });
