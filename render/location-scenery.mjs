@@ -1,10 +1,14 @@
 import { hazardAtPoint, isPlayableFloor, pointInPolygon } from '../game/world-hazards.mjs';
 
 const original = new Set(['tree', 'evergreen', 'moss-rocks', 'bushes']);
-export const sceneryAsset = name => `assets/${name === 'hero-house' ? name : original.has(name) ? `env-${name}` : `env-narrative-${name}`}.png`;
+const neutral = new Set(['fallen-log', 'rock-cluster', 'wildflowers', 'mushrooms']);
+export const sceneryAsset = name => name === 'hero-house' ? 'assets/hero-house.png'
+  : neutral.has(name) ? `assets/env-neutral-${name}.png`
+    : `assets/${original.has(name) ? `env-${name}` : `env-narrative-${name}`}.png`;
 const sizes = { tree: [3, 4.4], evergreen: [2.8, 4.5], birch: [3.2, 5], fern: [1, 1.8],
   reeds: [1.6, 2.9], stump: [1.8, 3.2], 'moss-rocks': [1, 2.5], bushes: [1.1, 2.1],
-  'charred-tree': [2.5, 4.1], totem: [2.3, 3.6], shrine: [1.5, 2.5], 'root-arch': [2.3, 3.2] };
+  'charred-tree': [2.5, 4.1], totem: [2.3, 3.6], shrine: [1.5, 2.5], 'root-arch': [2.3, 3.2],
+  'fallen-log': [1.4, 2.4], 'rock-cluster': [.9, 1.8], wildflowers: [.9, 1.5], mushrooms: [.8, 1.4] };
 
 export async function populateNarrativeScenery({ locations, createScenery, loadTemplate, scale, hutAnchors, puckRadius }) {
   const assets = new Set(Object.values(locations).flatMap(location => location.art.props.map(sceneryAsset)));
