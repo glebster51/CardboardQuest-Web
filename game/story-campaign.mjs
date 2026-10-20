@@ -1,5 +1,12 @@
 export const CAMPAIGN_SAVE_KEY = 'cardboardquest-campaign-v1';
 
+// Plot clues stay in the world until the player physically reaches them.
+export const CAMPAIGN_STORY_PICKUPS = Object.freeze({
+  brook: Object.freeze([
+    Object.freeze({ id: 'grandpa-mitten', flag: 'foundGrandpaMitten', icon: 'mitten', x: 0, z: -6.7 }),
+  ]),
+});
+
 const node = (id, title, biome, intro, scene, options = []) => ({ id, title, biome, intro, scene, options });
 
 export const CAMPAIGN = [
@@ -103,6 +110,15 @@ export function createCampaignState(raw = null) {
 }
 
 export function campaignLocation(id) { return CAMPAIGN_BY_ID.get(id) ?? null; }
+
+/** Collect a unique physical story clue once, in the location where it was placed. */
+export function collectCampaignStoryPickup(state, locationId, pickupId) {
+  if (state.currentLocationId !== locationId) return null;
+  const pickup = (CAMPAIGN_STORY_PICKUPS[locationId] ?? []).find(item => item.id === pickupId);
+  if (!pickup || state.flags[pickup.flag]) return null;
+  state.flags[pickup.flag] = true;
+  return { ...pickup };
+}
 
 export function hasGrandpaDied(state) {
   return Boolean(state.flags?.grandpaDead || state.flags?.ending || state.visited?.includes('grandpa'));

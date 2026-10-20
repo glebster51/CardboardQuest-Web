@@ -15,6 +15,7 @@ export async function populateNarrativeScenery({ locations, createScenery, loadT
     let seed = location.heightSeed >>> 0;
     const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
     const placed = [], tasks = [];
+    for (const pickup of location.storyPickups ?? []) placed.push({ x: pickup.x, z: pickup.z, radius: 2.1 });
     const focal = location.art.focal;
     if (focal) {
       const [name, x, z, size] = focal;

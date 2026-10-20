@@ -1,4 +1,4 @@
-import { hasGrandpaDied } from '../game/story-campaign.mjs?v=4';
+import { hasGrandpaDied } from '../game/story-campaign.mjs?v=5';
 import { isPlayableFloor } from '../game/world-hazards.mjs';
 
 export const STORY_ACTORS = [

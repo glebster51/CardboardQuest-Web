@@ -4,13 +4,13 @@ import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=1';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=2';
-import { getStoryDialogue } from './game/story-dialogue.mjs?v=2';
+import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createStoryActors } from './render/story-actors.mjs?v=1';
 import { createFigureFactory } from './render/figure-factory.mjs?v=1';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=5';
-import { populateNarrativeScenery } from './render/location-scenery.mjs?v=1';
+import { populateNarrativeScenery } from './render/location-scenery.mjs?v=2';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { createTerrainRenderer } from './render/terrain-renderer.mjs?v=7';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS } from './physics.mjs?v=21';
@@ -22,9 +22,10 @@ import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } fr
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
-  consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache, visitCampaignLocation } from './game/story-campaign.mjs?v=4';
+  collectCampaignStoryPickup, consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache,
+  visitCampaignLocation } from './game/story-campaign.mjs?v=5';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=5';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=6';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
   finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=7';
@@ -520,6 +521,7 @@ async function start() {
 
   const chestVisuals = new Map();
   const worldItemVisuals = new Map();
+  const storyPickupVisuals = new Map();
   const chestMaterial = new THREE.MeshStandardMaterial({ color: 0x94623a, roughness: .78, map: paper });
   const chestLidMaterial = new THREE.MeshStandardMaterial({ color: 0xb18450, roughness: .72, map: paper });
   const chestLatchMaterial = new THREE.MeshStandardMaterial({ color: 0xd5b354, roughness: .38, metalness: .12 });
@@ -538,6 +540,36 @@ async function start() {
     uv.needsUpdate = true;
     return [id, geometry];
   }));
+  function makeMittenTexture() {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+    const context = canvas.getContext('2d');
+    const path = new Path2D();
+    path.moveTo(39, 111); path.lineTo(28, 105); path.lineTo(33, 83);
+    path.bezierCurveTo(24, 78, 14, 69, 10, 60); path.bezierCurveTo(6, 50, 14, 41, 23, 45);
+    path.lineTo(35, 55); path.lineTo(35, 31); path.bezierCurveTo(35, 17, 45, 9, 57, 10);
+    path.bezierCurveTo(70, 9, 80, 18, 82, 32); path.lineTo(84, 62);
+    path.bezierCurveTo(87, 79, 79, 96, 73, 111); path.closePath();
+    context.lineJoin = 'round'; context.lineCap = 'round';
+    context.fillStyle = '#c9995e'; context.strokeStyle = '#f2dfb7'; context.lineWidth = 15; context.stroke(path);
+    context.strokeStyle = '#49301e'; context.lineWidth = 10; context.stroke(path); context.fill(path);
+    context.beginPath(); context.moveTo(34, 88); context.lineTo(78, 91); context.lineTo(74, 109); context.lineTo(30, 105); context.closePath();
+    context.fillStyle = '#8b4935'; context.fill(); context.strokeStyle = '#49301e'; context.lineWidth = 6; context.stroke();
+    context.strokeStyle = '#e8c58c'; context.lineWidth = 3;
+    for (let i = 0; i < 4; i++) { context.beginPath(); context.moveTo(39 + i * 9, 94); context.lineTo(37 + i * 9, 101); context.stroke(); }
+    context.strokeStyle = '#f3d6a2'; context.lineWidth = 4;
+    context.beginPath(); context.moveTo(49, 25); context.quadraticCurveTo(58, 18, 68, 26); context.stroke();
+    for (let i = 0; i < 3; i++) {
+      const x = 47 + i * 10;
+      context.beginPath(); context.moveTo(x, 57); context.lineTo(x + 4, 48); context.lineTo(x + 8, 57); context.closePath();
+      context.fillStyle = '#f3d6a2'; context.fill();
+    }
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    return texture;
+  }
+  const storyPickupIconMaterial = new THREE.MeshBasicMaterial({ map: makeMittenTexture(), transparent: true,
+    alphaTest: .08, side: THREE.DoubleSide, depthTest: true, depthWrite: true, toneMapped: false });
+  const storyPickupIconGeometry = new THREE.PlaneGeometry(.82, .82);
   function makeLootBeamTexture() {
     const canvas = document.createElement('canvas'); canvas.width = 160; canvas.height = 320;
     const context = canvas.getContext('2d'), image = context.createImageData(canvas.width, canvas.height);
@@ -582,6 +614,20 @@ async function start() {
     worldItemVisuals.set(item.id, visual);
     return visual;
   }
+  function createStoryPickupVisual(location, pickup) {
+    const group = new THREE.Group(); group.name = pickup.id;
+    const icon = new THREE.Mesh(storyPickupIconGeometry, storyPickupIconMaterial);
+    icon.position.y = .34; icon.renderOrder = 6; group.add(icon);
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(.34, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffd879, transparent: true, opacity: .075, depthWrite: false, toneMapped: false }));
+    glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
+    const beam = new THREE.Mesh(lootBeamGeometry, lootBeamMaterial);
+    beam.scale.set(1.02, 1.7, 1); beam.position.set(0, 1.08, -.025); beam.renderOrder = 5; group.add(beam);
+    group.position.set(pickup.x, 0, pickup.z); location.sceneGroup.add(group);
+    const visual = { group, beam, glow, spin: 0 };
+    storyPickupVisuals.set(pickup.id, visual);
+    return visual;
+  }
   function makeCacheBody(location) {
     const position = location.cachePosition ?? [{ x: scaled(3.4), z: 0 }, { x: scaled(-3.4), z: 0 },
       { x: 0, z: scaled(3.4) }, { x: 0, z: scaled(-3.4) }]
@@ -613,6 +659,8 @@ async function start() {
   for (const location of Object.values(locations)) {
     if (location.secret) makeCacheBody(location);
     for (const item of location.loot) createLootVisual(location, item);
+    for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag])
+      createStoryPickupVisual(location, pickup);
   }
 
   function refreshLocationInfo() {
@@ -860,6 +908,25 @@ async function start() {
       burst(item.x, item.z, .48);
       vibrate(16);
       persistCampaign();
+    }
+    for (const pickup of activeLocation.storyPickups ?? []) {
+      if (campaignState.flags[pickup.flag]) continue;
+      let visual = storyPickupVisuals.get(pickup.id);
+      if (!visual) visual = createStoryPickupVisual(activeLocation, pickup);
+      visual.group.rotation.y = Math.atan2(camera.position.x - pickup.x, camera.position.z - pickup.z) + visual.spin;
+      const pulse = .9 + Math.sin(elapsed * 3.6 + pickup.z) * .09;
+      visual.beam.scale.y = 1.7 * pulse;
+      visual.beam.position.y = .34 + .74 * pulse;
+      visual.beam.material.opacity = .86 + (Math.sin(elapsed * 4 + pickup.x) + 1) * .07;
+      visual.glow.material.opacity = .055 + (Math.sin(elapsed * 4 + pickup.z) + 1) * .025;
+      if (heroBody.health <= 0 || Math.hypot(heroBody.x - pickup.x, heroBody.z - pickup.z) > PUCK_RADIUS + .35) continue;
+      const collected = collectCampaignStoryPickup(campaignState, activeLocation.id, pickup.id);
+      if (!collected) continue;
+      activeLocation.sceneGroup.remove(visual.group); storyPickupVisuals.delete(pickup.id);
+      burst(pickup.x, pickup.z, .7); vibrate(24); persistCampaign();
+      showStoryCard({ title: activeLocation.title, text: 'Ты подобрал вещь, которую дед потерял у ручья.',
+        lines: getStoryDialogue(campaignState, activeLocation.id, 'pickup') });
+      break;
     }
   }
   function damage(target, damageQuarters, speed) {
@@ -1159,6 +1226,9 @@ async function start() {
           renderedX: heroFigure.group.position.x, renderedZ: heroFigure.group.position.z, viewBack: heroFigure.viewBack,
           visualState: heroFigure.visualState },
         dialogue: dialogue.frame(), elapsed,
+        campaignFlags: { ...campaignState.flags },
+        storyPickups: (activeLocation.storyPickups ?? []).filter(pickup => !campaignState.flags[pickup.flag])
+          .map(({ id, x, z }) => ({ id, x, z })),
         actors: storyActors.actors.filter(actor => actor.spec.location === activeLocation.id)
           .map(actor => ({ id: actor.spec.id, visible: actor.prop.visible, fixed: actor.body.fixed, x: actor.body.x, z: actor.body.z,
             baseY: actor.prop.position.y, meshes: actor.prop.children.length })),

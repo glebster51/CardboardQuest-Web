@@ -1,4 +1,4 @@
-import { CAMPAIGN, CAMPAIGN_EDGES } from './story-campaign.mjs?v=4';
+import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=5';
 import { createLocationArt } from './location-art.mjs';
 import { createAuthoredLayout } from './location-layout.mjs';
 import { hazardAtPoint } from './world-hazards.mjs';
@@ -109,6 +109,9 @@ export function createCampaignLocations(locations, scale = 1.5) {
       exits,
       dropZones,
       hazards: art.hazards,
+      storyPickups: (CAMPAIGN_STORY_PICKUPS[authored.id] ?? []).map(item => ({
+        ...item, x: item.x * scale, z: item.z * scale,
+      })),
       art,
       arrivals,
       entry: { x: 0, z: 0 },

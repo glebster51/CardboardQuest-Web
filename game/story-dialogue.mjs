@@ -1,6 +1,6 @@
 // Original dialogue: a small domestic mystery becomes a debt inherited from adults.
 // Portraits are game sprites, not unrelated generated headshots.
-import { hasGrandpaDied } from './story-campaign.mjs?v=4';
+import { hasGrandpaDied } from './story-campaign.mjs?v=5';
 export const SPEAKERS = Object.freeze({
   narrator: { name: 'Лесная тишина', sprite: null },
   hero: { name: 'Внук', sprite: 'assets/hero-idle.png' },
@@ -61,7 +61,10 @@ export const STORY_DIALOGUE = {
     scene: C(N('Под орехами лежит свёрток. На ткани дедов узел: два оборота, один свободный конец.'),
       H('Чтобы развязать одной рукой. Второй он обычно держал мою.')) },
   brook: {
-    intro: C(H('Рукавица. Значит, был здесь.'), N('На мокрой ладони вышиты три зубца. Издалека это похоже на корону. Вблизи — на решётку.')),
+    intro: C(N('Ручей кажется тише, чем должен. На дальнем берегу кто-то волок тяжёлые поленья.'),
+      H('Дед всегда выбирал короткий путь. Следы должны быть где-то рядом.')),
+    pickup: C(H('Рукавица. Значит, дед точно был здесь.'),
+      N('На мокрой ладони вышиты три зубца. Издалека это похоже на корону. Вблизи — на решётку.')),
     scene: C(H('Ты этим знаком помечал мои вещи. Я думал — чтобы не терялись.'),
       N('За ручьём лежат тяжёлые поленья. На каждом свежий срез, но ни одного следа топора.'),
       H('Что это за дрова, дед? Что ты ими подпираешь?')),
