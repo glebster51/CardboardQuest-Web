@@ -1,4 +1,4 @@
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=2';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=3';
 import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=2';
 import { WALKABLE_POINTS } from '../physics.mjs';
 import { nearestPointOnPath } from '../terrain-shapes.mjs';

@@ -1,5 +1,5 @@
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=5';
 import { heartHealthLevels } from '../heart-health.mjs';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];

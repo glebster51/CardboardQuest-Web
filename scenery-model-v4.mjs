@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=4';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=5';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -80,15 +80,8 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
     frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
   const backArt = makeExtrudedSprite(backAlphaPixels, sprite.width, sprite.height,
     backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels);
-  // The selected artwork face depends on the camera, while the sun stays fixed.
-  // Render and cast shadows from either side so the inactive rear face is not needed for lighting.
-  for (const face of [frontArt, backArt]) {
-    for (const material of [face.frontMaterial, face.sideMaterial, face.backPlane.material]) {
-      material.side = THREE.DoubleSide;
-      material.shadowSide = THREE.DoubleSide;
-      material.needsUpdate = true;
-    }
-  }
+  // The shared extrusion factory configures both artwork faces and the cardboard edge
+  // for two-sided rendering and shadow-map passes (characters use it too).
   const group = new THREE.Group();
   frontArt.group.name = 'scenery-front';
   backArt.group.name = 'scenery-back';
