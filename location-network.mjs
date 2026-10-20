@@ -1,6 +1,8 @@
 export const EXIT_ZONE_RADIUS = 1.05;
 export const LOCATION_SCALE = 1.5;
-export const FOREST_WAKE_RADIUS = 3.1 * LOCATION_SCALE;
+// Wake the whole forest encounter as soon as the player is clearly inside the
+// clearing, instead of waiting until they are nearly on top of a goblin.
+export const FOREST_WAKE_RADIUS = 7.5 * LOCATION_SCALE;
 export const CAMP_REINFORCEMENT_DELAY = 2;
 export const CAMP_LIVING_CAP = 4;
 export const CAMP_GOBLIN_TOTAL = 8;
