@@ -1,4 +1,11 @@
 /** Transfer typed buffers and bitmap textures, preserving shared resource identity. */
+export const TERRAIN_LAYOUT_KEYS = ['walkablePoints', 'exits', 'hazards', 'dropZones', 'arrivals', 'entry',
+  'storyPickups', 'art', 'fogPaths', 'layoutReady'];
+
+export function terrainLayoutPayload(location) {
+  return Object.fromEntries(TERRAIN_LAYOUT_KEYS.map(key => [key, location[key]]));
+}
+
 export async function packScene(root, shared = {}) {
   const geometries = [], materials = [], textures = [], nodes = [];
   const geometryIds = new Map(), materialIds = new Map(), textureIds = new Map(), transfers = new Set();

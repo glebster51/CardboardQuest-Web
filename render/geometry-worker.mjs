@@ -4,7 +4,7 @@ import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerr
 import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=6';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs';
 import { makeScenerySprite } from '../scenery-model-v4.mjs?v=4';
-import { packScene } from './geometry-transfer.mjs';
+import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=2';
 import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs';
 import { createCampaignLocations } from '../game/story-world.mjs?v=16';
 import { createLocationNetwork } from '../location-network.mjs';
@@ -23,8 +23,7 @@ self.onmessage = async ({ data: { id, kind, payload } }) => {
         const catalog = createCampaignLocations(createLocationNetwork(), payload.scale, []);
         catalog[payload.id].art = payload.art;
         const authored = createCampaignLocations(catalog, payload.scale, [payload.id])[payload.id];
-        const keys = ['walkablePoints', 'exits', 'hazards', 'dropZones', 'arrivals', 'entry', 'storyPickups', 'art', 'layoutReady'];
-        extra.layout = Object.fromEntries(keys.map(key => [key, authored[key]]));
+        extra.layout = terrainLayoutPayload(authored);
         Object.assign(payload, extra.layout);
       }
       const location = { ...payload, sceneGroup: new THREE.Group() };
