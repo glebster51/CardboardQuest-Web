@@ -1,12 +1,13 @@
 import { readTransform } from './edit-model.mjs?v=127';
 import { ASSET_CATALOG } from './asset-catalog.mjs';
+import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
 
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
 export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset }) {
   const canvas = renderer.domElement, model = registry.model;
-  let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot;
+  let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
   let originalCamera, pointerStart = null, right = false, middle = false, lastPointer = null;
   let yaw = 0, pitch = 0, copyPending = null, copying = false, speed = 12;
@@ -103,6 +104,11 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function setMode(mode) {
     controls.setMode(mode);
     for (const button of panel.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+  }
+  function setRenderMode(mode) {
+    renderDebug.setMode(mode);
+    for (const button of panel.querySelectorAll('[data-render-mode]'))
+      button.setAttribute('aria-pressed', String(button.dataset.renderMode === mode));
   }
   function setPathMode(enabled) {
     pathMode = enabled; pathRoot.visible = enabled;
@@ -232,6 +238,12 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
+      </div><div class="se-render-mode" role="group" aria-label="Диагностический режим рендера">
+        <span>РЕНДЕР</span>
+        <button data-render-mode="normal" aria-pressed="true">Обычный</button>
+        <button data-render-mode="overdraw" aria-pressed="false" title="Подсвечивает области, где поверх друг друга рисуется геометрия">OVERDRAW</button>
+        <button data-render-mode="wireframe" aria-pressed="false" title="Показывает только рёбра треугольников геометрии">Только сетка</button>
+        <small id="se-render-hint">Режимы работают только пока открыт редактор.</small>
       </div></div>
       <aside class="se-inspector"><div class="se-caption">ОБЪЕКТЫ СЦЕНЫ</div>
         <select id="se-objects" aria-label="Объект сцены"></select><strong id="se-selected"></strong>
@@ -267,6 +279,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       ui.fields.append(row);
     }
     for (const button of panel.querySelectorAll('[data-mode]')) button.addEventListener('click', () => setMode(button.dataset.mode));
+    for (const button of panel.querySelectorAll('[data-render-mode]'))
+      button.addEventListener('click', () => setRenderMode(button.dataset.renderMode));
     ui.objects.addEventListener('change', () => select(bindings.find(binding => binding.id === ui.objects.value)));
     panel.querySelector('#se-close').addEventListener('click', () => void toggle());
     panel.querySelector('#se-focus').addEventListener('click', () => focusSelection());
@@ -319,11 +333,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   async function initialize() {
     const { TransformControls } = await import('./vendor/TransformControls.mjs');
-    makePanel(); helperRoot = new THREE.Group(); scene.add(helperRoot);
-    pathRoot = new THREE.Group(); pathRoot.visible = false; scene.add(pathRoot);
+    makePanel(); helperRoot = new THREE.Group(); helperRoot.userData.cqRenderDebugExclude = true; scene.add(helperRoot);
+    pathRoot = new THREE.Group(); pathRoot.userData.cqRenderDebugExclude = true; pathRoot.visible = false; scene.add(pathRoot);
+    renderDebug = createRenderDebugModes({ THREE, scene, renderer });
     controls = new TransformControls(camera, canvas); controls.enabled = false; controls.setSize(.9);
     scene.add(controls.getHelper());
-    box = new THREE.BoxHelper(new THREE.Object3D(), 0xffe09b); box.material.depthTest = false; box.renderOrder = 10003; box.visible = false; scene.add(box);
+    controls.getHelper().userData.cqRenderDebugExclude = true;
+    box = new THREE.BoxHelper(new THREE.Object3D(), 0xffe09b); box.userData.cqRenderDebugExclude = true;
+    box.material.depthTest = false; box.renderOrder = 10003; box.visible = false; scene.add(box);
     controls.addEventListener('mouseDown', () => model.begin());
     controls.addEventListener('objectChange', () => {
       if (!selected) return;
@@ -336,6 +353,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     if (active) {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       active = false; pathMode = false; activePath = hoveredPath = null; pathRoot.visible = false;
+      setRenderMode('normal');
       panel.querySelector('#se-fog-paths').setAttribute('aria-pressed', 'false'); canvas.style.cursor = '';
       model.commit(); controls.detach(); controls.enabled = false; box.visible = false;
       controls.dragging = false; pointerStart = null; lastPointer = null;
@@ -352,6 +370,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     originalCamera = { position: camera.position.clone(), quaternion: camera.quaternion.clone() };
     try {
       if (!controls) await initialize();
+      setRenderMode('normal');
       const location = getLocation(); bindings = registry.bindings(location.id);
       document.body.classList.add('scene-editing'); panel.hidden = false; helperRoot.visible = true;
       ui.renderAssets();
@@ -478,7 +497,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()).project(camera);
         handles.push({ axis: object.name, x: (center.x + 1) * canvas.clientWidth / 2, y: (1 - center.y) * canvas.clientHeight / 2 });
       }
-      return { selected: selected?.id ?? null, mode: controls?.mode ?? 'translate', dragging: controls?.dragging ?? false, handles };
+      return { selected: selected?.id ?? null, mode: controls?.mode ?? 'translate', renderMode: renderDebug?.mode ?? 'normal',
+        dragging: controls?.dragging ?? false, handles };
     },
     update(dt) {
       if (!active || !controls) return;
