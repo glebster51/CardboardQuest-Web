@@ -1,8 +1,28 @@
 import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=6';
 import { createLocationArt } from './location-art.mjs?v=3';
-import { createAuthoredLayout } from './location-layout.mjs';
+import { createAuthoredLayout } from './location-layout.mjs?v=3';
 import { hazardAtPoint } from './world-hazards.mjs';
 import { extractDepthMapMaskContours } from '../terrain-shapes.mjs';
+import { EXIT_FOG_ENTRY_CROSS_LIMIT, EXIT_FOG_ENTRY_MAX, EXIT_FOG_ENTRY_MIN, EXIT_FOG_ENTRY_OFFSET } from '../exit-fog.mjs';
+
+function findExitCascadeArrival(location, exit) {
+  const alongOffsets = [EXIT_FOG_ENTRY_OFFSET];
+  for (let step = .5; step <= Math.max(EXIT_FOG_ENTRY_MAX - EXIT_FOG_ENTRY_OFFSET, EXIT_FOG_ENTRY_OFFSET - EXIT_FOG_ENTRY_MIN); step += .5)
+    alongOffsets.push(EXIT_FOG_ENTRY_OFFSET - step, EXIT_FOG_ENTRY_OFFSET + step);
+  const acrossOffsets = [0];
+  for (let step = .5; step <= EXIT_FOG_ENTRY_CROSS_LIMIT; step += .5) acrossOffsets.push(step, -step);
+  for (const along of alongOffsets) {
+    if (along < EXIT_FOG_ENTRY_MIN || along > EXIT_FOG_ENTRY_MAX) continue;
+    for (const across of acrossOffsets) {
+      const candidate = {
+        x: exit.x - exit.dirX * along - exit.dirZ * across,
+        z: exit.z - exit.dirZ * along + exit.dirX * across,
+      };
+      if (isCampaignPositionSafe(location, candidate, 1.2)) return candidate;
+    }
+  }
+  return null;
+}
 
 function pointInside(point, polygon) {
   let inside = false;
@@ -125,7 +145,10 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
     const arrivals = {};
     for (const [from, to] of CAMPAIGN_EDGES) if (to === authored.id) {
       const gate = layout.exits[neighbors.indexOf(from)];
-      if (gate) arrivals[from] = { ...gate.arrival };
+      if (gate) {
+        const entrance = { walkablePoints, hazards: art.hazards, exits };
+        arrivals[from] = findExitCascadeArrival(entrance, gate) ?? { ...gate.arrival };
+      }
     }
     Object.assign(location, {
       layoutReady: true,

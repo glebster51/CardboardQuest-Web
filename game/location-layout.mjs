@@ -1,5 +1,6 @@
 import { extractTerrainContours } from '../terrain-shapes.mjs';
-import { distanceToPolygon, pointInPolygon } from './world-hazards.mjs';
+import { EXIT_FOG_ENTRY_OFFSET, EXIT_FOG_EXIT_EXTENSION } from '../exit-fog.mjs';
+import { distanceToPolygon, hazardAtPoint, pointInPolygon } from './world-hazards.mjs';
 
 // Corridor centre-lines, room ellipses, and widths in unscaled tabletop units.
 // Every branch starts at the safe story point (0,0); its last point is an exit.
@@ -55,19 +56,41 @@ function sampleContour(points, count = 184) {
   return result;
 }
 
-function arrivalOnRoute(route, distance = 3.7) {
+function pointBackAlongRoute(route, distance) {
   for (let index = route.length - 1; index > 0; index--) {
     const a = route[index], b = route[index - 1], length = Math.hypot(a[0] - b[0], a[1] - b[1]);
     if (distance <= length) return { x: a[0] + (b[0] - a[0]) * distance / length, z: a[1] + (b[1] - a[1]) * distance / length };
     distance -= length;
   }
-  return { x: 0, z: 0 };
+  return { x: route[0][0], z: route[0][1] };
+}
+
+function arrivalOnRoute(route, scale, hazards = []) {
+  const isSafe = point => !hazardAtPoint(point.x * scale, point.z * scale, hazards, 1.2);
+  // Prefer the first two visible leaf bands; if a pool or pit occupies that
+  // exact spot, slide toward the exit within those bands before going farther in.
+  for (let offset = EXIT_FOG_ENTRY_OFFSET; offset >= EXIT_FOG_ENTRY_OFFSET - 2; offset -= .25) {
+    const candidate = pointBackAlongRoute(route, offset / scale);
+    if (isSafe(candidate)) return candidate;
+  }
+  for (let offset = EXIT_FOG_ENTRY_OFFSET - 2.25; offset >= 2.5; offset -= .25) {
+    const candidate = pointBackAlongRoute(route, offset / scale);
+    if (isSafe(candidate)) return candidate;
+  }
+  return { x: route[0][0], z: route[0][1] };
 }
 
 export function createAuthoredLayout(id, art, scale = 1.5) {
   const layout = LOCATION_LAYOUTS[id];
   if (!layout) throw new Error(`Missing authored layout: ${id}`);
-  const routes = layout.routes.map(route => route.map(([x, z]) => [x * scale, z * scale]));
+  const layoutRoutes = layout.routes.map(route => {
+    const extended = route.map(([x, z]) => [x, z]);
+    const end = extended.at(-1), previous = extended.at(-2), length = Math.hypot(end[0] - previous[0], end[1] - previous[1]);
+    extended[extended.length - 1] = [end[0] + (end[0] - previous[0]) / length * EXIT_FOG_EXIT_EXTENSION / scale,
+      end[1] + (end[1] - previous[1]) / length * EXIT_FOG_EXIT_EXTENSION / scale];
+    return extended;
+  });
+  const routes = layoutRoutes.map(route => route.map(([x, z]) => [x * scale, z * scale]));
   const rooms = layout.rooms.map(([x, z, rx, rz]) => [x * scale, z * scale, rx * scale, rz * scale]);
   const boundPoints = [...routes.flat().map(([x, z]) => ({ x, z })), ...rooms.flatMap(([x, z, rx, rz]) =>
     [{ x: x - rx, z: z - rz }, { x: x + rx, z: z + rz }]), ...art.hazards.flatMap(hazard => hazard.points)];
@@ -95,9 +118,9 @@ export function createAuthoredLayout(id, art, scale = 1.5) {
     - points[(i + 1) % points.length].x * p.z, 0));
   const outer = contours.sort((a, b) => area(b) - area(a))[0];
   if (!outer) throw new Error(`No connected floor contour: ${id}`);
-  const exits = layout.routes.map(route => {
+  const exits = layoutRoutes.map(route => {
     const end = route.at(-1), previous = route.at(-2), length = Math.hypot(end[0] - previous[0], end[1] - previous[1]);
-    const arrival = arrivalOnRoute(route);
+    const arrival = arrivalOnRoute(route, scale, art.hazards);
     return { x: end[0] * scale, z: end[1] * scale,
       dirX: (end[0] - previous[0]) / length, dirZ: (end[1] - previous[1]) / length,
       halfWidth: width + .15, halfDepth: 1.3, arrival: { x: arrival.x * scale, z: arrival.z * scale } };
