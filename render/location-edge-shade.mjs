@@ -81,17 +81,13 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   bounds.minX -= margin; bounds.maxX += margin; bounds.minZ -= margin; bounds.maxZ += margin;
   const width = bounds.maxX - bounds.minX, height = bounds.maxZ - bounds.minZ;
   const data = new Uint8Array(resolution * resolution * 4);
-  const distances = new Float32Array(resolution * resolution);
   for (let y = 0; y < resolution; y++) {
     for (let x = 0; x < resolution; x++) {
       const worldX = bounds.minX + (x + .5) / resolution * width;
       const worldZ = bounds.minZ + (y + .5) / resolution * height;
-      const distance = locationEdgeDistanceAt(worldX, worldZ, points);
-      distances[y * resolution + x] = distance;
-      const shade = Math.round(shadeAtDistance(distance, settings) * 255);
       const offset = (y * resolution + x) * 4;
       const pathShade = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
-      data[offset] = shade; data[offset + 1] = pathShade; data[offset + 2] = shade; data[offset + 3] = 255;
+      data[offset] = pathShade; data[offset + 3] = 255;
     }
     if ((y + 1) % 16 === 0) await yieldWork();
   }
@@ -99,10 +95,10 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = false; texture.needsUpdate = true;
-  const uniforms = { cqEdgeShadeMap: { value: texture },
-    cqEdgeShadeColor: { value: new THREE.Color(settings.color) },
-    cqEdgeShadeTint: { value: settings.tint }, cqEdgeShadeCurve: { value: settings.curve },
-    cqEdgeShadeBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
+  const uniforms = { cqPathFogMap: { value: texture },
+    cqPathFogColor: { value: new THREE.Color(settings.color) },
+    cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
+    cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
   const patchMaterial = material => {
     if (!material?.isMeshStandardMaterial || material.userData.locationEdgeShadePatched) return;
     material.userData.locationEdgeShadePatched = true;
@@ -116,11 +112,11 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <project_vertex>', 'vCQLocationWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>');
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>
-          uniform sampler2D cqEdgeShadeMap;
-          uniform vec3 cqEdgeShadeColor;
-          uniform float cqEdgeShadeTint;
-          uniform float cqEdgeShadeCurve;
-          uniform vec4 cqEdgeShadeBounds;
+          uniform sampler2D cqPathFogMap;
+          uniform vec3 cqPathFogColor;
+          uniform float cqPathFogTint;
+          uniform float cqPathFogCurve;
+          uniform vec4 cqPathFogBounds;
           varying vec3 vCQLocationWorld;
           vec3 cqLinearToOklab(vec3 c) {
             vec3 lms = vec3(
@@ -149,20 +145,18 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
             return mix(low, high, step(vec3(0.5), layer));
           }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
-          vec2 cqEdgeUv = (vCQLocationWorld.xz - cqEdgeShadeBounds.xy) / cqEdgeShadeBounds.zw;
-          float cqEdgeShade = texture2D(cqEdgeShadeMap, cqEdgeUv).r;
-          float cqPathShade = texture2D(cqEdgeShadeMap, cqEdgeUv).g;
-          cqEdgeShade = max(cqEdgeShade, cqPathShade);`)
+          vec2 cqPathFogUv = (vCQLocationWorld.xz - cqPathFogBounds.xy) / cqPathFogBounds.zw;
+          float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r;`)
         .replace('#include <opaque_fragment>', `
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
-          vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqEdgeShadeColor);
-          vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqEdgeShade * cqEdgeShadeTint);
-          float cqFogConvergence = pow(cqEdgeShade, cqEdgeShadeCurve);
-          vec3 cqFogLab = mix(cqLinearToOklab(cqOverlaid), cqLinearToOklab(cqEdgeShadeColor), cqFogConvergence);
+          vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
+          vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
+          float cqFogConvergence = pow(cqPathFog, cqPathFogCurve);
+          vec3 cqFogLab = mix(cqLinearToOklab(cqOverlaid), cqLinearToOklab(cqPathFogColor), cqFogConvergence);
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'cq-location-edge-shade-v6';
+    material.customProgramCacheKey = () => 'cq-location-path-fog-v7';
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
@@ -170,18 +164,16 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   const update = next => {
     const previous = settings; settings = { ...settings, ...next };
     if (previous.start !== settings.start || previous.end !== settings.end) updatePaths(paths);
-    uniforms.cqEdgeShadeColor.value.set(settings.color);
-    uniforms.cqEdgeShadeTint.value = settings.tint; uniforms.cqEdgeShadeCurve.value = settings.curve;
+    uniforms.cqPathFogColor.value.set(settings.color);
+    uniforms.cqPathFogTint.value = settings.tint; uniforms.cqPathFogCurve.value = settings.curve;
   };
   const updatePaths = nextPaths => {
     paths.splice(0, paths.length, ...(nextPaths?.paths ?? []));
     for (let y = 0; y < resolution; y++) for (let x = 0; x < resolution; x++) {
       const worldX = bounds.minX + (x + .5) / resolution * width;
       const worldZ = bounds.minZ + (y + .5) / resolution * height;
-      const pixel = y * resolution + x, offset = pixel * 4;
-      const edgeShade = Math.round(shadeAtDistance(distances[pixel], settings) * 255);
-      data[offset + 1] = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
-      data[offset] = edgeShade; data[offset + 2] = edgeShade;
+      const offset = (y * resolution + x) * 4;
+      data[offset] = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
     }
     texture.needsUpdate = true;
   };
