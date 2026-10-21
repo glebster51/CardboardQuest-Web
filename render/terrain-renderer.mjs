@@ -1,5 +1,6 @@
 import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs';
 import { exitRoadContinuation } from '../game/location-art.mjs';
+import { smoothClosedContour } from '../terrain-shapes.mjs?v=2';
 
 function terrainShape(THREE, outerPoints, holes = []) {
   const shape = new THREE.Shape();
@@ -20,7 +21,8 @@ function terrainShape(THREE, outerPoints, holes = []) {
 }
 
 function shapesFromContours(THREE, contours) {
-  const records = contours.map(points => {
+  const records = contours.map(contour => {
+    const points = smoothClosedContour(contour, 3);
     let area = 0;
     for (let i = 0; i < points.length; i++) {
       const a = points[i], b = points[(i + 1) % points.length];
@@ -110,9 +112,10 @@ function addDropZoneUnderside(THREE, location) {
 function addHazardBasins(THREE, location, paper, corrugation) {
   for (const hazard of location.hazards ?? []) {
     if (hazard.kind === 'cliff') continue;
-    const center = hazard.points.reduce((p, v) => ({ x: p.x + v.x / hazard.points.length,
-      z: p.z + v.z / hazard.points.length }), { x: 0, z: 0 });
-    const inset = amount => hazard.points.map(p => ({ x: center.x + (p.x - center.x) * amount,
+    const contour = smoothClosedContour(hazard.points, 3);
+    const center = contour.reduce((p, v) => ({ x: p.x + v.x / contour.length,
+      z: p.z + v.z / contour.length }), { x: 0, z: 0 });
+    const inset = amount => contour.map(p => ({ x: center.x + (p.x - center.x) * amount,
       z: center.z + (p.z - center.z) * amount }));
     // Raster-authored water is already at the ground datum. It is a flat
     // surface mask, never an excavated bowl with stacked cardboard walls.
@@ -127,7 +130,7 @@ function addHazardBasins(THREE, location, paper, corrugation) {
       location.sceneGroup.add(wall);
     }
     const water = hazard.kind !== 'abyss';
-    const waterPoints = hazard.kind === 'depth-water' ? hazard.points : inset(.87);
+    const waterPoints = hazard.kind === 'depth-water' ? contour : inset(.87);
     const surface = new THREE.Mesh(new THREE.ShapeGeometry(terrainShape(THREE, waterPoints)),
       new THREE.MeshStandardMaterial({ color: hazard.kind === 'depth-water' ? 0x318a9c : hazard.kind === 'peat' ? 0x284745 : water ? 0x318a9c : 0x11151e,
         roughness: water ? .72 : 1, metalness: 0, side: THREE.DoubleSide }));

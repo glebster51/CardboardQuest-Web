@@ -1,4 +1,4 @@
-import { extractTerrainContours } from '../terrain-shapes.mjs';
+import { extractTerrainContours, smoothClosedContour } from '../terrain-shapes.mjs?v=2';
 import { EXIT_FOG_ENTRY_OFFSET, EXIT_FOG_EXIT_EXTENSION } from '../exit-fog.mjs';
 import { distanceToPolygon, hazardAtPoint, pointInPolygon } from './world-hazards.mjs';
 
@@ -127,6 +127,6 @@ export function createAuthoredLayout(id, art, scale = 1.5, exitTargets = []) {
       dirX: (end[0] - previous[0]) / length, dirZ: (end[1] - previous[1]) / length,
       halfWidth: width + .15, halfDepth: 1.3, arrival: { x: arrival.x * scale, z: arrival.z * scale } };
   });
-  return { points: sampleContour(outer), exits,
+  return { points: smoothClosedContour(sampleContour(outer), 4), exits,
     ...(id === 'broken-bridge' ? { entry: { x: 0, z: 11 * scale } } : {}) };
 }

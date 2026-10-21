@@ -3,7 +3,7 @@ import { createGameAudio } from './audio/game-audio.mjs';
 import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience } from './audio/audio-rules.mjs';
 import { createLocationStreaming } from './game/location-streaming.mjs';
-import { createGeometryClient } from './render/geometry-client.mjs?v=2';
+import { createGeometryClient } from './render/geometry-client.mjs?v=3';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=9';
@@ -43,7 +43,7 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaign
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=15';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=16';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,

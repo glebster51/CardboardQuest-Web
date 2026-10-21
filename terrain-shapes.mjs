@@ -52,6 +52,22 @@ function smoothStep(min, max, value) {
 
 function contourKey(point) { return `${Math.round(point.x * 10000)},${Math.round(point.z * 10000)}`; }
 
+/** Iterative low-pass smoothing for closed contours without changing vertex count. */
+export function smoothClosedContour(points, iterations = 4) {
+  if (!Array.isArray(points)) throw new TypeError('Contour points must be an array');
+  if (!Number.isInteger(iterations) || iterations < 0 || iterations > 32) throw new RangeError('Invalid contour smoothing passes');
+  let result = points.map(point => ({ x: point.x, z: point.z }));
+  for (let pass = 0; pass < iterations && result.length >= 3; pass++) {
+    result = result.map((point, index) => {
+      const previous = result[(index + result.length - 1) % result.length];
+      const next = result[(index + 1) % result.length];
+      return { x: (previous.x + point.x * 2 + next.x) * .25,
+        z: (previous.z + point.z * 2 + next.z) * .25 };
+    });
+  }
+  return result;
+}
+
 export function extractTerrainContours(map, threshold) {
   const segments = [];
   const { columns, rows, values, minX, minZ, cellSize } = map;
