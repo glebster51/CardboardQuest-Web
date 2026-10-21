@@ -1,4 +1,4 @@
-import { renderCampaignGraph } from '../render/campaign-graph-view.mjs';
+import { renderCampaignGraph } from '../render/campaign-graph-view.mjs?v=2';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const mapPoint = (svg, event) => {
@@ -11,19 +11,27 @@ export function createCampaignGraphEditor({ model, getData, changed, onGraphChan
   const root = document.createElement('section'); root.id = 'campaign-graph-editor'; root.hidden = true;
   root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-labelledby', 'cg-title');
   root.innerHTML = `<header class="cg-header"><div><small>РЕДАКТОР КАРТЫ МИРА · ИГРА НА ПАУЗЕ</small><strong id="cg-title">Дороги долины</strong>
-    <span id="cg-hint">Тяни выход к входу · перетаскивай ноды · удерживай R для поворота · выбери линию и Delete для удаления</span></div>
-    <nav><button id="cg-return" type="button">К редактору сцены</button><button id="cg-close" type="button">Закрыть и играть ×</button></nav></header>
+    <span id="cg-hint">Тяни коннектор к другому · таскай ноды · удерживай R для поворота · выбери связь и Delete</span></div>
+    <nav><button id="cg-apply" type="button" disabled>Применить граф</button><button id="cg-return" type="button">К редактору сцены</button><button id="cg-close" type="button">Закрыть и играть ×</button></nav></header>
     <div class="cg-scroll"><svg id="cg-graph" role="img"></svg></div>`;
   document.body.append(root);
   const svg = root.querySelector('#cg-graph'), closeButton = root.querySelector('#cg-close');
-  let data = null, graph = null, visible = false, gesture = null, pending = null, pendingPoint = null, selectedEdge = null;
+  const scroll = root.querySelector('.cg-scroll');
+  let data = null, graph = null, appliedGraph = null, visible = false, gesture = null, pending = null, pendingPoint = null, selectedEdge = null;
   let rotateHeld = false;
+  const applyButton = root.querySelector('#cg-apply'), hint = root.querySelector('#cg-hint');
+
+  function refreshApplyState() {
+    const dirty = Boolean(graph && appliedGraph && JSON.stringify(graph) !== JSON.stringify(appliedGraph));
+    applyButton.disabled = !dirty;
+    applyButton.classList.toggle('is-dirty', dirty);
+  }
 
   function updateGraph(next, notify = true) {
     const didChange = model.set(null, 'campaign-graph', next);
     graph = next;
-    if (notify) onGraphChange(clone(graph));
     if (notify && didChange) changed();
+    refreshApplyState();
     render();
   }
   function render() {
@@ -66,7 +74,7 @@ export function createCampaignGraphEditor({ model, getData, changed, onGraphChan
     if (gesture.type === 'link') { pendingPoint = point; render(); return; }
     const node = graph.nodes.find(item => item.id === gesture.id);
     if (!node) return;
-    const dx = point.x - gesture.lastX, dy = point.y - gesture.lastY;
+    const dx = (point.x - gesture.lastX) / 5, dy = (point.y - gesture.lastY) / 5;
     gesture.lastX = point.x; gesture.lastY = point.y;
     const next = clone(graph), target = next.nodes.find(item => item.id === gesture.id);
     if (rotateHeld) target.rotation = Math.max(-3600, Math.min(3600, target.rotation + dx * .65));
@@ -81,8 +89,8 @@ export function createCampaignGraphEditor({ model, getData, changed, onGraphChan
       const next = clone(graph);
       next.edges = next.edges.filter(edge => !(edge.from === source.nodeId && edge.output === source.portId));
       next.edges.push({ from: source.nodeId, output: source.portId, to: destination.nodeId, input: destination.portId });
-      try { updateGraph(next); root.querySelector('#cg-hint').textContent = 'Связь обновлена · игра и карта мира уже используют новый переход'; }
-      catch (error) { root.querySelector('#cg-hint').textContent = `Связь не создана: ${error.message}`; }
+      try { updateGraph(next); hint.textContent = 'Связь добавлена в черновик · нажми «Применить граф», чтобы пересобрать игру'; }
+      catch (error) { hint.textContent = `Связь не создана: ${error.message}`; }
     }
     pending = null; pendingPoint = null; render();
   }
@@ -97,7 +105,7 @@ export function createCampaignGraphEditor({ model, getData, changed, onGraphChan
     if (event.code === 'Escape' && visible) { event.preventDefault(); close(false); }
     if (visible && selectedEdge !== null && ['Delete', 'Backspace'].includes(event.code)) {
       event.preventDefault(); const next = clone(graph); next.edges.splice(selectedEdge, 1); selectedEdge = null;
-      updateGraph(next); root.querySelector('#cg-hint').textContent = 'Связь удалена · выход больше не переводит на другую локацию';
+      updateGraph(next); hint.textContent = 'Связь удалена из черновика · нажми «Применить граф», чтобы обновить игру';
     }
   }
   function onKeyUp(event) { if (event.code === 'KeyR') rotateHeld = false; }
@@ -105,6 +113,16 @@ export function createCampaignGraphEditor({ model, getData, changed, onGraphChan
   svg.addEventListener('pointermove', onPointerMove);
   svg.addEventListener('pointerup', onPointerUp);
   svg.addEventListener('pointercancel', onPointerUp);
+  applyButton.addEventListener('click', () => {
+    if (applyButton.disabled || !graph) return;
+    try {
+      onGraphChange(clone(graph));
+      appliedGraph = clone(graph);
+      changed();
+      hint.textContent = 'Граф применён · переходы и игровая карта обновлены';
+      refreshApplyState();
+    } catch (error) { hint.textContent = `Не удалось применить граф: ${error.message}`; }
+  });
   closeButton.addEventListener('click', () => close(true));
   root.querySelector('#cg-return').addEventListener('click', () => close(false));
   addEventListener('keydown', onKeyDown, true); addEventListener('keyup', onKeyUp);
@@ -113,11 +131,14 @@ export function createCampaignGraphEditor({ model, getData, changed, onGraphChan
     get isOpen() { return visible; },
     open(state) {
       data = getData(state);
+      appliedGraph = clone(data.graph);
       graph = model.register(null, 'campaign-graph', data.graph);
-    visible = true; selectedEdge = null; root.hidden = false; document.body.classList.add('campaign-graph-open');
-      onGraphChange(clone(graph)); render(); closeButton.focus();
+      visible = true; selectedEdge = null; root.hidden = false; document.body.classList.add('campaign-graph-open');
+      refreshApplyState(); render();
+      requestAnimationFrame(() => { scroll.scrollLeft = Math.max(0, (scroll.scrollWidth - scroll.clientWidth) / 2); });
+      closeButton.focus();
     },
     close,
-    sync() { const current = model.get(null, 'campaign-graph'); if (current) { graph = current; onGraphChange(clone(graph)); render(); } },
+    sync() { const current = model.get(null, 'campaign-graph'); if (current) { graph = current; refreshApplyState(); render(); } },
   };
 }

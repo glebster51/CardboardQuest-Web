@@ -100,15 +100,23 @@ body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor{visibi
 #campaign-graph-editor #cg-hint{font-size:12px;color:#c6bda9}
 #campaign-graph-editor button{padding:9px 14px;border:1px solid #e3bc73;border-radius:8px;background:#493c32;color:#ffedc6;font:600 13px system-ui,sans-serif;cursor:pointer}
 #campaign-graph-editor button:hover{background:#68513b}
+#campaign-graph-editor button:disabled{opacity:.46;cursor:default}
+#campaign-graph-editor #cg-apply:not(:disabled){background:#456346;border-color:#9fe3a3;box-shadow:0 0 0 2px #9fe3a326,0 0 18px #8de9a633}
+#campaign-graph-editor #cg-apply:not(:disabled):hover{background:#557c55}
 #campaign-graph-editor .cg-scroll{overflow:auto;overscroll-behavior:contain;text-align:center;padding:22px 14px 48px;touch-action:pan-x pan-y;background-image:radial-gradient(#d1c4a51f 1px,transparent 1.2px);background-size:24px 24px}
 #campaign-graph-editor #cg-graph{display:block;width:min(100%,850px);height:auto;min-height:1200px;margin:0 auto;overflow:visible;user-select:none;touch-action:none}
+#campaign-graph-editor #cg-graph.campaign-graph-editable{width:min(4250px,500%);max-width:none;min-height:0;margin:0}
 .campaign-edge{fill:none;stroke:#b9aa88;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;opacity:.68;marker-end:url(#campaign-arrow)}
 .campaign-edge.is-editable{stroke:#e8c985;stroke-width:3;opacity:.58}
 .campaign-edge.is-pending{stroke:#7ce2ce;stroke-width:5;stroke-dasharray:9 6;opacity:1}
 .campaign-edge.is-editable{pointer-events:stroke;cursor:pointer}
+.campaign-edge-hit{fill:none;stroke:transparent;stroke-width:18;pointer-events:stroke;cursor:pointer}
 .campaign-edge.is-selected{stroke:#ff785f;stroke-width:7;opacity:1}
 .campaign-node-image{filter:drop-shadow(0 6px 5px #100d18b0)}
+.campaign-node-frame{fill:#252334;stroke:#e4c78b;stroke-width:1.8;filter:drop-shadow(0 3px 4px #080710aa)}
+.campaign-node-hitarea{fill:#fff;fill-opacity:.001;stroke:none;pointer-events:all}
 .campaign-node-label{fill:#f5e6c6;font:600 16px system-ui,sans-serif;paint-order:stroke;stroke:#211f34;stroke-width:4px;stroke-linejoin:round;pointer-events:none}
+.campaign-node.is-editable .campaign-node-label{font-size:3.2px;stroke-width:1px}
 .campaign-node.is-current .campaign-node-label{fill:#ffe58d}
 .campaign-current-ring{fill:#57dc4b21;stroke:#79ec54;stroke-width:6;pointer-events:none}
 .campaign-node.is-visited:not(.is-current) .campaign-node-image{filter:drop-shadow(0 4px 4px #0008) saturate(.8)}
@@ -116,6 +124,12 @@ body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor{visibi
 .campaign-port.input{fill:#79ddcb}
 .campaign-port.output{fill:#f08d67}
 .campaign-port.is-editable{cursor:crosshair;stroke:#fff1cf;stroke-width:1.5}
+.campaign-port.is-editable{fill:#211f34;stroke-width:1.15}
+.campaign-port-core{pointer-events:none;stroke:#fff1cf;stroke-width:.8}
+.campaign-port-core.input{fill:#79ddcb}
+.campaign-port-core.output{fill:#ff986f}
+.campaign-map-pin{fill:#c99c66;stroke:#422f28;stroke-width:3;filter:drop-shadow(0 2px 2px #080710aa)}
+.campaign-map-pin.is-current{fill:#84e565;stroke:#f2e2a8;stroke-width:2.5}
 .campaign-node.is-editable{cursor:grab}
 .campaign-node.is-editable:active{cursor:grabbing}
-@media(max-width:700px){#campaign-graph-editor .cg-header{padding:10px;gap:8px}#campaign-graph-editor .cg-header strong{font-size:17px}#campaign-graph-editor #cg-hint{font-size:10px}#campaign-graph-editor button{padding:8px;font-size:11px}#campaign-graph-editor .cg-scroll{padding:12px 6px 32px}#campaign-graph-editor #cg-graph{min-height:1000px}}
+@media(max-width:700px){#campaign-graph-editor .cg-header{padding:10px;gap:8px;align-items:flex-start;flex-wrap:wrap}#campaign-graph-editor .cg-header>div{min-width:100%}#campaign-graph-editor .cg-header nav{flex-wrap:wrap}#campaign-graph-editor .cg-header strong{font-size:17px}#campaign-graph-editor #cg-hint{font-size:10px}#campaign-graph-editor button{padding:8px;font-size:11px}#campaign-graph-editor .cg-scroll{padding:12px 6px 32px}#campaign-graph-editor #cg-graph:not(.campaign-graph-editable){min-height:1000px}}

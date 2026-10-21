@@ -59,18 +59,21 @@ export function createCampaignNodeVisuals(locations, graph, fog) {
   return visuals;
 }
 
-export function graphPortPosition(node, visual, direction, portId) {
+export function graphPortPosition(node, visual, direction, portId, localScale = 1, layoutScale = 1) {
   const local = visual?.[direction]?.[portId];
   if (!local) return null;
   const angle = node.rotation * Math.PI / 180, cosine = Math.cos(angle), sine = Math.sin(angle);
-  return { x: node.x + local.x * cosine - local.y * sine,
-    y: node.y + local.x * sine + local.y * cosine };
+  const x = local.x * localScale, y = local.y * localScale;
+  return { x: node.x * layoutScale + x * cosine - y * sine,
+    y: node.y * layoutScale + x * sine + y * cosine };
 }
 
 /** Shared SVG rendering for the in-game map and the tilde graph editor. */
 export function renderCampaignGraph({ svg, graph, visuals, state = {}, editable = false, pending = null, pointer = null, selectedEdge = null }) {
   validateCampaignGraph(graph);
-  svg.setAttribute('viewBox', `0 0 ${graph.width} ${graph.height}`);
+  const layoutScale = editable ? 5 : 1;
+  svg.classList.toggle('campaign-graph-editable', editable);
+  svg.setAttribute('viewBox', `0 0 ${graph.width * layoutScale} ${graph.height * layoutScale}`);
   svg.setAttribute('aria-label', editable ? 'Редактор графа локаций' : 'Карта связанных локаций');
   svg.replaceChildren();
   const markerId = editable ? 'campaign-arrow-editor' : 'campaign-arrow-map';
@@ -81,35 +84,52 @@ export function renderCampaignGraph({ svg, graph, visuals, state = {}, editable 
   const byId = new Map(graph.nodes.map(node => [node.id, node]));
   const visited = new Set(state.visited ?? []);
   for (const [edgeIndex, edge] of graph.edges.entries()) {
-    const from = byId.get(edge.from), to = byId.get(edge.to), a = graphPortPosition(from, visuals[edge.from], 'outputs', edge.output);
-    const b = graphPortPosition(to, visuals[edge.to], 'inputs', edge.input);
+    const from = byId.get(edge.from), to = byId.get(edge.to);
+    const a = editable ? graphPortPosition(from, visuals[edge.from], 'outputs', edge.output, 5, layoutScale)
+      : { x: from.x, y: from.y };
+    const b = editable ? graphPortPosition(to, visuals[edge.to], 'inputs', edge.input, 5, layoutScale)
+      : { x: to.x, y: to.y };
     if (!a || !b) continue;
     const dx = b.x - a.x, dy = b.y - a.y, bend = Math.max(28, Math.min(145, Math.hypot(dx, dy) * .36));
     const horizontal = Math.abs(dx) > Math.abs(dy);
+    const d = horizontal ? `M${a.x} ${a.y} C${a.x + Math.sign(dx || 1) * bend} ${a.y},${b.x - Math.sign(dx || 1) * bend} ${b.y},${b.x} ${b.y}`
+      : `M${a.x} ${a.y} C${a.x} ${a.y + Math.sign(dy || 1) * bend},${b.x} ${b.y - Math.sign(dy || 1) * bend},${b.x} ${b.y}`;
     const path = element('path', { class: `campaign-edge${editable ? ' is-editable' : ''}${edgeIndex === selectedEdge ? ' is-selected' : ''}`,
-      'marker-end': `url(#${markerId})`,
-      ...(editable ? { 'data-edge-index': edgeIndex, tabindex: 0 } : {}),
-      d: horizontal ? `M${a.x} ${a.y} C${a.x + Math.sign(dx || 1) * bend} ${a.y},${b.x - Math.sign(dx || 1) * bend} ${b.y},${b.x} ${b.y}`
-        : `M${a.x} ${a.y} C${a.x} ${a.y + Math.sign(dy || 1) * bend},${b.x} ${b.y - Math.sign(dy || 1) * bend},${b.x} ${b.y}` });
+      'marker-end': `url(#${markerId})`, ...(editable ? { 'data-edge-index': edgeIndex, tabindex: 0 } : {}), d });
     svg.append(path);
+    if (editable) svg.append(element('path', { class: 'campaign-edge-hit', 'data-edge-index': edgeIndex, d }));
   }
   if (pending && pointer) {
     const from = byId.get(pending.nodeId);
-    const start = graphPortPosition(from, visuals[from.id], pending.kind === 'output' ? 'outputs' : 'inputs', pending.portId);
+    const start = graphPortPosition(from, visuals[from.id], pending.kind === 'output' ? 'outputs' : 'inputs', pending.portId, 5, layoutScale);
     if (start) svg.append(element('path', { class: 'campaign-edge is-pending', d: `M${start.x} ${start.y} Q${(start.x + pointer.x) / 2} ${Math.min(start.y, pointer.y) - 35} ${pointer.x} ${pointer.y}` }));
   }
   for (const node of graph.nodes) {
     const visual = visuals[node.id];
+    const scale = editable ? 5 : 1;
     const group = element('g', { class: `campaign-node${node.id === state.currentLocationId ? ' is-current' : visited.has(node.id) ? ' is-visited' : ''}${editable ? ' is-editable' : ''}`,
-      transform: `translate(${node.x} ${node.y}) rotate(${node.rotation})`, 'data-node': node.id,
+      transform: `translate(${node.x * layoutScale} ${node.y * layoutScale}) rotate(${node.rotation}) scale(${scale})`, 'data-node': node.id,
       'aria-label': `${state.labels?.[node.id] ?? node.id}${node.id === state.currentLocationId ? ', ты здесь' : visited.has(node.id) ? ', посещено' : ', впереди'}` });
     const title = element('title'); title.textContent = state.labels?.[node.id] ?? node.id; group.append(title);
-    group.append(element('image', { class: 'campaign-node-image', href: visual.image,
-      x: -visual.width / 2, y: -visual.height / 2, width: visual.width, height: visual.height,
-      preserveAspectRatio: 'none', 'pointer-events': editable ? 'none' : 'auto' }));
-    const label = element('text', { class: 'campaign-node-label', x: 0, y: visual.height / 2 + 17, 'text-anchor': 'middle' });
-    label.textContent = state.labels?.[node.id] ?? node.id; group.append(label);
-    if (node.id === state.currentLocationId) group.append(element('circle', { class: 'campaign-current-ring', cx: 0, cy: 0,
+    if (editable) {
+      const frameWidth = visual.width + 14, frameHeight = visual.height + 26;
+      group.append(element('rect', { class: 'campaign-node-frame', x: -frameWidth / 2, y: -frameHeight / 2,
+        width: frameWidth, height: frameHeight, rx: 8 }));
+      group.append(element('rect', { class: 'campaign-node-hitarea', x: -frameWidth / 2, y: -frameHeight / 2,
+        width: frameWidth, height: frameHeight, rx: 8 }));
+      group.append(element('image', { class: 'campaign-node-image', href: visual.image,
+        x: -visual.width / 2, y: -visual.height / 2 - 8, width: visual.width, height: visual.height,
+        preserveAspectRatio: 'none', 'pointer-events': 'none' }));
+      const label = element('text', { class: 'campaign-node-label', x: 0, y: visual.height / 2 + 13,
+        'font-size': '3.2', 'text-anchor': 'middle' });
+      label.textContent = state.labels?.[node.id] ?? node.id; group.append(label);
+    } else {
+      group.append(element('circle', { class: `campaign-map-pin${node.id === state.currentLocationId ? ' is-current' : ''}`,
+        cx: 0, cy: 0, r: node.id === state.currentLocationId ? 10 : 7 }));
+      const label = element('text', { class: 'campaign-node-label', x: 0, y: 20, 'text-anchor': 'middle' });
+      label.textContent = state.labels?.[node.id] ?? node.id; group.append(label);
+    }
+    if (editable && node.id === state.currentLocationId) group.append(element('circle', { class: 'campaign-current-ring', cx: 0, cy: 0,
       r: Math.max(visual.width, visual.height) * .55 }));
     for (const port of node.inputs) {
       const position = visual.inputs[port.id];

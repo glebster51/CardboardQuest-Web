@@ -233,7 +233,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   async function openCampaignGraph() {
     if (graphOpen || !getCampaignGraphData) return;
     if (!campaignGraphEditor) {
-      const { createCampaignGraphEditor } = await import('./campaign-graph-editor.mjs?v=1');
+      const { createCampaignGraphEditor } = await import('./campaign-graph-editor.mjs?v=2');
       campaignGraphEditor = createCampaignGraphEditor({ model, getData: getCampaignGraphData, changed,
         onGraphChange: onCampaignGraphChange ?? (() => {}), onClose(play) {
           graphOpen = false;

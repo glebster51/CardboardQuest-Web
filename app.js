@@ -10,7 +10,7 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=2';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=132';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=135';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=136';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -22,7 +22,7 @@ import { followDirection, followMotion, nearestAwakeThreat } from './render/came
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=3';
-import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=1';
+import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=2';
 import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=1';
 import { buildLocationMapGraph } from './game/location-map-data.mjs';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
