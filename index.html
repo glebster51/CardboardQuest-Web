@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=79">
+  <link rel="stylesheet" href="style.css?v=80">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
   <div id="location-info" role="status" aria-live="polite"><strong id="location-title"></strong><small id="location-detail"></small></div>
   <button id="restart" type="button" aria-label="Начать игру заново">↻ <span>Заново</span></button>
   <nav id="hud-tools" aria-label="Снаряжение и путешествие">
-    <button id="inventory-toggle" class="hud-icon" type="button" aria-label="Рюкзак" aria-controls="inventory-panel" title="Рюкзак">
+    <button id="inventory-toggle" class="hud-icon" type="button" aria-label="Рюкзак" aria-controls="inventory-panel" aria-haspopup="dialog" aria-expanded="false" title="Рюкзак">
       <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
         <g stroke="#4b3020" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M18 13V9c0-6 12-6 12 0v4" fill="none"/>
@@ -56,13 +56,34 @@
       </div>
     </article>
   </section>
-  <section id="inventory-panel" hidden aria-live="polite">
-    <article>
-      <strong>Дорожный мешок</strong>
-      <div id="inventory-items"></div>
-      <button id="use-food" type="button">Съесть припасы</button>
-      <button id="inventory-close" type="button">Закрыть</button>
+  <section id="inventory-panel" hidden role="dialog" aria-modal="true" aria-labelledby="inventory-title">
+    <article class="inventory-sheet">
+      <header class="inventory-heading">
+        <div><h2 id="inventory-title">Дорожный мешок</h2><span id="inventory-equipment"></span></div>
+        <button id="inventory-close" type="button" aria-label="Закрыть рюкзак">×</button>
+      </header>
+      <div class="inventory-board">
+        <div id="inventory-items" role="group" aria-label="Предметы в рюкзаке, пять на пять ячеек"></div>
+      </div>
+      <footer class="inventory-bag">
+        <img id="inventory-backpack" alt="" aria-hidden="true" decoding="async">
+        <div class="inventory-bag-label"><strong id="inventory-capacity"></strong><span id="inventory-health" role="img" aria-label="Здоровье"></span></div>
+      </footer>
+      <p id="inventory-empty" hidden>Пока пусто. Впереди целое приключение.</p>
+      <nav id="inventory-pages" hidden aria-label="Страницы рюкзака">
+        <button id="inventory-previous" type="button" aria-label="Предыдущие предметы">←</button>
+        <span id="inventory-page-label"></span>
+        <button id="inventory-next" type="button" aria-label="Следующие предметы">→</button>
+      </nav>
+      <p id="inventory-notice" role="status" aria-live="polite"></p>
     </article>
+    <div id="inventory-tooltip" hidden role="group" aria-labelledby="inventory-item-name">
+      <button id="inventory-tooltip-close" type="button" aria-label="Закрыть описание">×</button>
+      <strong id="inventory-item-name"></strong>
+      <p id="inventory-item-description"></p>
+      <span id="inventory-item-effect"></span>
+      <button id="inventory-use" type="button" hidden>Использовать</button>
+    </div>
   </section>
   <section id="world-map" hidden role="dialog" aria-modal="true" aria-labelledby="world-map-title">
     <article>
@@ -76,7 +97,7 @@
   </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-<script type="module" src="app.js?v=100"></script>
+<script type="module" src="app.js?v=101"></script>
 </body>
 </html>
 

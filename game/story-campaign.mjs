@@ -199,15 +199,20 @@ export const ITEM_LABELS = Object.freeze({
   scrap: 'Медный лом', nuts: 'Орехи', bladeShard: 'Острый осколок',
 });
 
-export function consumeFood(state, health, maxHealth) {
-  const healValue = state.items.bandage > 0 ? 6 : state.items.jerky > 0 ? 4
-    : state.items.hardtack > 0 ? 3 : state.items.berries > 0 ? 2 : 0;
-  if (!healValue || health >= maxHealth) return { health, consumed: null, healed: 0 };
-  const item = state.items.bandage > 0 ? 'bandage' : state.items.jerky > 0 ? 'jerky'
-    : state.items.hardtack > 0 ? 'hardtack' : 'berries';
+export const CONSUMABLE_HEALING = Object.freeze({ bandage: 6, jerky: 4, hardtack: 3, berries: 2 });
+
+export function consumeInventoryItem(state, item, health, maxHealth) {
+  const healValue = CONSUMABLE_HEALING[item];
+  if (!healValue || !(state.items[item] > 0) || health <= 0 || health >= maxHealth)
+    return { health, consumed: null, healed: 0 };
   state.items[item]--;
   const nextHealth = Math.min(maxHealth, health + healValue);
   return { health: nextHealth, consumed: item, healed: nextHealth - health };
+}
+
+export function consumeFood(state, health, maxHealth) {
+  const item = Object.keys(CONSUMABLE_HEALING).find(id => state.items[id] > 0);
+  return consumeInventoryItem(state, item, health, maxHealth);
 }
 
 export function eligibleTransitions(id) {

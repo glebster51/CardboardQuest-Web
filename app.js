@@ -11,6 +11,7 @@ import { createPointerInput } from './game/pointer-input.mjs?v=2';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
+import { createInventoryPanel } from './render/inventory-panel.mjs';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
 import { createFigureFactory } from './render/figure-factory.mjs?v=2';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
@@ -27,9 +28,9 @@ import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } fr
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CACHE_OPEN_FRAME_DELAY, CACHE_SQUASH_DURATION, cacheSquashScale } from './game/cache-animation.mjs?v=1';
-import { CAMPAIGN, CAMPAIGN_SAVE_KEY, ITEM_LABELS, addItems, campaignLocation, chooseCampaignOption,
-  collectCampaignStoryPickup, consumeFood, createCampaignState, inspectCampaignLocation, openCampaignCache,
-  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=6';
+import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaignOption,
+  collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
+  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=9';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
@@ -114,7 +115,7 @@ async function start() {
     closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
   let inputController = null;
   const dialogue = createDialoguePanel({ root: dialoguePanel,
-    onOpen() { inputController?.cancel(); inventoryPanel.hidden = true; },
+    onOpen() { inputController?.cancel(); inventory.hide(); },
     onClose() {
       if (activeLocation.id === 'bell-vault' && (campaignState.flags.choseGoodbye || campaignState.flags.triedToReplaceGrandpa)) {
         campaignState.flags.grandpaDead = true;
@@ -127,6 +128,19 @@ async function start() {
       persistCampaign(); renderInventory(); refreshLocationInfo();
       const lines = getStoryDialogue(campaignState, activeLocation.id, 'choice', option.id);
       return { ...result, lines };
+    },
+  });
+  const inventory = createInventoryPanel({ root: inventoryPanel, trigger: document.querySelector('#inventory-toggle'),
+    getState: () => campaignState, getHealth: () => ({ health: heroBody.health, maxHealth: heroBody.maxHealth }),
+    onOpen() { inputController?.cancel(); },
+    onUse(id, slotIndex) {
+      const result = consumeInventoryItem(campaignState, id, heroBody.health, heroBody.maxHealth);
+      if (result.consumed) {
+        heroBody.health = result.health;
+        campaignState.inventorySlots[slotIndex] = null;
+        persistCampaign();
+      }
+      return result;
     },
   });
   const locationGroups = {};
@@ -465,35 +479,7 @@ async function start() {
     })().finally(() => { campRestorePromise = null; });
     return campRestorePromise;
   }
-  function renderInventory() {
-    const items = document.querySelector('#inventory-items');
-    items.replaceChildren();
-    const entries = Object.entries(campaignState.items).filter(([, count]) => count > 0);
-    if (!entries.length) {
-      const empty = document.createElement('span'); empty.textContent = 'Мешок пуст'; empty.style.gridColumn = '1 / -1'; items.append(empty);
-    } else for (const [id, count] of entries) {
-      const label = document.createElement('span'), amount = document.createElement('strong');
-      label.textContent = ITEM_LABELS[id] ?? id; amount.textContent = `× ${count}`;
-      items.append(label, amount);
-    }
-    if (campaignState.defenseBonus > 0) {
-      const label = document.createElement('span'), amount = document.createElement('strong');
-      label.textContent = 'Картонный оберег'; amount.textContent = `−${campaignState.defenseBonus} урона`;
-      items.append(label, amount);
-    }
-    if (campaignState.damageBonus > 0) {
-      const label = document.createElement('span'), amount = document.createElement('strong');
-      label.textContent = 'Заточенный осколок'; amount.textContent = `+${campaignState.damageBonus} урона`;
-      items.append(label, amount);
-    }
-    const carried = entries.reduce((sum, [, count]) => sum + count, 0);
-    const inventoryCount = document.querySelector('#inventory-count');
-    inventoryCount.hidden = carried === 0;
-    inventoryCount.textContent = carried > 99 ? '99+' : String(carried);
-    document.querySelector('#inventory-toggle').setAttribute('aria-label', carried ? `Рюкзак, предметов: ${carried}` : 'Рюкзак');
-    document.querySelector('#use-food').disabled = !['bandage', 'jerky', 'hardtack', 'berries'].some(id => campaignState.items[id] > 0)
-      || heroBody.health <= 0 || heroBody.health >= heroBody.maxHealth;
-  }
+  function renderInventory() { inventory.render(); }
   function showStoryCard(card) {
     dialogue.show({ ...card, title: card.title ?? activeLocation.title });
   }
@@ -522,21 +508,13 @@ async function start() {
     }
   }
   document.querySelector('#inventory-toggle').addEventListener('click', () => {
-    if (dialogue.isOpen()) return;
-    inputController?.cancel();
-    renderInventory(); inventoryPanel.hidden = false;
+    if (dialogue.isOpen() || locationTransition) return;
+    inventory.open();
   });
   mapButton.addEventListener('click', () => {
     if (dialogue.isOpen()) return;
-    inputController?.cancel(); inventoryPanel.hidden = true;
+    inputController?.cancel(); inventory.hide();
     locationMap.show(campaignState);
-  });
-  document.querySelector('#inventory-close').addEventListener('click', () => { inventoryPanel.hidden = true; });
-  document.querySelector('#use-food').addEventListener('click', () => {
-    const result = consumeFood(campaignState, heroBody.health, heroBody.maxHealth);
-    if (!result.consumed) return;
-    heroBody.health = result.health; persistCampaign(); renderInventory();
-    showStoryCard({ title: 'Передышка', text: `${result.consumed === 'bandage' ? 'Ты перевязал рану' : `Ты съел: ${ITEM_LABELS[result.consumed]}`}. Восстановлено ${result.healed / 4} сердца.` });
   });
   interactButton.addEventListener('click', () => {
     const result = inspectCampaignLocation(campaignState, activeLocation.id);
@@ -1347,7 +1325,7 @@ async function start() {
     async view(id, distance = 43) {
       simulationPaused = true;
       await enterLocation(id, activeLocation.id);
-      dialogue.close(); inventoryPanel.hidden = true;
+      dialogue.close(); inventory.hide();
       heroBody.x = 0; heroBody.z = 0; heroBody.vx = 0; heroBody.vz = 0;
       heroBody.health = heroBody.maxHealth;
       heroFigure.victoryAnimation = null;
