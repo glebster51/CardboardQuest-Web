@@ -20,6 +20,87 @@ function pathDistanceAt(x, z, paths) {
   return nearest;
 }
 
+const FOG_PATH_JOIN_DISTANCE = 1.25;
+const fogNodeKey = point => `${Math.round(point[0] * 10000)},${Math.round(point[1] * 10000)}`;
+const fogEdgeKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+
+function fogLoopArea(points) {
+  let area = 0;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++)
+    area += points[j][0] * points[i][1] - points[i][0] * points[j][1];
+  return Math.abs(area) * .5;
+}
+
+/** Closes tiny authored gaps for rendering and marks enclosed trail loops as permanently clear. */
+export function buildFogPathTopology(paths, joinDistance = FOG_PATH_JOIN_DISTANCE) {
+  const nodes = new Map(), adjacency = new Map(), explicitEdges = new Set(), renderPaths = [...paths];
+  const nodeFor = point => {
+    const key = fogNodeKey(point);
+    if (!nodes.has(key)) { nodes.set(key, point); adjacency.set(key, new Set()); }
+    return key;
+  };
+  const addEdge = (a, b) => {
+    if (a === b) return;
+    adjacency.get(a).add(b); adjacency.get(b).add(a);
+  };
+  for (const path of paths) for (let index = 1; index < path.points.length; index++) {
+    const a = nodeFor(path.points[index - 1]), b = nodeFor(path.points[index]);
+    addEdge(a, b); explicitEdges.add(fogEdgeKey(a, b));
+  }
+
+  const candidates = new Map(), buckets = new Map(), cellSize = joinDistance;
+  for (const [key, point] of nodes) {
+    const cx = Math.floor(point[0] / cellSize), cz = Math.floor(point[1] / cellSize);
+    for (let x = cx - 1; x <= cx + 1; x++) for (let z = cz - 1; z <= cz + 1; z++) {
+      for (const other of buckets.get(`${x},${z}`) ?? []) {
+        const otherPoint = nodes.get(other), distance = Math.hypot(point[0] - otherPoint[0], point[1] - otherPoint[1]);
+        const edge = fogEdgeKey(key, other);
+        if (distance <= joinDistance && !explicitEdges.has(edge)) candidates.set(edge, { a: other, b: key, distance });
+      }
+    }
+    const bucketKey = `${cx},${cz}`;
+    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+    buckets.get(bucketKey).push(key);
+  }
+
+  const clearRegions = [];
+  const ordered = [...candidates.values()].sort((a, b) => a.distance - b.distance);
+  for (const candidate of ordered) {
+    const queue = [candidate.a], previous = new Map([[candidate.a, null]]);
+    for (let cursor = 0; cursor < queue.length && !previous.has(candidate.b); cursor++) {
+      for (const neighbor of adjacency.get(queue[cursor]) ?? []) if (!previous.has(neighbor)) {
+        previous.set(neighbor, queue[cursor]); queue.push(neighbor);
+      }
+    }
+    if (previous.has(candidate.b)) {
+      const route = [];
+      for (let key = candidate.b; key !== null; key = previous.get(key)) route.push(nodes.get(key));
+      route.reverse();
+      if (route.length >= 3 && fogLoopArea(route) >= 2) clearRegions.push(route);
+    }
+    addEdge(candidate.a, candidate.b);
+    renderPaths.push({ id: `implicit:${fogEdgeKey(candidate.a, candidate.b)}`, points: [nodes.get(candidate.a), nodes.get(candidate.b)] });
+  }
+  return { paths: renderPaths, clearRegions };
+}
+
+function isInsideFogLoop(x, z, regions) {
+  for (const points of regions) {
+    let regionInside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i], b = points[j];
+      if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) regionInside = !regionInside;
+    }
+    if (regionInside) return true;
+  }
+  return false;
+}
+
+export function locationFogShadeAt(x, z, topology, settings = FOG_DEFAULTS) {
+  return isInsideFogLoop(x, z, topology.clearRegions)
+    ? 0 : shadeAtDistance(pathDistanceAt(x, z, topology.paths), settings);
+}
+
 function isInsidePolygon(x, z, points) {
   let inside = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -77,7 +158,7 @@ export function applyLocationEdgeShade(root, patchMaterial) {
 export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, revealUniforms = {}, yieldWork = async () => {} }) {
   settings = { ...FOG_DEFAULTS, ...settings };
   const points = location.walkablePoints ?? [];
-  const paths = location.fogPaths?.paths ?? [];
+  let topology = buildFogPathTopology(location.fogPaths?.paths ?? []);
   const bounds = points.reduce((result, point) => ({
     minX: Math.min(result.minX, point.x), maxX: Math.max(result.maxX, point.x),
     minZ: Math.min(result.minZ, point.z), maxZ: Math.max(result.maxZ, point.z),
@@ -91,7 +172,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
       const worldX = bounds.minX + (x + .5) / resolution * width;
       const worldZ = bounds.minZ + (y + .5) / resolution * height;
       const offset = (y * resolution + x) * 4;
-      const pathShade = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
+      const pathShade = topology.paths.length ? Math.round(locationFogShadeAt(worldX, worldZ, topology, settings) * 255) : 0;
       data[offset] = pathShade; data[offset + 3] = 255;
     }
     if ((y + 1) % 16 === 0) await yieldWork();
@@ -220,12 +301,12 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
       const worldX = bounds.minX + (x + .5) / resolution * width;
       const worldZ = bounds.minZ + (y + .5) / resolution * height;
       const offset = (y * resolution + x) * 4;
-      data[offset] = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
+      data[offset] = topology.paths.length ? Math.round(locationFogShadeAt(worldX, worldZ, topology, settings) * 255) : 0;
     }
     texture.needsUpdate = true;
   };
   const updatePaths = nextPaths => {
-    paths.splice(0, paths.length, ...(nextPaths?.paths ?? []));
+    topology = buildFogPathTopology(nextPaths?.paths ?? []);
     redrawPathTexture();
   };
   return { texture, bounds, uniforms, applyTo, update, updatePaths };
