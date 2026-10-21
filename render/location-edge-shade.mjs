@@ -130,9 +130,20 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           ${reveal ? `uniform float cqRevealEnabled;
             uniform vec2 cqRevealScreen;
             uniform float cqRevealPlayerDepth;
+            uniform float cqRevealTime;
             uniform float cqRevealInnerRadius;
             uniform float cqRevealOuterRadius;
             varying float vCQRevealDepth;` : ''}
+          ${reveal ? `float cqRevealHash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+          }
+          float cqRevealNoise(vec2 p) {
+            vec2 i = floor(p), f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = cqRevealHash(i), b = cqRevealHash(i + vec2(1.0, 0.0));
+            float c = cqRevealHash(i + vec2(0.0, 1.0)), d = cqRevealHash(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+          }` : ''}
           vec3 cqLinearToOklab(vec3 c) {
             vec3 lms = vec3(
               0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
@@ -164,9 +175,26 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r;`)
         .replace('#include <opaque_fragment>', `${reveal ? `
           float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
-          float cqRevealFade = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
           float cqRevealBeforePlayer = step(vCQRevealDepth + 0.025, cqRevealPlayerDepth);
-          diffuseColor.a *= 1.0 - cqRevealEnabled * cqRevealFade * cqRevealBeforePlayer;` : ''}
+          if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
+            float cqRevealFade = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
+            vec2 cqRevealDelta = gl_FragCoord.xy - cqRevealScreen;
+            float cqRevealAngle = atan(cqRevealDelta.y, cqRevealDelta.x) * 0.15915494 + 0.5;
+            float cqRevealRadius = cqRevealDistance / max(1.0, cqRevealOuterRadius);
+            vec2 cqRevealPolarDirection = vec2(cos(cqRevealAngle * 6.2831853), sin(cqRevealAngle * 6.2831853));
+            vec2 cqRevealPolarUv = cqRevealPolarDirection * 7.0 + vec2(cqRevealRadius * 8.0);
+            vec2 cqRevealDrift = vec2(cqRevealTime * 0.018, -cqRevealTime * 0.012);
+            float cqRevealSplash = cqRevealNoise(cqRevealPolarUv + cqRevealDrift);
+            vec2 cqRevealWorldUv = vCQLocationWorld.xz;
+            float cqRevealBroad = cqRevealNoise(cqRevealWorldUv * 0.75 + cqRevealDrift);
+            float cqRevealMid = cqRevealNoise(cqRevealWorldUv * 2.4 - cqRevealDrift * 1.7);
+            float cqRevealFine = cqRevealNoise(cqRevealWorldUv * 8.0 + cqRevealDrift * 2.4);
+            float cqRevealNoiseValue = cqRevealBroad * 0.34 + cqRevealMid * 0.25
+              + cqRevealFine * 0.16 + cqRevealSplash * 0.25;
+            float cqRevealEdge = clamp(cqRevealFade + (cqRevealSplash - 0.5) * 0.3
+              * 4.0 * cqRevealFade * (1.0 - cqRevealFade), 0.0, 1.0);
+            if (cqRevealEdge > cqRevealNoiseValue) discard;
+          }` : ''}
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
           vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
@@ -175,8 +203,8 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    if (reveal) { material.transparent = true; material.depthWrite = false; }
-    material.customProgramCacheKey = () => `cq-location-path-fog-v9-reveal-${reveal}`;
+    if (reveal) { material.transparent = false; material.depthWrite = true; }
+    material.customProgramCacheKey = () => `cq-location-path-fog-v10-dither-clip-${reveal}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);

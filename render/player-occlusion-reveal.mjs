@@ -6,6 +6,7 @@ export function createPlayerOcclusionReveal(THREE, renderer) {
     cqRevealEnabled: { value: 0 },
     cqRevealScreen: { value: new THREE.Vector2() },
     cqRevealPlayerDepth: { value: 0 },
+    cqRevealTime: { value: 0 },
     cqRevealInnerRadius: { value: PLAYER_REVEAL_DEFAULTS.revealInnerRadius },
     cqRevealOuterRadius: { value: PLAYER_REVEAL_DEFAULTS.revealOuterRadius },
   };
@@ -19,6 +20,7 @@ export function createPlayerOcclusionReveal(THREE, renderer) {
   }
 
   function update(camera, playerPosition, enabled = true) {
+    uniforms.cqRevealTime.value = performance.now() * .001;
     camera.updateMatrixWorld();
     screen.copy(playerPosition).project(camera);
     viewPosition.copy(playerPosition).applyMatrix4(camera.matrixWorldInverse);

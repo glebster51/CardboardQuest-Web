@@ -1,4 +1,4 @@
-import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=10';
+import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=12';
 import { EXIT_FOG_CENTER_DEPTH, EXIT_FOG_LENGTH } from '../exit-fog.mjs';
 
 export const EXIT_SHADOW_LENGTH = EXIT_FOG_LENGTH;

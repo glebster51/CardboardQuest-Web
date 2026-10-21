@@ -1,5 +1,5 @@
-import { readTransform } from './edit-model.mjs?v=131';
-import { ASSET_CATALOG } from './asset-catalog.mjs?v=3';
+import { readTransform } from './edit-model.mjs?v=133';
+import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
@@ -298,8 +298,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Конец тумана <output></output><input data-fog="end" aria-label="Конец тумана" type="range" min=".1" max="50" step=".1"></label>
         <label>Тонирование <output></output><input data-fog="tint" aria-label="Тонирование тумана" type="range" min="0" max="1" step=".01"></label>
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
-        <label class="se-reveal-control">Просвет · центр, px <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета вокруг героя в пикселях экрана" type="range" min="0" max="240" step="1"></label>
-        <label class="se-reveal-control">Просвет · край, px <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус градиента просвета вокруг героя в пикселях экрана" type="range" min="1" max="320" step="1"></label>
+        <label class="se-reveal-control">Просвет · центр, px <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета вокруг героя в пикселях экрана" type="range" min="0" max="480" step="1"></label>
+        <label class="se-reveal-control">Просвет · край, px <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус градиента просвета вокруг героя в пикселях экрана" type="range" min="1" max="640" step="1"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
       </div><div class="se-render-mode" role="group" aria-label="Диагностический режим рендера">
