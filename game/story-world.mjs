@@ -108,17 +108,6 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
       heightSeed: 7049 + [...authored.id].reduce((seed, char) => (Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0), 2166136261),
       terrainStyle: authored.biome,
     });
-    const sceneEdits = SCENE_OVERRIDES.locations[authored.id] ?? {};
-    const pathLocation = {
-      ...location,
-      entry: sceneEdits.entry ? { x: sceneEdits.entry.position[0], z: sceneEdits.entry.position[2] } : location.entry,
-      arrivals: Object.fromEntries(Object.entries(location.arrivals ?? {}).map(([from, point]) => {
-        const saved = sceneEdits[`arrival:${from}`];
-        return [from, saved ? { x: saved.position[0], z: saved.position[2] } : point];
-      })),
-    };
-    location.fogPaths = sceneEdits['fog-paths']
-      ? validateFogPaths(sceneEdits['fog-paths']) : createDefaultFogPaths(pathLocation);
     locations[authored.id] = location;
   }
 
@@ -192,6 +181,20 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
       heightSeed: 7049 + [...authored.id].reduce((seed, char) => (Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0), 2166136261),
       terrainStyle: authored.biome,
     });
+    // Generate default fog routes only after the real campaign arrivals exist.
+    // The lightweight catalog's arrival data is incomplete and can collapse
+    // multiple spawn branches onto the same stale line.
+    const sceneEdits = SCENE_OVERRIDES.locations[authored.id] ?? {};
+    const pathArrivals = Object.fromEntries(Object.entries(arrivals).map(([from, point]) => {
+      const saved = sceneEdits[`arrival:${from}`];
+      return [from, saved ? { x: saved.position[0], z: saved.position[2] } : point];
+    }));
+    const pathEntry = sceneEdits.entry
+      ? { x: sceneEdits.entry.position[0], z: sceneEdits.entry.position[2] }
+      : layout.entry;
+    location.fogPaths = sceneEdits['fog-paths']
+      ? validateFogPaths(sceneEdits['fog-paths'])
+      : createDefaultFogPaths({ entry: pathEntry, arrivals: pathArrivals });
     locations[authored.id] = location;
   }
   return locations;
