@@ -8,6 +8,18 @@ function distanceToSegment(x, z, a, b) {
   return Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t));
 }
 
+function pathDistanceAt(x, z, paths) {
+  let nearest = Infinity;
+  for (const path of paths) for (let index = 1; index < path.points.length; index++) {
+    const a = path.points[index - 1], b = path.points[index];
+    const dx = b[0] - a[0], dz = b[1] - a[1];
+    const lengthSquared = dx * dx + dz * dz;
+    const t = lengthSquared ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / lengthSquared)) : 0;
+    nearest = Math.min(nearest, Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)));
+  }
+  return nearest;
+}
+
 function isInsidePolygon(x, z, points) {
   let inside = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -60,6 +72,7 @@ export function applyLocationEdgeShade(root, patchMaterial) {
 export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, yieldWork = async () => {} }) {
   settings = { ...FOG_DEFAULTS, ...settings };
   const points = location.walkablePoints ?? [];
+  const paths = location.fogPaths?.paths ?? [];
   const bounds = points.reduce((result, point) => ({
     minX: Math.min(result.minX, point.x), maxX: Math.max(result.maxX, point.x),
     minZ: Math.min(result.minZ, point.z), maxZ: Math.max(result.maxZ, point.z),
@@ -77,7 +90,8 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
       distances[y * resolution + x] = distance;
       const shade = Math.round(shadeAtDistance(distance, settings) * 255);
       const offset = (y * resolution + x) * 4;
-      data[offset] = shade; data[offset + 1] = shade; data[offset + 2] = shade; data[offset + 3] = 255;
+      const pathShade = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
+      data[offset] = shade; data[offset + 1] = pathShade; data[offset + 2] = shade; data[offset + 3] = 255;
     }
     if ((y + 1) % 16 === 0) await yieldWork();
   }
@@ -136,7 +150,9 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 cqEdgeUv = (vCQLocationWorld.xz - cqEdgeShadeBounds.xy) / cqEdgeShadeBounds.zw;
-          float cqEdgeShade = texture2D(cqEdgeShadeMap, cqEdgeUv).r;`)
+          float cqEdgeShade = texture2D(cqEdgeShadeMap, cqEdgeUv).r;
+          float cqPathShade = texture2D(cqEdgeShadeMap, cqEdgeUv).g;
+          cqEdgeShade = max(cqEdgeShade, cqPathShade);`)
         .replace('#include <opaque_fragment>', `
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqEdgeShadeColor);
@@ -146,22 +162,28 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'cq-location-edge-shade-v5';
+    material.customProgramCacheKey = () => 'cq-location-edge-shade-v6';
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
   applyTo(location.sceneGroup);
   const update = next => {
     const previous = settings; settings = { ...settings, ...next };
-    if (previous.start !== settings.start || previous.end !== settings.end) {
-      for (let index = 0; index < distances.length; index++) {
-        const shade = Math.round(shadeAtDistance(distances[index], settings) * 255), offset = index * 4;
-        data[offset] = shade; data[offset + 1] = shade; data[offset + 2] = shade;
-      }
-      texture.needsUpdate = true;
-    }
+    if (previous.start !== settings.start || previous.end !== settings.end) updatePaths(paths);
     uniforms.cqEdgeShadeColor.value.set(settings.color);
     uniforms.cqEdgeShadeTint.value = settings.tint; uniforms.cqEdgeShadeCurve.value = settings.curve;
   };
-  return { texture, bounds, uniforms, applyTo, update };
+  const updatePaths = nextPaths => {
+    paths.splice(0, paths.length, ...(nextPaths?.paths ?? []));
+    for (let y = 0; y < resolution; y++) for (let x = 0; x < resolution; x++) {
+      const worldX = bounds.minX + (x + .5) / resolution * width;
+      const worldZ = bounds.minZ + (y + .5) / resolution * height;
+      const pixel = y * resolution + x, offset = pixel * 4;
+      const edgeShade = Math.round(shadeAtDistance(distances[pixel], settings) * 255);
+      data[offset + 1] = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
+      data[offset] = edgeShade; data[offset + 2] = edgeShade;
+    }
+    texture.needsUpdate = true;
+  };
+  return { texture, bounds, uniforms, applyTo, update, updatePaths };
 }

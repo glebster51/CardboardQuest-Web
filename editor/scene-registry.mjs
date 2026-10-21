@@ -1,4 +1,4 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=125';
+import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=127';
 import { createExitBarrierBodies } from '../location-network.mjs';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
@@ -34,8 +34,13 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
     model, fog,
     prepare(location) {
       sources.set(location.id, { location, data: JSON.parse(JSON.stringify({
-        entry: location.entry, arrivals: location.arrivals, exits: location.exits,
+        entry: location.entry, arrivals: location.arrivals, exits: location.exits, fogPaths: location.fogPaths,
       })) });
+      const savedPaths = overrides.locations[location.id]?.['fog-paths'];
+      const fogPaths = savedPaths ?? location.fogPaths;
+      validateSceneValue(fogPaths, false, true);
+      location.fogPaths = model.register(location.id, 'fog-paths', fogPaths);
+      location.edgeShade?.updatePaths(location.fogPaths);
       const bindings = [];
       for (const { exit, marker, shadow, blocked } of location.exitVisuals?.markers ?? []) {
         const proxy = new THREE.Object3D(); proxy.position.set(exit.x, .3, exit.z);
@@ -107,8 +112,22 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       const next = { ...fog, ...settings }; validateSceneValue(next, true);
       Object.assign(fog, next); setFog(fog); return model.set(null, 'fog', { ...fog });
     },
+    fogPaths(location) { return model.get(location, 'fog-paths'); },
+    changeFogPaths(location, paths) {
+      validateSceneValue(paths, false, true);
+      const changed = model.set(location.id, 'fog-paths', paths);
+      if (changed) {
+        location.fogPaths = model.get(location.id, 'fog-paths');
+        location.edgeShade?.updatePaths(location.fogPaths);
+      }
+      return changed;
+    },
     sync() {
       Object.assign(fog, model.get(null, 'fog')); setFog(fog);
+      for (const [id, source] of sources) {
+        source.location.fogPaths = model.get(id, 'fog-paths');
+        source.location.edgeShade?.updatePaths(source.location.fogPaths);
+      }
       for (const bindings of resident.values()) for (const binding of bindings) apply(binding, model.get(binding.location, binding.id));
     },
   };

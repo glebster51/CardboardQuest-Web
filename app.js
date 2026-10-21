@@ -6,10 +6,10 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=2';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=6';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=125';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=125';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=125';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=7';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=127';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=127';
 import { catalogAsset } from './editor/asset-catalog.mjs';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -43,7 +43,7 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaign
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=13';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=14';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,

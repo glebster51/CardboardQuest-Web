@@ -1,10 +1,11 @@
 import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=6';
 import { createLocationArt } from './location-art.mjs?v=3';
 import { createAuthoredLayout } from './location-layout.mjs?v=4';
-import { SCENE_OVERRIDES } from '../scene-overrides.mjs?v=125';
+import { SCENE_OVERRIDES } from '../scene-overrides.mjs?v=127';
 import { hazardAtPoint } from './world-hazards.mjs';
 import { extractDepthMapMaskContours } from '../terrain-shapes.mjs';
 import { EXIT_FOG_ENTRY_CROSS_LIMIT, EXIT_FOG_ENTRY_MAX, EXIT_FOG_ENTRY_MIN, EXIT_FOG_ENTRY_OFFSET } from '../exit-fog.mjs';
+import { createDefaultFogPaths, validateFogPaths } from '../fog-paths.mjs';
 
 function findExitCascadeArrival(location, exit) {
   const alongOffsets = [EXIT_FOG_ENTRY_OFFSET];
@@ -107,6 +108,17 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
       heightSeed: 7049 + [...authored.id].reduce((seed, char) => (Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0), 2166136261),
       terrainStyle: authored.biome,
     });
+    const sceneEdits = SCENE_OVERRIDES.locations[authored.id] ?? {};
+    const pathLocation = {
+      ...location,
+      entry: sceneEdits.entry ? { x: sceneEdits.entry.position[0], z: sceneEdits.entry.position[2] } : location.entry,
+      arrivals: Object.fromEntries(Object.entries(location.arrivals ?? {}).map(([from, point]) => {
+        const saved = sceneEdits[`arrival:${from}`];
+        return [from, saved ? { x: saved.position[0], z: saved.position[2] } : point];
+      })),
+    };
+    location.fogPaths = sceneEdits['fog-paths']
+      ? validateFogPaths(sceneEdits['fog-paths']) : createDefaultFogPaths(pathLocation);
     locations[authored.id] = location;
   }
 

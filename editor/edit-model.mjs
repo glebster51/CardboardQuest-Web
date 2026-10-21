@@ -1,7 +1,8 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '126';
+export const SCENE_BUILD = '127';
 import { FOG_DEFAULTS } from '../fog-settings.mjs';
 import { catalogAsset } from './asset-catalog.mjs';
+import { validateFogPaths } from '../fog-paths.mjs';
 export { FOG_DEFAULTS };
 const clone = value => JSON.parse(JSON.stringify(value));
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -14,9 +15,10 @@ export function writeTransform(object, value) {
   for (const key of ['position', 'rotation', 'scale']) object[key].set(...value[key]);
   object.updateMatrixWorld(true);
 }
-export function validateSceneValue(value, fog = false) {
-  if (value === null && !fog) return value;
+export function validateSceneValue(value, fog = false, fogPaths = false) {
+  if (value === null && !fog && !fogPaths) return value;
   if (!value || typeof value !== 'object') throw new Error('Scene value must be an object');
+  if (fogPaths) return validateFogPaths(value);
   const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
@@ -49,7 +51,7 @@ export function createEditModel() {
     get(location, object) { const entry = records.get(id(location, object)); return entry ? clone(entry.after) : null; },
     begin() { if (!transaction) transaction = new Map(); },
     set(location, object, value) {
-      validateSceneValue(value, object === 'fog');
+      validateSceneValue(value, object === 'fog', object === 'fog-paths');
       const key = id(location, object), entry = records.get(key);
       if (!entry) throw new Error(`Unregistered scene object: ${object}`);
       if (equal(entry.after, value)) return false;
@@ -100,10 +102,10 @@ export function mergeSceneDiff(overrides, diff) {
     const { location, object, before, after } = change;
     if (typeof object !== 'string' || !/^[a-zA-Z0-9:/._-]+$/.test(object) || /(?:__proto__|constructor|prototype)/.test(object))
       throw new Error('Invalid scene object id');
-    const fog = object === 'fog';
+    const fog = object === 'fog', fogPaths = object === 'fog-paths';
     if (fog ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
       || ['constructor', 'prototype'].includes(location)) throw new Error('Invalid scene location');
-    validateSceneValue(before, fog); validateSceneValue(after, fog);
+    validateSceneValue(before, fog, fogPaths); validateSceneValue(after, fog, fogPaths);
     if (before === null && after === null) throw new Error('An empty edit has no effect');
     if (before === null && (!object.startsWith('placed:') || !after.asset)) throw new Error('New objects must come from the asset library');
     const current = fog ? { ...FOG_DEFAULTS, ...result.fog } : result.locations[location]?.[object];
