@@ -487,7 +487,10 @@ async function start() {
       items.append(label, amount);
     }
     const carried = entries.reduce((sum, [, count]) => sum + count, 0);
-    document.querySelector('#inventory-toggle').textContent = carried ? `Рюкзак · ${carried}` : 'Рюкзак';
+    const inventoryCount = document.querySelector('#inventory-count');
+    inventoryCount.hidden = carried === 0;
+    inventoryCount.textContent = carried > 99 ? '99+' : String(carried);
+    document.querySelector('#inventory-toggle').setAttribute('aria-label', carried ? `Рюкзак, предметов: ${carried}` : 'Рюкзак');
     document.querySelector('#use-food').disabled = !['bandage', 'jerky', 'hardtack', 'berries'].some(id => campaignState.items[id] > 0)
       || heroBody.health <= 0 || heroBody.health >= heroBody.maxHealth;
   }
