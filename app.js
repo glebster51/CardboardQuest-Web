@@ -6,7 +6,7 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=2';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=3';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
@@ -779,6 +779,7 @@ async function start() {
     if (location.secret) await makeCacheBody(location, await loadStateTemplates('assets/chest-states.png', 2));
     for (const item of location.loot) { createLootVisual(location, item); await checkpoint(); }
     for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) createStoryPickupVisual(location, pickup);
+    location.edgeShade?.applyTo(location.sceneGroup);
     // Upload each bitmap while the scene is hidden, instead of uploading all of
     // a neighboring location's textures in its first visible frame.
     const roots = [location.sceneGroup, ...figures.filter(figure => figure.locationId === id).map(figure => figure.group)];

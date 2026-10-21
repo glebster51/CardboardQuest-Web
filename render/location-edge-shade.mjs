@@ -1,6 +1,6 @@
 export const LOCATION_FAR_COLOR = 0x242039;
-const EDGE_FADE_WIDTH = 4.6;
-const MAX_EDGE_MIX = .92;
+const FOG_START_DISTANCE = 1.5;
+const FOG_END_DISTANCE = 23;
 
 function distanceToSegment(x, z, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -18,15 +18,38 @@ function isInsidePolygon(x, z, points) {
   return inside;
 }
 
-export function locationEdgeShadeAt(x, z, points, fadeWidth = EDGE_FADE_WIDTH) {
+export function locationEdgeShadeAt(x, z, points) {
   if (points.length < 3) return 1;
   let distance = Infinity;
   for (let index = 0; index < points.length; index++)
     distance = Math.min(distance, distanceToSegment(x, z, points[index], points[(index + 1) % points.length]));
   const signedDistance = isInsidePolygon(x, z, points) ? distance : -distance;
-  const t = Math.max(0, Math.min(1, .5 - signedDistance / (fadeWidth * 2)));
+  const fogDistance = -signedDistance;
+  const t = Math.max(0, Math.min(1, (fogDistance - FOG_START_DISTANCE) / (FOG_END_DISTANCE - FOG_START_DISTANCE)));
   const smooth = t * t * (3 - 2 * t);
-  return Math.max(0, Math.min(1, smooth * MAX_EDGE_MIX + (signedDistance < 0 ? 1 - MAX_EDGE_MIX : 0)));
+  return smooth;
+}
+
+export function applyLocationEdgeShade(root, patchMaterial) {
+  const isScenerySprite = object => {
+    for (let parent = object.parent; parent && parent !== root; parent = parent.parent)
+      if (parent.name === 'scenery-front' || parent.name === 'scenery-back') return true;
+    return false;
+  };
+  root.traverse(object => {
+    if (!object.isMesh) return;
+    const scenerySprite = isScenerySprite(object);
+    if (!/^(playfield|terrain)-top-/.test(object.name) && !scenerySprite) return;
+    const materials = [object.material].flat();
+    const patchedMaterials = materials.map(material => {
+      if (scenerySprite && material?.isMeshStandardMaterial && !material.userData.locationEdgeShadePatched)
+        material = material.clone();
+      patchMaterial(material);
+      return material;
+    });
+    if (Array.isArray(object.material)) object.material = patchedMaterials;
+    else object.material = patchedMaterials[0];
+  });
 }
 
 export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, yieldWork = async () => {} }) {
@@ -77,12 +100,10 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           diffuseColor.rgb = cqMuted;`)
         .replace('#include <opaque_fragment>', 'outgoingLight = mix(outgoingLight, cqEdgeShadeColor, cqEdgeShade);\n#include <opaque_fragment>');
     };
-    material.customProgramCacheKey = () => 'cq-location-edge-shade-v2';
+    material.customProgramCacheKey = () => 'cq-location-edge-shade-v3';
     material.needsUpdate = true;
   };
-  location.sceneGroup.traverse(object => {
-    if (!object.isMesh || !/^(playfield|terrain)-top-/.test(object.name)) return;
-    for (const material of [object.material].flat()) patchMaterial(material);
-  });
-  return { texture, bounds, uniforms };
+  const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
+  applyTo(location.sceneGroup);
+  return { texture, bounds, uniforms, applyTo };
 }
