@@ -4,7 +4,7 @@ export const EXIT_SHADOW_LENGTH = 25;
 export const EXIT_SHADOW_CENTER_DEPTH = 8;
 
 function makeFoliageShadowTexture(THREE) {
-  const url = new URL('../assets/location-exit-foliage-v2.png', import.meta.url).href;
+  const url = new URL('../assets/location-exit-foliage-v3.png', import.meta.url).href;
   const texture = new THREE.TextureLoader().load(url);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
