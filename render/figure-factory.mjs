@@ -1,6 +1,7 @@
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs';
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=6';
 import { heartHealthLevels } from '../heart-health.mjs';
+import { enableFigurePickLayer } from '../game/pick-layers.mjs';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
@@ -203,6 +204,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
       viewBack: false, facing: 0, hitAge: 10, hitStrength: 0, hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
+    enableFigurePickLayer(group, body.team);
     return figure;
   };
   createFigure.releaseUnused = async prefixes => {

@@ -11,13 +11,14 @@ import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=4';
+import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=1';
 import { followDirection, followMotion, nearestAwakeThreat } from './render/camera-follow.mjs?v=1';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
-import { createFigureFactory } from './render/figure-factory.mjs?v=2';
+import { createFigureFactory } from './render/figure-factory.mjs?v=3';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
 import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=1';
 import { createScenerySystem } from './render/scenery-system.mjs?v=9';
@@ -1352,20 +1353,37 @@ async function start() {
   function hitFigure(x, y) {
     rayAt(x, y);
     const visibleFigures = figures.filter(figure => figure.body === heroBody || figure.locationId === activeLocation.id);
-    for (const hit of raycaster.intersectObjects(visibleFigures.map(figure => figure.group), true)) {
-      let root = hit.object;
-      while (root && !root.userData.figure) root = root.parent;
-      const figure = root?.userData.figure;
-      if (!figure) continue;
-      if (hit.object.userData.sideWall || !hit.object.userData.print || !hit.uv) return figure;
-      const px = Math.min(figure.width - 1, Math.max(0, Math.floor(hit.uv.x * figure.width)));
-      const py = Math.min(figure.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * figure.height)));
-      if (figure.alphaPixels[(py * figure.width + px) * 4 + 3] > 100) return figure;
+    const findPrintedHit = candidates => {
+      for (const hit of raycaster.intersectObjects(candidates.map(figure => figure.group), true)) {
+        let root = hit.object;
+        while (root && !root.userData.figure) root = root.parent;
+        const figure = root?.userData.figure;
+        if (!figure) continue;
+        if (hit.object.userData.sideWall || !hit.object.userData.print || !hit.uv) return figure;
+        const px = Math.min(figure.width - 1, Math.max(0, Math.floor(hit.uv.x * figure.width)));
+        const py = Math.min(figure.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * figure.height)));
+        if (figure.alphaPixels[(py * figure.width + px) * 4 + 3] > 100) return figure;
+      }
+      return null;
+    };
+    const player = visibleFigures.find(figure => figure.body === heroBody);
+    if (player) {
+      raycaster.layers.set(PLAYER_PICK_LAYER);
+      const playerHit = findPrintedHit([player]);
+      if (playerHit) return playerHit;
     }
     const groundPoint = raycaster.ray.intersectPlane(figureHitPlane, new THREE.Vector3());
+    const playerPickRadius = (PUCK_RADIUS + .08) * 2;
+    if (player && groundPoint && Math.hypot(groundPoint.x - player.body.x, groundPoint.z - player.body.z) < playerPickRadius) {
+      return player;
+    }
     if (!groundPoint) return null;
     let closest = null, closestDistance = (PUCK_RADIUS + .08) ** 2;
-    for (const figure of visibleFigures) {
+    const enemies = visibleFigures.filter(figure => figure.body.team === 'enemy');
+    raycaster.layers.set(ENEMY_PICK_LAYER);
+    const enemyHit = findPrintedHit(enemies);
+    if (enemyHit) return enemyHit;
+    for (const figure of enemies) {
       const dx = groundPoint.x - figure.body.x, dz = groundPoint.z - figure.body.z;
       const distanceSquared = dx * dx + dz * dz;
       if (distanceSquared < closestDistance) { closest = figure; closestDistance = distanceSquared; }
