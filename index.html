@@ -5,12 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=80">
+  <link rel="stylesheet" href="style.css?v=81">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
   <div id="location-info" role="status" aria-live="polite"><strong id="location-title"></strong><small id="location-detail"></small></div>
-  <button id="restart" type="button" aria-label="Начать игру заново">↻ <span>Заново</span></button>
+  <button id="restart" class="hud-icon" type="button" aria-label="Начать игру заново" title="Начать игру заново">
+    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <g stroke="#4b3020" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M35 14a16 16 0 1 1-22 0l-4-4 16-2-3 16-4-5a9 9 0 1 0 12 0z" fill="#82964f"/>
+        <path d="m12 12 9-1-2 9M35 27a11 11 0 0 1-8 9" fill="none" stroke="#c4d18b" stroke-width="1.8"/>
+      </g>
+    </svg>
+  </button>
   <nav id="hud-tools" aria-label="Снаряжение и путешествие">
     <button id="inventory-toggle" class="hud-icon" type="button" aria-label="Рюкзак" aria-controls="inventory-panel" aria-haspopup="dialog" aria-expanded="false" title="Рюкзак">
       <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
