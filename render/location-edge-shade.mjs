@@ -1,5 +1,5 @@
 export const LOCATION_FAR_COLOR = 0x242039;
-const FOG_START_DISTANCE = 1.5;
+const FOG_START_DISTANCE = 1.2;
 const FOG_END_DISTANCE = 8;
 
 function distanceToSegment(x, z, a, b) {
