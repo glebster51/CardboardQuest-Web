@@ -36,7 +36,7 @@ import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=25';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
-import { advanceChargeRecharge, chargeRechargeProgress, shouldMaintainFullCharges } from './charge-recharge.mjs?v=2';
+import { advanceChargeRecharge, chargeRechargeProgress, PLAYER_CHARGE_RECHARGE_INTERVAL } from './charge-recharge.mjs?v=3';
 import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
 import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
@@ -1782,21 +1782,15 @@ async function start() {
       const living = activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length;
       if (takeDueReinforcement(activeLocation, elapsed, living)) startQueuedReinforcement();
     }
-    const encounterCleared = canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL);
-    const keepPlayerChargesFull = shouldMaintainFullCharges(activeLocation, encounterCleared);
     const aimingBody = inputController.getAimingBody();
     if (aimingBody && !previousAim) audio.play('aim');
     previousAim = Boolean(aimingBody);
     for (const body of bodies) {
       if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
-      if (body === heroBody && keepPlayerChargesFull) {
-        body.charges = body.maxCharges;
-        body.rechargeTimer = 0;
-      } else {
-        const restored = advanceChargeRecharge(body, dt);
-        if (body === heroBody && restored > 0) audio.play('ready');
-      }
+      const rechargeInterval = body === heroBody ? PLAYER_CHARGE_RECHARGE_INTERVAL : undefined;
+      const restored = advanceChargeRecharge(body, dt, rechargeInterval);
+      if (body === heroBody && restored > 0) audio.play('ready');
       if (body.team !== 'enemy') continue;
       if (victorySequenceActive) continue;
       const figure = figures.find(item => item.body === body);
@@ -1896,7 +1890,8 @@ async function start() {
         icon.mesh.material = heartMaterials[level];
         icon.level = level;
       });
-      const rechargeProgress = chargeRechargeProgress(body);
+      const rechargeProgress = chargeRechargeProgress(body,
+        body === heroBody ? PLAYER_CHARGE_RECHARGE_INTERVAL : undefined);
       figure.chargePips.forEach(({ group, base, fill }, index) => {
         const amount = index < body.charges ? 1 : index === body.charges ? rechargeProgress : 0;
         group.visible = body.team === 'player';
