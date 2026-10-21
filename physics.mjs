@@ -10,6 +10,7 @@ export const LIMIT_X = 11.1;
 export const LIMIT_Z = 9.1;
 export const PUCK_RADIUS = .8;
 export const COLLISION_RESTITUTION = .82;
+const CACHE_PLAYER_REBOUND_SCALE = .1;
 export const ATTACK_SPEED = 5;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 // Authored walkable footprint. The same polygon drives puck collision and the
@@ -118,7 +119,10 @@ export function collide(a, b, held = null) {
   b.x += nx * separation * ib; b.z += nz * separation * ib;
   const closingSpeed = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
   if (closingSpeed >= 0) return 0;
-  const impulse = -(1 + COLLISION_RESTITUTION) * closingSpeed / inverseMass;
+  const hitsCacheAsPlayer = (a.kind === 'cache-chest' && b.team === 'player')
+    || (b.kind === 'cache-chest' && a.team === 'player');
+  const restitution = COLLISION_RESTITUTION * (hitsCacheAsPlayer ? CACHE_PLAYER_REBOUND_SCALE : 1);
+  const impulse = -(1 + restitution) * closingSpeed / inverseMass;
   a.vx -= nx * impulse * ia; a.vz -= nz * impulse * ia;
   b.vx += nx * impulse * ib; b.vz += nz * impulse * ib;
   return -closingSpeed;
