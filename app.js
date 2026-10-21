@@ -6,7 +6,7 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=2';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=8';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=9';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=127';
 import { installSceneEditor } from './editor/scene-editor.mjs?v=128';

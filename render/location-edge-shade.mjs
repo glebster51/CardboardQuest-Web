@@ -163,12 +163,11 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   applyTo(location.sceneGroup);
   const update = next => {
     const previous = settings; settings = { ...settings, ...next };
-    if (previous.start !== settings.start || previous.end !== settings.end) updatePaths(paths);
+    if (previous.start !== settings.start || previous.end !== settings.end) redrawPathTexture();
     uniforms.cqPathFogColor.value.set(settings.color);
     uniforms.cqPathFogTint.value = settings.tint; uniforms.cqPathFogCurve.value = settings.curve;
   };
-  const updatePaths = nextPaths => {
-    paths.splice(0, paths.length, ...(nextPaths?.paths ?? []));
+  const redrawPathTexture = () => {
     for (let y = 0; y < resolution; y++) for (let x = 0; x < resolution; x++) {
       const worldX = bounds.minX + (x + .5) / resolution * width;
       const worldZ = bounds.minZ + (y + .5) / resolution * height;
@@ -176,6 +175,10 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
       data[offset] = paths.length ? Math.round(shadeAtDistance(pathDistanceAt(worldX, worldZ, paths), settings) * 255) : 0;
     }
     texture.needsUpdate = true;
+  };
+  const updatePaths = nextPaths => {
+    paths.splice(0, paths.length, ...(nextPaths?.paths ?? []));
+    redrawPathTexture();
   };
   return { texture, bounds, uniforms, applyTo, update, updatePaths };
 }
