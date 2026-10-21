@@ -1395,6 +1395,7 @@ async function start() {
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
     onLaunch(body, pull) {
       audio.play('dash');
+      if (body === heroBody) cameraManualOverride = 0;
       if (body === heroBody) heroFigure.victoryAnimation = null;
       body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
       launch(body, pull);
