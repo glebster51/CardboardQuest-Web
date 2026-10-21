@@ -24,7 +24,7 @@ import { createLocationExitVisuals, updateLocationExitLock } from './render/loca
 import { createScenerySystem } from './render/scenery-system.mjs?v=9';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
-import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, PLAYER_DASH_DISTANCE_MULTIPLIER } from './physics.mjs?v=23';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER } from './physics.mjs?v=24';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress, shouldMaintainFullCharges } from './charge-recharge.mjs?v=2';
@@ -1416,7 +1416,9 @@ async function start() {
       if (body === heroBody) cameraManualOverride = 0;
       if (body === heroBody) heroFigure.victoryAnimation = null;
       body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
-      launch(body, pull, body === heroBody ? PLAYER_DASH_DISTANCE_MULTIPLIER : 1);
+      const isPlayerDash = body === heroBody;
+      launch(body, pull, isPlayerDash ? PLAYER_DASH_DISTANCE_MULTIPLIER : 1,
+        isPlayerDash ? PLAYER_DASH_SPEED_MULTIPLIER : 1);
       if (Math.hypot(body.vx, body.vz) > 1) burst(body.x, body.z, .55);
     },
   });
