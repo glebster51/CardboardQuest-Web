@@ -6,6 +6,7 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
+import { createLocationEdgeShade } from './render/location-edge-shade.mjs?v=1';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
@@ -20,7 +21,7 @@ import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
 import { createFigureFactory } from './render/figure-factory.mjs?v=3';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
-import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=1';
+import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=2';
 import { createScenerySystem } from './render/scenery-system.mjs?v=9';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
@@ -73,7 +74,6 @@ async function start() {
   host.append(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xc7b391, 68, 230);
   let savedCampaign = null;
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
   const campaignState = createCampaignState(savedCampaign);
@@ -751,6 +751,8 @@ async function start() {
     delete location.terrainHeightMap.layers;
     terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
     terrain.group.userData.walkablePoints = location.walkablePoints;
+    location.edgeShade = await createLocationEdgeShade({ THREE, location, yieldWork: checkpoint });
+    if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
     await checkpoint();
     await createLocationEnemies(location);
     if (id === 'camp') {
@@ -806,6 +808,7 @@ async function start() {
       if (storyActors.actors[index].spec.location === id) storyActors.actors.splice(index, 1);
     chestVisuals.delete(id); delete locationGroups[id];
     delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails;
+    delete location.edgeShade;
     delete location.cacheBody; delete location.exitVisuals; delete location.exitBarriers;
     location.enemies = []; location.obstacles = []; location.runtimeReady = false;
     if (id === 'camp') { campGoblinPool.length = 0; campOgrePool = null; }
@@ -1472,7 +1475,7 @@ async function start() {
       const minZ = Math.min(...points.map(p => p.z)), maxZ = Math.max(...points.map(p => p.z));
       target.set((minX + maxX) / 2, .65, (minZ + maxZ) / 2);
       orbit.distance = Math.max(distance, Math.max(maxX - minX, maxZ - minZ) * 1.45);
-      orbit.phi = .62; orbit.theta = .35; scene.fog.near = 120;
+      orbit.phi = .62; orbit.theta = .35;
       updateCamera();
     },
     pause(value = true) { simulationPaused = value; },

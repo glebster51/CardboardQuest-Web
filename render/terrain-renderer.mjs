@@ -170,7 +170,7 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       backing.rotation.x = -Math.PI / 2;
       backing.position.y = -depth - .015;
       backing.receiveShadow = true;
-      backing.name = `terrain-backing-${location.id}`;
+      backing.name = `terrain-top-backing-${location.id}`;
       location.sceneGroup.add(backing);
     }
     const layers = [{
@@ -216,6 +216,7 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       mesh.position.y = layer.top - layer.depth;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.name = `${layer.top === 0 ? 'playfield' : 'terrain'}-top-${location.id}-${location.sceneGroup.children.length}`;
       location.sceneGroup.add(mesh);
     }
     addDropZoneUnderside(THREE, location);

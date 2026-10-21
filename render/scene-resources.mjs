@@ -5,6 +5,7 @@ export function sceneResources(roots) {
     for (const material of [object.material].flat().filter(Boolean)) {
       resources.add(material);
       for (const value of Object.values(material)) if (value?.isTexture) resources.add(value);
+      for (const value of Object.values(material.userData ?? {})) if (value?.isTexture) resources.add(value);
     }
   });
   return resources;

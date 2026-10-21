@@ -1,52 +1,49 @@
-function makePortalTexture(THREE) {
-  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+function makeFoliageShadowTexture(THREE) {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
   const context = canvas.getContext('2d');
-  context.save(); context.translate(128, 128); context.scale(1, .68);
-  const depth = context.createRadialGradient(0, 0, 8, 0, 0, 126);
-  depth.addColorStop(0, 'rgba(2,3,9,.99)'); depth.addColorStop(.52, 'rgba(5,5,17,.98)');
-  depth.addColorStop(.76, 'rgba(10,11,28,.86)'); depth.addColorStop(.92, 'rgba(25,24,43,.42)');
-  depth.addColorStop(1, 'rgba(25,24,43,0)');
-  context.fillStyle = depth; context.beginPath(); context.arc(0, 0, 126, 0, Math.PI * 2); context.fill();
-  context.strokeStyle = 'rgba(97,88,135,.34)'; context.lineWidth = 3;
-  for (let ring = 0; ring < 3; ring++) {
-    context.beginPath(); context.ellipse(0, 0, 30 + ring * 25, 9 + ring * 10, 0, .12, Math.PI * .88); context.stroke();
-  }
-  context.restore();
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
-}
-
-function makeGateTexture(THREE) {
-  const canvas = document.createElement('canvas'); canvas.width = 384; canvas.height = 192;
-  const context = canvas.getContext('2d');
-  const x = 12, y = 10, width = 360, height = 172;
-  context.beginPath(); context.roundRect(x, y, width, height, 12);
-  context.fillStyle = '#30221d'; context.fill(); context.lineWidth = 8; context.strokeStyle = '#17151a'; context.stroke();
-  const plankWidth = width / 7;
-  for (let index = 0; index < 7; index++) {
-    const px = x + 5 + index * plankWidth, pw = plankWidth - 3;
-    const shade = index % 2 ? '#805735' : '#95653d';
-    context.fillStyle = shade; context.fillRect(px, y + 5, pw, height - 10);
-    context.fillStyle = 'rgba(30,19,18,.38)'; context.fillRect(px + pw - 3, y + 7, 3, height - 14);
-    context.strokeStyle = 'rgba(223,174,107,.28)'; context.lineWidth = 2;
-    for (let grain = 0; grain < 2; grain++) {
-      const gx = px + 9 + grain * 13;
-      context.beginPath(); context.moveTo(gx, y + 17); context.bezierCurveTo(gx - 5, 70, gx + 7, 120, gx, y + height - 16); context.stroke();
+  context.filter = 'blur(13px)';
+  context.fillStyle = 'rgba(18,14,39,.82)';
+  context.strokeStyle = 'rgba(18,14,39,.82)';
+  context.lineCap = 'round'; context.lineJoin = 'round';
+  const branches = [
+    [[-70, 20], [75, 130], [180, 225], [275, 510]],
+    [[530, 5], [420, 120], [330, 235], [235, 500]],
+    [[150, -20], [240, 110], [300, 210], [390, 430]],
+  ];
+  for (const [start, c1, c2, end] of branches) {
+    context.lineWidth = 17; context.beginPath(); context.moveTo(...start);
+    context.bezierCurveTo(...c1, ...c2, ...end); context.stroke();
+    const steps = 11;
+    for (let index = 0; index < steps; index++) {
+      const t = .12 + index / steps * .8;
+      const x = (1 - t) ** 3 * start[0] + 3 * (1 - t) ** 2 * t * c1[0] + 3 * (1 - t) * t ** 2 * c2[0] + t ** 3 * end[0];
+      const y = (1 - t) ** 3 * start[1] + 3 * (1 - t) ** 2 * t * c1[1] + 3 * (1 - t) * t ** 2 * c2[1] + t ** 3 * end[1];
+      for (const side of [-1, 1]) {
+        const angle = -.72 + side * .78;
+        context.save(); context.translate(x + side * 34, y - 10);
+        context.rotate(angle + (index % 2 ? .24 : -.2));
+        context.beginPath(); context.ellipse(0, 0, 52, 17, 0, 0, Math.PI * 2); context.fill();
+        context.restore();
+      }
     }
   }
-  context.lineCap = 'round'; context.lineJoin = 'round';
-  context.strokeStyle = '#33241e'; context.lineWidth = 24;
-  for (const yy of [y + 34, y + height - 34]) { context.beginPath(); context.moveTo(x + 8, yy); context.lineTo(x + width - 8, yy); context.stroke(); }
-  context.strokeStyle = '#b18a56'; context.lineWidth = 7;
-  context.beginPath(); context.moveTo(x + 20, y + height - 47); context.lineTo(x + width - 20, y + 47); context.stroke();
-  context.beginPath(); context.moveTo(x + 20, y + 47); context.lineTo(x + width - 20, y + height - 47); context.stroke();
-  context.fillStyle = '#d8bd82'; context.strokeStyle = '#48392b'; context.lineWidth = 4;
-  for (const [px, py] of [[x + 19, y + 22], [x + width - 19, y + 22], [x + 19, y + height - 22], [x + width - 19, y + height - 22]]) {
-    context.beginPath(); context.arc(px, py, 7, 0, Math.PI * 2); context.fill(); context.stroke();
+  context.filter = 'none';
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function makeBlockedGroundTexture(THREE) {
+  const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
+  const context = canvas.getContext('2d'); context.lineCap = 'round'; context.lineJoin = 'round';
+  context.strokeStyle = 'rgba(213,194,220,.86)'; context.lineWidth = 13;
+  context.beginPath(); context.moveTo(20, 20); context.lineTo(236, 108);
+  context.moveTo(236, 20); context.lineTo(20, 108); context.stroke();
+  context.strokeStyle = 'rgba(40,30,56,.78)'; context.lineWidth = 4;
+  for (let x = 34; x < 230; x += 28) {
+    context.beginPath(); context.moveTo(x, 17); context.lineTo(x - 17, 111); context.stroke();
   }
-  context.fillStyle = '#cbb17a'; context.strokeStyle = '#372a22'; context.lineWidth = 6;
-  context.beginPath(); context.roundRect(161, 70, 62, 54, 10); context.fill(); context.stroke();
-  context.fillStyle = '#4b3329'; context.beginPath(); context.arc(192, 96, 7, 0, Math.PI * 2); context.fill();
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function makeArrowShape(THREE) {
@@ -57,55 +54,56 @@ function makeArrowShape(THREE) {
   return new THREE.ShapeGeometry(shape);
 }
 
-/** Add an unmistakable open/closed transition marker at every authored exit. */
+/** Mark each exit with a broad, flat canopy shadow and ground-only lock cues. */
 export function createLocationExitVisuals({ THREE, location, locked }) {
   const root = new THREE.Group(); root.name = `location-exits-${location.id}`;
-  const portalMaterial = new THREE.MeshBasicMaterial({ map: makePortalTexture(THREE), transparent: true,
-    opacity: locked ? .58 : .96, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const gateMaterial = new THREE.MeshBasicMaterial({ map: makeGateTexture(THREE), transparent: true,
-    opacity: locked ? 1 : 0, alphaTest: .04, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const arrowOutlineMaterial = new THREE.MeshBasicMaterial({ color: 0x201a21, transparent: true,
-    opacity: locked ? .32 : .78, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xf2dba2, transparent: true,
-    opacity: locked ? .2 : .98, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const floor = new THREE.PlaneGeometry(1, 1), gateGeometry = new THREE.PlaneGeometry(1, 1);
-  const arrowGeometry = makeArrowShape(THREE), markers = [];
+  const foliageTexture = makeFoliageShadowTexture(THREE);
+  const blockedTexture = makeBlockedGroundTexture(THREE);
+  const shadowMaterial = new THREE.MeshBasicMaterial({ map: foliageTexture, transparent: true,
+    opacity: .76, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const blockedMaterial = new THREE.MeshBasicMaterial({ map: blockedTexture, transparent: true,
+    opacity: locked ? 1 : 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const arrowOutlineMaterial = new THREE.MeshBasicMaterial({ color: 0x171426, transparent: true,
+    opacity: locked ? .32 : .76, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xf0dca5, transparent: true,
+    opacity: locked ? .18 : .98, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const floor = new THREE.PlaneGeometry(1, 1), arrowGeometry = makeArrowShape(THREE), markers = [];
   for (const exit of location.exits ?? []) {
     const radius = Math.hypot(exit.x, exit.z) || 1;
     const dx = exit.dirX ?? exit.x / radius, dz = exit.dirZ ?? exit.z / radius;
     const width = (exit.halfWidth ?? 2.3) * 2;
     const marker = new THREE.Group(); marker.position.set(exit.x, 0, exit.z); marker.rotation.y = Math.atan2(dx, dz);
-    const portal = new THREE.Mesh(floor, portalMaterial);
-    portal.rotation.x = -Math.PI / 2; portal.scale.set(width + .6, 5.3, 1);
-    portal.position.set(0, .027, 1.7); portal.renderOrder = 1; marker.add(portal);
+    const shadow = new THREE.Mesh(floor, shadowMaterial);
+    shadow.rotation.x = -Math.PI / 2; shadow.scale.set(Math.max(12, width * 2.2), 13, 1);
+    shadow.position.set(0, .023, 5.1); shadow.renderOrder = 1; marker.add(shadow);
     const arrowOutline = new THREE.Mesh(arrowGeometry, arrowOutlineMaterial);
     arrowOutline.rotation.x = -Math.PI / 2; arrowOutline.scale.set(1.52, 1.52, 1);
-    arrowOutline.position.set(0, .036, -.55); arrowOutline.renderOrder = 2; marker.add(arrowOutline);
+    arrowOutline.position.set(0, .035, -.55); arrowOutline.renderOrder = 2; marker.add(arrowOutline);
     const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
     arrow.rotation.x = -Math.PI / 2; arrow.scale.set(1.2, 1.2, 1);
-    arrow.position.set(0, .043, -.55); arrow.renderOrder = 3; marker.add(arrow);
-    const gate = new THREE.Mesh(gateGeometry, gateMaterial);
-    gate.scale.set(width + .35, 1.9, 1); gate.position.set(0, .95, -.28);
-    gate.renderOrder = 5; gate.visible = Boolean(locked); marker.add(gate);
-    marker.name = `exit-${exit.to}`; root.add(marker); markers.push({ gate });
+    arrow.position.set(0, .041, -.55); arrow.renderOrder = 3; marker.add(arrow);
+    const blocked = new THREE.Mesh(floor, blockedMaterial);
+    blocked.rotation.x = -Math.PI / 2; blocked.scale.set(Math.max(5, width + 1.5), 2.4, 1);
+    blocked.position.set(0, .048, 1.5); blocked.renderOrder = 4; marker.add(blocked);
+    marker.name = `exit-${exit.to}`; root.add(marker); markers.push({ blocked });
   }
   location.sceneGroup.add(root);
-  return { root, markers, portalMaterial, gateMaterial, arrowOutlineMaterial, arrowMaterial,
-    locked: Boolean(locked), gateOpacity: locked ? 1 : 0 };
+  return { root, markers, shadowMaterial, blockedMaterial, arrowOutlineMaterial, arrowMaterial,
+    locked: Boolean(locked), blockedOpacity: locked ? 1 : 0 };
 }
 
-/** Fade the barriers open or shut while keeping the ground exit cue readable. */
+/** Fade the painted ground mark as enemies clear or relock the exit. */
 export function updateLocationExitLock(system, locked, dt = 0) {
   if (!system) return false;
   const changed = system.locked !== Boolean(locked);
   system.locked = Boolean(locked);
   const targetOpacity = system.locked ? 1 : 0;
   const step = Math.max(0, dt) * (system.locked ? 4 : 2.5);
-  system.gateOpacity += Math.sign(targetOpacity - system.gateOpacity) * Math.min(Math.abs(targetOpacity - system.gateOpacity), step);
-  system.gateMaterial.opacity = system.gateOpacity;
-  system.portalMaterial.opacity = system.locked ? .62 : .96;
-  system.arrowOutlineMaterial.opacity = system.locked ? .4 : .78;
-  system.arrowMaterial.opacity = system.locked ? .26 : .98;
-  for (const marker of system.markers) marker.gate.visible = system.gateOpacity > .015;
+  system.blockedOpacity += Math.sign(targetOpacity - system.blockedOpacity)
+    * Math.min(Math.abs(targetOpacity - system.blockedOpacity), step);
+  system.blockedMaterial.opacity = system.blockedOpacity;
+  system.arrowOutlineMaterial.opacity = system.locked ? .4 : .76;
+  system.arrowMaterial.opacity = system.locked ? .22 : .98;
+  for (const marker of system.markers) marker.blocked.visible = system.blockedOpacity > .015;
   return changed;
 }
