@@ -19,6 +19,7 @@ import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
 import { createFigureFactory } from './render/figure-factory.mjs?v=2';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
+import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=1';
 import { createScenerySystem } from './render/scenery-system.mjs?v=9';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
@@ -38,8 +39,9 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaign
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=9';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
-  createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection, shouldIgnoreEntryExit,
-  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=8';
+  createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
+  locationHasLivingEnemies, shouldIgnoreEntryExit,
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=9';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -766,6 +768,10 @@ async function start() {
     groundResources = await createGroundRenderer({ THREE, renderer, locations: { [id]: location }, specsByLocation: decorationSpecs,
       pathTargets: { camp: CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) },
       createLocationWalkPaths, scatterGroundDetails, resources: groundResources, geometryClient, yieldWork: checkpoint });
+    const exitLocked = locationHasLivingEnemies(location);
+    location.exitBarriers = createExitBarrierBodies(location);
+    if (exitLocked) location.obstacles.push(...location.exitBarriers);
+    location.exitVisuals = createLocationExitVisuals({ THREE, location, locked: exitLocked });
     if (location.secret) await makeCacheBody(location, await loadStateTemplates('assets/chest-states.png', 2));
     for (const item of location.loot) { createLootVisual(location, item); await checkpoint(); }
     for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) createStoryPickupVisual(location, pickup);
@@ -798,7 +804,8 @@ async function start() {
     for (let index = storyActors.actors.length - 1; index >= 0; index--)
       if (storyActors.actors[index].spec.location === id) storyActors.actors.splice(index, 1);
     chestVisuals.delete(id); delete locationGroups[id];
-    delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails; delete location.cacheBody;
+    delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails;
+    delete location.cacheBody; delete location.exitVisuals; delete location.exitBarriers;
     location.enemies = []; location.obstacles = []; location.runtimeReady = false;
     if (id === 'camp') { campGoblinPool.length = 0; campOgrePool = null; }
     const retained = [scene, ...[...lootSpriteModels.values()].map(model => model.group)];
@@ -1744,11 +1751,17 @@ async function start() {
       const scale = t === 1 ? 1 : 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * 2 * Math.PI / 3);
       playerMarker.group.scale.setScalar(Math.max(.001, scale));
     }
+    const exitsLocked = locationHasLivingEnemies(activeLocation);
+    if (updateLocationExitLock(activeLocation.exitVisuals, exitsLocked, dt)) {
+      activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle.kind !== 'exit-barrier');
+      if (exitsLocked) activeLocation.obstacles.push(...activeLocation.exitBarriers);
+      rebuildBodies();
+    }
     if (transitionCooldown <= 0) {
       let exit = findNearbyExit(activeLocation, heroBody);
       if (exit && protectedEntryFrom && shouldIgnoreEntryExit(activeLocation, protectedEntryFrom, heroBody)) exit = null;
       else if (protectedEntryFrom) protectedEntryFrom = null;
-      if (exit) enterLocation(exit.to, activeLocation.id);
+      if (exit && !exitsLocked) enterLocation(exit.to, activeLocation.id);
     }
     const nearInteraction = heroBody.health > 0 && Math.hypot(heroBody.x, heroBody.z) <= 2.65;
     interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive

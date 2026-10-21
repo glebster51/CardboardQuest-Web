@@ -90,6 +90,20 @@ export function findNearbyExit(location, body, radius = EXIT_ZONE_RADIUS) {
   }) ?? null;
 }
 
+export function locationHasLivingEnemies(location) {
+  return (location?.enemies ?? []).some(enemy => enemy.health > 0 && !enemy.fell);
+}
+
+export function createExitBarrierBodies(location) {
+  return (location.exits ?? []).map(exit => {
+    const length = Math.hypot(exit.x, exit.z) || 1;
+    const dirX = exit.dirX ?? exit.x / length, dirZ = exit.dirZ ?? exit.z / length;
+    return { id: `exit-barrier-${location.id}-${exit.to}`, kind: 'exit-barrier', team: 'neutral',
+      locationId: location.id, x: exit.x - dirX * .36, z: exit.z - dirZ * .36,
+      vx: 0, vz: 0, radius: Math.max(.55, (exit.halfWidth ?? 2.3) - .5), fixed: true };
+  });
+}
+
 export function locationArrival(location, fromLocationId) {
   return location.arrivals?.[fromLocationId] ?? location.entry ?? point(0, 0);
 }
