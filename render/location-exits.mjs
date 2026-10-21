@@ -46,7 +46,7 @@ export function createLocationExitVisuals({ THREE, location, locked }) {
     const blocked = new THREE.Mesh(floor, blockedMaterial);
     blocked.rotation.x = -Math.PI / 2; blocked.scale.set(Math.max(5, width + 1.5), 2.4, 1);
     blocked.position.set(0, .048, 1.5); blocked.renderOrder = 2; marker.add(blocked);
-    marker.name = `exit-${exit.to}`; root.add(marker); markers.push({ blocked });
+    marker.name = `exit-${exit.to}`; root.add(marker); markers.push({ exit, marker, shadow, blocked });
   }
   location.sceneGroup.add(root);
   return { root, markers, shadowMaterial, blockedMaterial,
@@ -63,6 +63,6 @@ export function updateLocationExitLock(system, locked, dt = 0) {
   system.blockedOpacity += Math.sign(targetOpacity - system.blockedOpacity)
     * Math.min(Math.abs(targetOpacity - system.blockedOpacity), step);
   system.blockedMaterial.opacity = system.blockedOpacity;
-  for (const marker of system.markers) marker.blocked.visible = system.blockedOpacity > .015;
+  for (const marker of system.markers) marker.blocked.visible = !marker.exit.disabled && system.blockedOpacity > .015;
   return changed;
 }

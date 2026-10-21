@@ -90,6 +90,10 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     if (elevation <= 0 && !allowFlat) return null;
 
     const prop = new THREE.Group();
+    const counters = parent.userData.sceneEditCounts ??= {};
+    const instance = options.sceneEditId ? 0 : (counters[path] = (counters[path] ?? 0) + 1);
+    prop.userData.sceneEditId = options.sceneEditId ?? `scenery:${path}:${instance}`;
+    prop.userData.sceneEditLabel = options.sceneEditLabel ?? `${path.replace(/^assets\//, '').replace(/\.png$/, '')} · ${instance}`;
     prop.position.set(x, elevation, z);
     prop.add(art);
     if (options.fixedRadius) {
@@ -104,8 +108,11 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
         prop.add(base);
       }
       const owner = Object.values(locations).find(location => location.sceneGroup === parent);
-      owner?.obstacles.push({ id: `obstacle-${owner.id}-${owner.obstacles.length + 1}`,
-        x, z, vx: 0, vz: 0, radius: options.fixedRadius, fixed: true, team: 'obstacle' });
+      if (owner) {
+        const body = { id: `obstacle-${owner.id}-${owner.obstacles.length + 1}`,
+          x, z, vx: 0, vz: 0, radius: options.fixedRadius, fixed: true, team: 'obstacle' };
+        owner.obstacles.push(body); prop.userData.sceneEditBody = body;
+      }
     }
 
     const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);

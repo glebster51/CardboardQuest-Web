@@ -1,6 +1,5 @@
+import { FOG_DEFAULTS } from '../fog-settings.mjs';
 export const LOCATION_FAR_COLOR = 0x242039;
-const FOG_START_DISTANCE = 1.2;
-const FOG_END_DISTANCE = 8;
 
 function distanceToSegment(x, z, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -18,16 +17,22 @@ function isInsidePolygon(x, z, points) {
   return inside;
 }
 
-export function locationEdgeShadeAt(x, z, points) {
+function locationEdgeDistanceAt(x, z, points) {
   if (points.length < 3) return 1;
   let distance = Infinity;
   for (let index = 0; index < points.length; index++)
     distance = Math.min(distance, distanceToSegment(x, z, points[index], points[(index + 1) % points.length]));
-  const signedDistance = isInsidePolygon(x, z, points) ? distance : -distance;
-  const fogDistance = -signedDistance;
-  const t = Math.max(0, Math.min(1, (fogDistance - FOG_START_DISTANCE) / (FOG_END_DISTANCE - FOG_START_DISTANCE)));
+  return isInsidePolygon(x, z, points) ? -distance : distance;
+}
+
+function shadeAtDistance(distance, settings) {
+  const t = Math.max(0, Math.min(1, (distance - settings.start) / Math.max(.1, settings.end - settings.start)));
   const smooth = t * t * (3 - 2 * t);
   return smooth;
+}
+
+export function locationEdgeShadeAt(x, z, points, settings = FOG_DEFAULTS) {
+  return points.length < 3 ? 1 : shadeAtDistance(locationEdgeDistanceAt(x, z, points), settings);
 }
 
 export function applyLocationEdgeShade(root, patchMaterial) {
@@ -52,7 +57,8 @@ export function applyLocationEdgeShade(root, patchMaterial) {
   });
 }
 
-export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, yieldWork = async () => {} }) {
+export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, yieldWork = async () => {} }) {
+  settings = { ...FOG_DEFAULTS, ...settings };
   const points = location.walkablePoints ?? [];
   const bounds = points.reduce((result, point) => ({
     minX: Math.min(result.minX, point.x), maxX: Math.max(result.maxX, point.x),
@@ -62,11 +68,14 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   bounds.minX -= margin; bounds.maxX += margin; bounds.minZ -= margin; bounds.maxZ += margin;
   const width = bounds.maxX - bounds.minX, height = bounds.maxZ - bounds.minZ;
   const data = new Uint8Array(resolution * resolution * 4);
+  const distances = new Float32Array(resolution * resolution);
   for (let y = 0; y < resolution; y++) {
     for (let x = 0; x < resolution; x++) {
       const worldX = bounds.minX + (x + .5) / resolution * width;
       const worldZ = bounds.minZ + (y + .5) / resolution * height;
-      const shade = Math.round(locationEdgeShadeAt(worldX, worldZ, points) * 255);
+      const distance = locationEdgeDistanceAt(worldX, worldZ, points);
+      distances[y * resolution + x] = distance;
+      const shade = Math.round(shadeAtDistance(distance, settings) * 255);
       const offset = (y * resolution + x) * 4;
       data[offset] = shade; data[offset + 1] = shade; data[offset + 2] = shade; data[offset + 3] = 255;
     }
@@ -77,7 +86,8 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = false; texture.needsUpdate = true;
   const uniforms = { cqEdgeShadeMap: { value: texture },
-    cqEdgeShadeColor: { value: new THREE.Color(LOCATION_FAR_COLOR) },
+    cqEdgeShadeColor: { value: new THREE.Color(settings.color) },
+    cqEdgeShadeTint: { value: settings.tint }, cqEdgeShadeCurve: { value: settings.curve },
     cqEdgeShadeBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
   const patchMaterial = material => {
     if (!material?.isMeshStandardMaterial || material.userData.locationEdgeShadePatched) return;
@@ -94,6 +104,8 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <common>', `#include <common>
           uniform sampler2D cqEdgeShadeMap;
           uniform vec3 cqEdgeShadeColor;
+          uniform float cqEdgeShadeTint;
+          uniform float cqEdgeShadeCurve;
           uniform vec4 cqEdgeShadeBounds;
           varying vec3 vCQLocationWorld;
           vec3 cqLinearToOklab(vec3 c) {
@@ -128,16 +140,28 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <opaque_fragment>', `
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqEdgeShadeColor);
-          vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqEdgeShade * 0.38);
-          float cqFogConvergence = pow(cqEdgeShade, 1.35);
+          vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqEdgeShade * cqEdgeShadeTint);
+          float cqFogConvergence = pow(cqEdgeShade, cqEdgeShadeCurve);
           vec3 cqFogLab = mix(cqLinearToOklab(cqOverlaid), cqLinearToOklab(cqEdgeShadeColor), cqFogConvergence);
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'cq-location-edge-shade-v4';
+    material.customProgramCacheKey = () => 'cq-location-edge-shade-v5';
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
   applyTo(location.sceneGroup);
-  return { texture, bounds, uniforms, applyTo };
+  const update = next => {
+    const previous = settings; settings = { ...settings, ...next };
+    if (previous.start !== settings.start || previous.end !== settings.end) {
+      for (let index = 0; index < distances.length; index++) {
+        const shade = Math.round(shadeAtDistance(distances[index], settings) * 255), offset = index * 4;
+        data[offset] = shade; data[offset + 1] = shade; data[offset + 2] = shade;
+      }
+      texture.needsUpdate = true;
+    }
+    uniforms.cqEdgeShadeColor.value.set(settings.color);
+    uniforms.cqEdgeShadeTint.value = settings.tint; uniforms.cqEdgeShadeCurve.value = settings.curve;
+  };
+  return { texture, bounds, uniforms, applyTo, update };
 }

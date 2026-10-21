@@ -33,7 +33,7 @@ export async function createStoryActors({ locations, createScenery, scale, campa
   }
   function update() {
     for (const actor of actors) {
-      actor.prop.visible = isStoryActorVisible(actor.spec, campaign);
+      actor.prop.visible = !actor.prop.userData?.sceneEditDeleted && isStoryActorVisible(actor.spec, campaign);
       actor.body.active = actor.prop.visible;
       actor.prop.position.x = actor.body.x; actor.prop.position.z = actor.body.z;
     }

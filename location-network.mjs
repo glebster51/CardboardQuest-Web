@@ -81,6 +81,7 @@ export function createLocationNetwork(scale = LOCATION_SCALE) {
 
 export function findNearbyExit(location, body, radius = EXIT_ZONE_RADIUS) {
   return location.exits.find(exit => {
+    if (exit.disabled) return false;
     if (!exit.halfWidth) return Math.hypot(exit.x - body.x, exit.z - body.z) <= radius;
     const length = Math.hypot(exit.x, exit.z) || 1;
     const ux = exit.dirX ?? exit.x / length, uz = exit.dirZ ?? exit.z / length;
@@ -100,7 +101,7 @@ export function createExitBarrierBodies(location) {
     const dirX = exit.dirX ?? exit.x / length, dirZ = exit.dirZ ?? exit.z / length;
     return { id: `exit-barrier-${location.id}-${exit.to}`, kind: 'exit-barrier', team: 'neutral',
       locationId: location.id, x: exit.x - dirX * .36, z: exit.z - dirZ * .36,
-      vx: 0, vz: 0, radius: Math.max(.55, (exit.halfWidth ?? 2.3) - .5), fixed: true };
+      vx: 0, vz: 0, radius: Math.max(.55, (exit.halfWidth ?? 2.3) - .5), fixed: true, ...(exit.disabled ? { active: false } : {}) };
   });
 }
 
@@ -109,6 +110,8 @@ export function locationArrival(location, fromLocationId) {
 }
 
 export function locationEntryDirection(location, fromLocationId) {
+  const arrivalYaw = location.arrivals?.[fromLocationId]?.rotationY;
+  if (Number.isFinite(arrivalYaw)) return point(Math.sin(arrivalYaw), Math.cos(arrivalYaw));
   const entrance = location.exits?.find(exit => exit.to === fromLocationId);
   const center = location.entry ?? point(0, 0);
   if (!entrance) return point(0, 1);

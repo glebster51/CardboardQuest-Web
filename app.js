@@ -6,7 +6,11 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=5';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=6';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=124';
+import { createSceneRegistry } from './editor/scene-registry.mjs';
+import { installSceneEditor } from './editor/scene-editor.mjs';
+import { catalogAsset } from './editor/asset-catalog.mjs';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
@@ -18,11 +22,11 @@ import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
-import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
+import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
 import { createFigureFactory } from './render/figure-factory.mjs?v=3';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
-import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=8';
-import { createScenerySystem } from './render/scenery-system.mjs?v=9';
+import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9';
+import { createScenerySystem } from './render/scenery-system.mjs?v=10';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=25';
@@ -43,7 +47,7 @@ import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerS
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,
-  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=10';
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=11';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -85,6 +89,17 @@ async function start() {
   // black river mask) are available to gameplay collision and floor cutting.
   if (locations[campaignState.currentLocationId].art.depthMap)
     createCampaignLocations(locations, LOCATION_SCALE, [campaignState.currentLocationId]);
+  const authoredEntry = SCENE_OVERRIDES.locations[campaignState.currentLocationId]?.entry;
+  if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
+    { x: authoredEntry.position[0], z: authoredEntry.position[2] });
+  const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setFog(settings) {
+    scene.background.set(settings.color); renderer.setClearColor(settings.color);
+    for (const location of Object.values(locations)) {
+      location.edgeShade?.update(settings);
+      location.exitVisuals?.shadowMaterial.color.set(settings.color);
+    }
+  } });
+  sceneRegistry.sync();
   for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
     const location = locations[id];
     location.defeats = stored.defeats ?? location.defeats;
@@ -123,6 +138,7 @@ async function start() {
     progress: document.querySelector('#world-map-progress'), openButton: mapButton,
     closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
   let inputController = null;
+  let sceneEditor = null;
   const audioControls = createAudioControls({ audio, root: document.querySelector('#audio-panel'),
     trigger: document.querySelector('#audio-toggle'), onOpen() { inputController?.cancel(); } });
   const dialogue = createDialoguePanel({ root: dialoguePanel,
@@ -340,7 +356,7 @@ async function start() {
   }
   const storyActors = { actors: [], update() {
     for (const actor of this.actors) {
-      const visible = isStoryActorVisible(actor.spec, campaignState);
+      const visible = !actor.prop.userData.sceneEditDeleted && isStoryActorVisible(actor.spec, campaignState);
       actor.prop.visible = visible; actor.body.active = visible;
       actor.prop.position.x = actor.body.x; actor.prop.position.z = actor.body.z;
     }
@@ -410,6 +426,21 @@ async function start() {
       const cameraOnFront = dx * Math.sin(prop.rotation.y) + dz * Math.cos(prop.rotation.y) >= 0;
       front.visible = cameraOnFront;
       back.visible = !cameraOnFront;
+    }
+  }
+  function updateEditorPresentation() {
+    for (const figure of figures) {
+      if (figure.poolDormant || (figure.body !== heroBody && figure.locationId !== activeLocation.id)) continue;
+      const localCamera = figure.group.worldToLocal(camera.position.clone());
+      figure.viewBack = figure.body.health > 0 && localCamera.z < 0;
+      for (const art of Object.values(figure.artStates)) {
+        art.frontArt.group.visible = !figure.viewBack; art.backArt.group.visible = figure.viewBack;
+      }
+      figure.healthHUD.quaternion.copy(camera.quaternion);
+    }
+    for (const { prop, front, back } of sceneryFacePairs) {
+      const cameraOnFront = prop.worldToLocal(camera.position.clone()).z >= 0;
+      front.visible = cameraOnFront; back.visible = !cameraOnFront;
     }
   }
   let activeFigure = figures[0];
@@ -727,6 +758,16 @@ async function start() {
       opening: null, lootVisuals: [], pendingStory: null });
   }
   let groundResources = null;
+  async function createEditorAsset(location, id, value) {
+    const item = catalogAsset(value.asset);
+    if (!item) throw new Error(`Unknown scene asset: ${value.asset}`);
+    const prop = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
+      { elevation: value.position[1], yaw: value.rotation[1], fixedRadius: Math.min(.7, value.size * .19),
+        sceneEditId: id, sceneEditLabel: item.label });
+    prop.position.fromArray(value.position); prop.rotation.set(...value.rotation); prop.scale.fromArray(value.scale);
+    prop.userData.sceneEditAsset = value.asset; prop.userData.sceneEditSize = value.size;
+    location.edgeShade?.applyTo(prop); return prop;
+  }
   async function buildLocation(id, stillWanted) {
     const location = locations[id];
     const checkpoint = async () => {
@@ -752,7 +793,8 @@ async function start() {
     delete location.terrainHeightMap.layers;
     terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
     terrain.group.userData.walkablePoints = location.walkablePoints;
-    location.edgeShade = await createLocationEdgeShade({ THREE, location, yieldWork: checkpoint });
+    location.edgeShade = await createLocationEdgeShade({ THREE, location, settings: sceneRegistry.fog, yieldWork: checkpoint });
+    location.edgeShade?.update(sceneRegistry.fog);
     if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
     await checkpoint();
     await createLocationEnemies(location);
@@ -776,9 +818,12 @@ async function start() {
     location.exitBarriers = createExitBarrierBodies(location);
     if (exitLocked) location.obstacles.push(...location.exitBarriers);
     location.exitVisuals = createLocationExitVisuals({ THREE, location, locked: exitLocked });
+    location.exitVisuals.shadowMaterial.color.set(sceneRegistry.fog.color);
     if (location.secret) await makeCacheBody(location, await loadStateTemplates('assets/chest-states.png', 2));
     for (const item of location.loot) { createLootVisual(location, item); await checkpoint(); }
     for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) createStoryPickupVisual(location, pickup);
+    await sceneRegistry.restorePlaced(location, createEditorAsset);
+    sceneRegistry.prepare(location);
     location.edgeShade?.applyTo(location.sceneGroup);
     // Upload each bitmap while the scene is hidden, instead of uploading all of
     // a neighboring location's textures in its first visible frame.
@@ -791,6 +836,7 @@ async function start() {
   }
   async function releaseLocation(id) {
     const location = locations[id], removed = [];
+    sceneRegistry.release(id);
     if (location.runtimeReady) campaignState.world[id] = snapshotLocation(location);
     if (location.sceneGroup) { removed.push(location.sceneGroup); scene.remove(location.sceneGroup); }
     for (let index = figures.length - 1; index >= 0; index--) {
@@ -935,7 +981,8 @@ async function start() {
       audio.play('transition');
       dialogue.close();
       protectedEntryFrom = fromLocationId;
-      const remembered = lastExitPosition(activeLocation, fromLocationId);
+      const remembered = sceneRegistry.hasEdit(activeLocation.id, `arrival:${fromLocationId}`)
+        ? null : lastExitPosition(activeLocation, fromLocationId);
       const arrival = remembered && isPlayableFloor(activeLocation, remembered.x, remembered.z, .2)
         ? remembered : locationArrival(activeLocation, fromLocationId);
       heroBody.x = arrival.x; heroBody.z = arrival.z; heroBody.vx = 0; heroBody.vz = 0;
@@ -1411,7 +1458,7 @@ async function start() {
     host.classList.remove('aiming');
   }
   inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
-    isBlocked: () => locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
+    isBlocked: () => sceneEditor?.active || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
     onManualOrbit: () => { cameraManualOverride = 3; },
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
@@ -1462,6 +1509,9 @@ async function start() {
   loading.hidden = true;
   persistCampaign();
   if (initialStoryCard) showStoryCard(initialStoryCard);
+  sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
+    getLocation: () => activeLocation, canOpen: () => !locationTransition,
+    onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
   if (debugMode) window.__CQ_DEBUG__ = {
     locations: Object.keys(locations),
     enter(id) { return enterLocation(id, activeLocation.id); },
@@ -1515,6 +1565,14 @@ async function start() {
     snapshot() {
       const heroScreen = new THREE.Vector3(heroBody.x, .12, heroBody.z).project(camera);
       return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
+        editor: { active: sceneEditor.active, ...sceneEditor.inspect(), fog: { ...sceneRegistry.fog }, diff: sceneRegistry.model.diff(),
+          camera: { position: camera.position.toArray(), quaternion: camera.quaternion.toArray() },
+          exits: activeLocation.exits.map(exit => ({ ...exit })), arrivals: activeLocation.arrivals,
+          objects: sceneRegistry.bindings(activeLocation.id).map(binding => {
+            const center = binding.object.getWorldPosition(new THREE.Vector3()).project(camera);
+            return { id: binding.id, helper: binding.helper,
+              screen: { x: (center.x + 1) * innerWidth / 2, y: (1 - center.y) * innerHeight / 2 } };
+          }) },
         streaming: locationStreaming.snapshot(), memory: { ...renderer.info.memory },
         residentLocations: Object.keys(locationGroups), figureCount: figures.length,
         hero: { x: heroBody.x, z: heroBody.z, vx: heroBody.vx, vz: heroBody.vz,
@@ -1564,12 +1622,16 @@ async function start() {
   let previousTime = null;
   let previousAim = false;
   renderer.setAnimationLoop(time => {
-    const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
+    const frameDt = previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
+    const dt = simulationPaused ? 0 : frameDt;
     previousTime = time;
     audio.setScene({ nextMood: audioMood(activeLocation, heroBody.health, canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL)),
       nextAmbience: audioAmbience(activeLocation),
-      paused: simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
+      paused: sceneEditor.active || simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
+    if (sceneEditor.active) {
+      sceneEditor.update(frameDt); updateEditorPresentation(); renderer.render(scene, camera); return;
+    }
     updateCacheAnimation(dt);
     if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen()) {
       updateCamera(); renderer.render(scene, camera); return;
