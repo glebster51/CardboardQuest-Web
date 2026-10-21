@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs';
+import { readTransform } from './edit-model.mjs?v=125';
 import { ASSET_CATALOG } from './asset-catalog.mjs';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);

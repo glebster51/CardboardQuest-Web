@@ -1,4 +1,4 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs';
+import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=125';
 import { createExitBarrierBodies } from '../location-network.mjs';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */

@@ -6,7 +6,7 @@ import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs'
 import { makeScenerySprite } from '../scenery-model-v4.mjs?v=4';
 import { packScene } from './geometry-transfer.mjs';
 import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs';
-import { createCampaignLocations } from '../game/story-world.mjs';
+import { createCampaignLocations } from '../game/story-world.mjs?v=13';
 import { createLocationNetwork } from '../location-network.mjs';
 
 globalThis.document = { createElement: () => new OffscreenCanvas(1, 1) };

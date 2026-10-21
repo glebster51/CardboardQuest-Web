@@ -1,6 +1,7 @@
 import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=6';
 import { createLocationArt } from './location-art.mjs?v=3';
-import { createAuthoredLayout } from './location-layout.mjs?v=3';
+import { createAuthoredLayout } from './location-layout.mjs?v=4';
+import { SCENE_OVERRIDES } from '../scene-overrides.mjs?v=125';
 import { hazardAtPoint } from './world-hazards.mjs';
 import { extractDepthMapMaskContours } from '../terrain-shapes.mjs';
 import { EXIT_FOG_ENTRY_CROSS_LIMIT, EXIT_FOG_ENTRY_MAX, EXIT_FOG_ENTRY_MIN, EXIT_FOG_ENTRY_OFFSET } from '../exit-fog.mjs';
@@ -128,7 +129,12 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
           art.hazards.push({ id: `broken-bridge-water-${index}`, kind: 'depth-water', points });
       }
     }
-    const layout = createAuthoredLayout(authored.id, art, scale);
+    // Keep the walkable floor and surrounding terrain connected to authored gates.
+    const exitTargets = neighbors.map(to => {
+      const transform = SCENE_OVERRIDES.locations[authored.id]?.[`exit:${to}:trigger`];
+      return transform ? { x: transform.position[0], z: transform.position[2] } : null;
+    });
+    const layout = createAuthoredLayout(authored.id, art, scale, exitTargets);
     if (layout.exits.length !== neighbors.length) throw new Error(`Exit layout does not match story graph: ${authored.id}`);
     const walkablePoints = layout.points;
     const exits = neighbors.map((to, index) => ({

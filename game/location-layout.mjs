@@ -80,14 +80,16 @@ function arrivalOnRoute(route, scale, hazards = []) {
   return { x: route[0][0], z: route[0][1] };
 }
 
-export function createAuthoredLayout(id, art, scale = 1.5) {
+export function createAuthoredLayout(id, art, scale = 1.5, exitTargets = []) {
   const layout = LOCATION_LAYOUTS[id];
   if (!layout) throw new Error(`Missing authored layout: ${id}`);
-  const layoutRoutes = layout.routes.map(route => {
+  const layoutRoutes = layout.routes.map((route, index) => {
     const extended = route.map(([x, z]) => [x, z]);
     const end = extended.at(-1), previous = extended.at(-2), length = Math.hypot(end[0] - previous[0], end[1] - previous[1]);
-    extended[extended.length - 1] = [end[0] + (end[0] - previous[0]) / length * EXIT_FOG_EXIT_EXTENSION / scale,
-      end[1] + (end[1] - previous[1]) / length * EXIT_FOG_EXIT_EXTENSION / scale];
+    const target = exitTargets[index];
+    extended[extended.length - 1] = target ? [target.x / scale, target.z / scale]
+      : [end[0] + (end[0] - previous[0]) / length * EXIT_FOG_EXIT_EXTENSION / scale,
+        end[1] + (end[1] - previous[1]) / length * EXIT_FOG_EXIT_EXTENSION / scale];
     return extended;
   });
   const routes = layoutRoutes.map(route => route.map(([x, z]) => [x * scale, z * scale]));
