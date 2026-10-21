@@ -1,47 +1,12 @@
 import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=4';
 
-function makeFoliageShadowTexture(THREE) {
-  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1024;
-  const context = canvas.getContext('2d');
-  const size = canvas.width;
-  const margin = 72;
-  const rowCount = 56;
-  const smoothstep = value => {
-    const t = Math.max(0, Math.min(1, value));
-    return t * t * (3 - 2 * t);
-  };
-  const drawLeaf = (x, y, width, length, angle, opacity) => {
-    context.save(); context.translate(x, y); context.rotate(angle);
-    context.globalAlpha = opacity;
-    context.fillStyle = '#fff';
-    context.beginPath(); context.moveTo(0, -length);
-    context.quadraticCurveTo(width * .78, -length * .58, width, 0);
-    context.quadraticCurveTo(width * .62, length * .72, 0, length);
-    context.quadraticCurveTo(-width * .62, length * .72, -width, 0);
-    context.quadraticCurveTo(-width * .78, -length * .58, 0, -length);
-    context.closePath(); context.fill(); context.restore();
-  };
+export const EXIT_SHADOW_LENGTH = 25;
+export const EXIT_SHADOW_CENTER_DEPTH = 8;
 
-  // Rows stay distinct like paper-cut leaves. Their count and opacity grow
-  // linearly toward the far end, where overlaps become a solid fog-colored veil.
-  for (let row = 0; row < rowCount; row++) {
-    const progress = row / (rowCount - 1);
-    const y = margin + progress * (size - margin * 2);
-    const leafCount = 3 + Math.round(progress * 29);
-    const leafWidth = 11 + progress * 5;
-    const leafLength = 21 + progress * 8;
-    const rowOpacity = .12 + progress * .88;
-    const spacing = (size - margin * 2) / leafCount;
-    const verticalFade = smoothstep((y - 10) / margin) * smoothstep((size - y - 10) / margin);
-    for (let column = 0; column < leafCount; column++) {
-      const seed = Math.sin((row + 1) * 91.17 + (column + 3) * 17.43);
-      const x = margin + spacing * (column + .5 + seed * .2);
-      const sideFade = smoothstep(Math.min(x, size - x) / margin);
-      const angle = seed * .42 + ((row + column) % 2 ? .58 : -.58);
-      drawLeaf(x, y + seed * 8, leafWidth, leafLength, angle, rowOpacity * verticalFade * sideFade);
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+function makeFoliageShadowTexture(THREE) {
+  const url = new URL('../assets/location-exit-foliage-v2.png', import.meta.url).href;
+  const texture = new THREE.TextureLoader().load(url);
+  texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 
@@ -75,8 +40,8 @@ export function createLocationExitVisuals({ THREE, location, locked }) {
     const width = (exit.halfWidth ?? 2.3) * 2;
     const marker = new THREE.Group(); marker.position.set(exit.x, 0, exit.z); marker.rotation.y = Math.atan2(dx, dz);
     const shadow = new THREE.Mesh(floor, shadowMaterial);
-    shadow.rotation.x = -Math.PI / 2; shadow.scale.set(Math.max(12, width * 2.2), 25, 1);
-    shadow.position.set(0, .023, 14); shadow.renderOrder = 1; marker.add(shadow);
+    shadow.rotation.x = -Math.PI / 2; shadow.scale.set(Math.max(12, width * 2.2), EXIT_SHADOW_LENGTH, 1);
+    shadow.position.set(0, .023, EXIT_SHADOW_CENTER_DEPTH); shadow.renderOrder = 1; marker.add(shadow);
     const blocked = new THREE.Mesh(floor, blockedMaterial);
     blocked.rotation.x = -Math.PI / 2; blocked.scale.set(Math.max(5, width + 1.5), 2.4, 1);
     blocked.position.set(0, .048, 1.5); blocked.renderOrder = 2; marker.add(blocked);
