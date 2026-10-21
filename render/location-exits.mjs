@@ -1,4 +1,4 @@
-import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=3';
+import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=4';
 
 function makeFoliageShadowTexture(THREE) {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1024;

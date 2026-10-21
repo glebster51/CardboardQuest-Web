@@ -1,6 +1,6 @@
 export const LOCATION_FAR_COLOR = 0x242039;
 const FOG_START_DISTANCE = 1.5;
-const FOG_END_DISTANCE = 23;
+const FOG_END_DISTANCE = 8;
 
 function distanceToSegment(x, z, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -91,16 +91,50 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <common>', '#include <common>\nvarying vec3 vCQLocationWorld;')
         .replace('#include <project_vertex>', 'vCQLocationWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D cqEdgeShadeMap;\nuniform vec3 cqEdgeShadeColor;\nuniform vec4 cqEdgeShadeBounds;\nvarying vec3 vCQLocationWorld;')
+        .replace('#include <common>', `#include <common>
+          uniform sampler2D cqEdgeShadeMap;
+          uniform vec3 cqEdgeShadeColor;
+          uniform vec4 cqEdgeShadeBounds;
+          varying vec3 vCQLocationWorld;
+          vec3 cqLinearToOklab(vec3 c) {
+            vec3 lms = vec3(
+              0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
+              0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b,
+              0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
+            lms = pow(max(lms, vec3(0.0)), vec3(1.0 / 3.0));
+            return vec3(
+              0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
+              1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
+              0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
+          }
+          vec3 cqOklabToLinear(vec3 lab) {
+            float l = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
+            float m = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
+            float s = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;
+            l = l * l * l; m = m * m * m; s = s * s * s;
+            return max(vec3(
+              4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+              -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+              -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s), vec3(0.0));
+          }
+          vec3 cqSoftLight(vec3 base, vec3 layer) {
+            vec3 low = base - (1.0 - 2.0 * layer) * base * (1.0 - base);
+            vec3 high = base + (2.0 * layer - 1.0) * (sqrt(max(base, vec3(0.0))) - base);
+            return mix(low, high, step(vec3(0.5), layer));
+          }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 cqEdgeUv = (vCQLocationWorld.xz - cqEdgeShadeBounds.xy) / cqEdgeShadeBounds.zw;
-          float cqEdgeShade = texture2D(cqEdgeShadeMap, cqEdgeUv).r;
-          float cqLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-          vec3 cqMuted = mix(diffuseColor.rgb, vec3(cqLuma), cqEdgeShade * 0.78);
-          diffuseColor.rgb = cqMuted;`)
-        .replace('#include <opaque_fragment>', 'outgoingLight = mix(outgoingLight, cqEdgeShadeColor, cqEdgeShade);\n#include <opaque_fragment>');
+          float cqEdgeShade = texture2D(cqEdgeShadeMap, cqEdgeUv).r;`)
+        .replace('#include <opaque_fragment>', `
+          vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
+          vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqEdgeShadeColor);
+          vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqEdgeShade * 0.38);
+          float cqFogConvergence = pow(cqEdgeShade, 1.35);
+          vec3 cqFogLab = mix(cqLinearToOklab(cqOverlaid), cqLinearToOklab(cqEdgeShadeColor), cqFogConvergence);
+          outgoingLight = cqOklabToLinear(cqFogLab);
+          #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'cq-location-edge-shade-v3';
+    material.customProgramCacheKey = () => 'cq-location-edge-shade-v4';
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
