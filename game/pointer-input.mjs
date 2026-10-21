@@ -5,7 +5,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 /** Bind the tabletop pointer, drag-to-aim, orbit, and zoom gestures. */
 export function createPointerInput({ THREE, host, inputElement = host, camera, orbit, playerMarker, windowRef = window,
   getBody, getActiveFigure, hitFigure, choose, stopAim, onLaunch,
-  groundUiY, aimDragSensitivity = 1 / 3, maxAimMarkerExtension, isBlocked = () => false }) {
+  groundUiY, aimDragSensitivity = 1 / 3, maxAimMarkerExtension, isBlocked = () => false, onManualOrbit = () => {} }) {
   const pointers = new Map();
   let gesture = null;
 
@@ -78,7 +78,9 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
         const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
         const pinch = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
         orbit.distance = clamp(gesture.zoomStart * gesture.pinchStart / Math.max(1, pinch), 4.5, 27);
-        orbit.theta -= (x - gesture.lastX) * .007;
+        const dx = x - gesture.lastX;
+        orbit.theta -= dx * .007;
+        if (dx) onManualOrbit();
         orbit.phi = clamp(orbit.phi - (y - gesture.lastY) * .005, .35, 1.3);
         gesture.lastX = x; gesture.lastY = y;
       }
@@ -112,6 +114,7 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
       const dx = event.clientX - gesture.lastX, dy = event.clientY - gesture.lastY;
       orbit.theta -= dx * .007;
       orbit.phi = clamp(orbit.phi - dy * .005, .35, 1.3);
+      if (dx) onManualOrbit();
       gesture.lastX = event.clientX; gesture.lastY = event.clientY;
     }
   });
@@ -129,5 +132,6 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
   }, { passive: false });
   windowRef.addEventListener('blur', cancel);
 
-  return { cancel, getAimingBody: () => gesture?.mode === 'aim' && gesture.moved ? getBody() : null };
+  return { cancel, getAimingBody: () => gesture?.mode === 'aim' && gesture.moved ? getBody() : null,
+    isOrbiting: () => gesture?.mode === 'orbit' || gesture?.mode === 'touchOrbit' };
 }

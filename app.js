@@ -10,7 +10,8 @@ import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
-import { createPointerInput } from './game/pointer-input.mjs?v=3';
+import { createPointerInput } from './game/pointer-input.mjs?v=4';
+import { followMotion } from './render/camera-follow.mjs?v=1';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
@@ -154,6 +155,7 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   const target = new THREE.Vector3(0, .65, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
+  let cameraManualOverride = 0;
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
   const sun = new THREE.DirectionalLight(0xffebcb, 3);
   sun.position.set(-5, 12, 7);
@@ -1380,6 +1382,7 @@ async function start() {
   }
   inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
     isBlocked: () => locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
+    onManualOrbit: () => { cameraManualOverride = 3; },
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
@@ -1392,7 +1395,12 @@ async function start() {
     },
   });
 
-  function updateCamera() {
+  function updateCamera(dt = 0, followMovement = false) {
+    if (followMovement && dt > 0) {
+      cameraManualOverride = Math.max(0, cameraManualOverride - dt);
+      if (cameraManualOverride === 0 && !inputController.isOrbiting() && !inputController.getAimingBody())
+        orbit.theta = followMotion(orbit.theta, heroBody.vx, heroBody.vz, dt);
+    }
     camera.position.set(target.x + orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta),
       target.y + orbit.distance * Math.cos(orbit.phi), target.z + orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta));
     camera.lookAt(target);
@@ -1752,7 +1760,7 @@ async function start() {
     playerMarker.overlap.material.color.copy(playerMarker.material.color);
     playerMarker.overlap.material.opacity = playerMarker.material.opacity * .52;
     playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
-    updateCamera();
+    updateCamera(dt, true);
     for (const { prop, front, back } of sceneryFacePairs) {
       const dx = camera.position.x - prop.position.x, dz = camera.position.z - prop.position.z;
       const cameraOnFront = dx * Math.sin(prop.rotation.y) + dz * Math.cos(prop.rotation.y) >= 0;
