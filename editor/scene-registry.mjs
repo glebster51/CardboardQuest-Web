@@ -1,4 +1,4 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=128';
+import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=129';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 
@@ -40,6 +40,47 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       body, asset: object.userData.sceneEditAsset, size: object.userData.sceneEditSize,
       sync() { if (body) { body.x = object.position.x; body.z = object.position.z; body.radius = radius * Math.max(object.scale.x, object.scale.z); } },
     }, born);
+  }
+  function bindGroundDetails(location, bindings) {
+    const meshes = [];
+    location.sceneGroup.traverse(mesh => {
+      const entries = mesh.userData?.sceneEditGroundEntries;
+      if (!mesh.isInstancedMesh || !entries?.length) return;
+      meshes.push(mesh);
+      for (const entry of entries) {
+        const proxy = new THREE.Object3D();
+        proxy.userData.sceneEditGroundProxy = true;
+        proxy.position.set(entry.position?.[0] ?? 0, entry.position?.[1] ?? 0, entry.position?.[2] ?? 0);
+        proxy.rotation.set(...(entry.rotation ?? [0, 0, 0]));
+        proxy.scale.set(...(entry.scale ?? [entry.width, entry.height, 1]));
+        location.sceneGroup.add(proxy);
+        const instanceMatrix = new THREE.Matrix4();
+        const binding = bind(location, bindings, entry.id, entry.label, proxy, {
+          groundInstance: true, mesh,
+          onDelete(deleted) {
+            if (deleted) for (const instanceId of entry.instanceIds) mesh.setMatrixAt(instanceId, instanceMatrix.makeScale(0, 0, 0));
+            else this.sync();
+            mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
+          },
+          sync() {
+            proxy.updateWorldMatrix(true, false); mesh.parent.updateWorldMatrix(true, false);
+            const inverseParent = new THREE.Matrix4().copy(mesh.parent.matrixWorld).invert();
+            const base = new THREE.Matrix4().multiplyMatrices(inverseParent, proxy.matrixWorld);
+            const position = new THREE.Vector3(), baseRotation = new THREE.Quaternion(), scale = new THREE.Vector3();
+            base.decompose(position, baseRotation, scale);
+            for (const [variant, instanceId] of entry.instanceIds.entries()) {
+              const rotation = baseRotation.clone();
+              if (entry.upright && variant % 2) rotation.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));
+              instanceMatrix.compose(position, rotation, scale);
+              mesh.setMatrixAt(instanceId, instanceMatrix);
+            }
+            mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
+          },
+        });
+        for (const instanceId of entry.instanceIds) mesh.userData.sceneEditInstanceBindings.set(instanceId, binding);
+      }
+    });
+    return meshes;
   }
   return {
     model, fog,
@@ -90,6 +131,8 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       for (const [from, point] of Object.entries(location.arrivals ?? {}))
         spawn(`arrival:${from}`, `Вход из ${from}`, point, location.exits.find(exit => exit.to === from));
       location.sceneGroup.traverse(object => { if (object.userData.sceneEditId) propBinding(location, bindings, object); });
+      const groundMeshes = bindGroundDetails(location, bindings);
+      bindings.groundMeshes = groundMeshes;
       resident.set(location.id, bindings); return bindings;
     },
     async restorePlaced(location, createAsset) {
@@ -108,6 +151,7 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
     release(id) {
       const source = sources.get(id);
       if (source) Object.assign(source.location, source.data);
+      for (const binding of resident.get(id) ?? []) if (binding.groundInstance) binding.object.removeFromParent();
       sources.delete(id); resident.delete(id);
     },
     graphChanged(location) {
@@ -122,6 +166,8 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       if (model.has(location.id, 'fog-paths')) model.set(location.id, 'fog-paths', location.fogPaths);
     },
     bindings(id) { return resident.get(id) ?? []; },
+    instanceMeshes(id) { return resident.get(id)?.groundMeshes ?? []; },
+    instanceBindingForHit(hit) { return hit?.object?.userData?.sceneEditInstanceBindings?.get(hit.instanceId) ?? null; },
     hasEdit(location, object) {
       return Object.hasOwn(overrides.locations[location] ?? {}, object)
         || model.diff().changes.some(change => change.location === location && change.object === object);

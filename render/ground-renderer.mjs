@@ -11,30 +11,43 @@ function makeMarkMaterial(THREE, texture, opacity) {
     depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 });
 }
 
-function addInstances(THREE, parent, kind, marks, materials, upright = false) {
+function addInstances(THREE, parent, kind, marks, materials, upright = false, ids = new Map()) {
   if (!marks.length) return;
   const multiplier = upright ? 2 : 1;
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), materials.get(kind), marks.length * multiplier);
   const position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3();
   const matrix = new THREE.Matrix4(), euler = new THREE.Euler(0, 0, 0, 'XYZ');
+  const editEntries = [];
   let index = 0;
-  for (const mark of marks) for (let variant = 0; variant < multiplier; variant++) {
-    if (upright) {
-      position.set(mark.x, mark.height / 2 + .009, mark.z);
-      euler.set(0, mark.rotation + variant * Math.PI / 2, 0);
-    } else {
-      position.set(mark.x, .018, mark.z);
-      euler.set(-Math.PI / 2, 0, mark.rotation);
+  for (const mark of marks) {
+    const id = ids.get(mark);
+    const entry = { id, label: `${upright ? 'Травинка' : 'Декаль'} · ${mark.kind} · ${id?.split(':').at(-1)}`,
+      upright, instanceIds: [], width: mark.width, height: mark.height,
+      position: [mark.x, upright ? mark.height / 2 + .009 : .018, mark.z],
+      rotation: upright ? [0, mark.rotation, 0] : [-Math.PI / 2, 0, mark.rotation],
+      scale: [mark.width, mark.height, 1] };
+    for (let variant = 0; variant < multiplier; variant++) {
+      if (upright) {
+        position.set(mark.x, mark.height / 2 + .009, mark.z);
+        euler.set(0, mark.rotation + variant * Math.PI / 2, 0);
+      } else {
+        position.set(mark.x, .018, mark.z);
+        euler.set(-Math.PI / 2, 0, mark.rotation);
+      }
+      quaternion.setFromEuler(euler);
+      scale.set(mark.width, mark.height, 1);
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(index, matrix); entry.instanceIds.push(index++);
     }
-    quaternion.setFromEuler(euler);
-    scale.set(mark.width, mark.height, 1);
-    matrix.compose(position, quaternion, scale);
-    mesh.setMatrixAt(index++, matrix);
+    editEntries.push(entry);
   }
   mesh.instanceMatrix.needsUpdate = true;
   // Flat ground marks sit below the gameplay markers (outline: 2, fill: 3).
   // Grass stays upright as crossed 3D sprite cards, but also renders before the HUD.
   mesh.renderOrder = upright ? 1 : 0;
+  mesh.userData.locationFogSurface = true;
+  mesh.userData.sceneEditGroundEntries = editEntries;
+  mesh.userData.sceneEditInstanceBindings = new Map();
   mesh.frustumCulled = false;
   parent.add(mesh);
 }
@@ -70,12 +83,15 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
     group.userData.walkPaths = paths;
     location.sceneGroup.add(group);
     const marks = [...details.decals, ...details.trail];
+    const decalIds = new Map([...details.decals.map((mark, index) => [mark, `ground-decal:${String(index).padStart(4, '0')}`]),
+      ...details.trail.map((mark, index) => [mark, `ground-trail:${String(index).padStart(4, '0')}`])]);
+    const grassIds = new Map(details.grass.map((mark, index) => [mark, `ground-grass:${String(index).padStart(4, '0')}`]));
     for (const kind of GROUND_DECALS) {
-      addInstances(THREE, group, kind, marks.filter(mark => mark.kind === kind), materials);
+      addInstances(THREE, group, kind, marks.filter(mark => mark.kind === kind), materials, false, decalIds);
       await yieldWork();
     }
     for (const kind of GRASS_DECALS) {
-      addInstances(THREE, group, kind, details.grass.filter(mark => mark.kind === kind), materials, true);
+      addInstances(THREE, group, kind, details.grass.filter(mark => mark.kind === kind), materials, true, grassIds);
       await yieldWork();
     }
     location.groundDetails = { ...details, paths };

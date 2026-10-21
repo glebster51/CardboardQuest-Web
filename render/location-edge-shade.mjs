@@ -56,10 +56,12 @@ export function applyLocationEdgeShade(root, patchMaterial) {
   root.traverse(object => {
     if (!object.isMesh) return;
     const scenerySprite = isScenerySprite(object);
-    if (!/^(playfield|terrain)-top-/.test(object.name) && !scenerySprite) return;
+    const fogSurface = Boolean(object.userData?.locationFogSurface);
+    if (!/^(playfield|terrain)-top-/.test(object.name) && !scenerySprite && !fogSurface) return;
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
-      if (scenerySprite && material?.isMeshStandardMaterial && !material.userData.locationEdgeShadePatched)
+      if ((scenerySprite && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
+        && !material.userData.locationEdgeShadePatched)
         material = material.clone();
       patchMaterial(material);
       return material;
@@ -100,7 +102,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
     cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
   const patchMaterial = material => {
-    if (!material?.isMeshStandardMaterial || material.userData.locationEdgeShadePatched) return;
+    if ((!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) || material.userData.locationEdgeShadePatched) return;
     material.userData.locationEdgeShadePatched = true;
     material.userData.locationEdgeShadeTexture = texture;
     const previousCompile = material.onBeforeCompile;
@@ -156,7 +158,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'cq-location-path-fog-v7';
+    material.customProgramCacheKey = () => 'cq-location-path-fog-v8';
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);

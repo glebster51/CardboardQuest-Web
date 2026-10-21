@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs?v=128';
+import { readTransform } from './edit-model.mjs?v=129';
 import { ASSET_CATALOG } from './asset-catalog.mjs';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
@@ -239,7 +239,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           if (play) { void toggle(); return; }
           if (!active) return;
           const location = getLocation(); clearHelpers();
-          bindings = registry.prepare(location); rememberBindings(location);
+          bindings = registry.bindings(location.id); rememberBindings(location);
           for (const binding of bindings) if (binding.helper) makeHelper(binding);
           select(null); refreshObjects(); refreshFog(); makeFogPathVisuals(location); changed();
         } });
@@ -549,9 +549,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const available = bindings.filter(binding => binding.object.visible && model.get(binding.location, binding.id) !== null);
     const helpers = available.filter(binding => binding.helper);
     const hit = raycaster.intersectObjects(helpers.map(binding => binding.object), true)[0]
-      ?? raycaster.intersectObjects(available.filter(binding => !binding.helper).map(binding => binding.object), true)[0];
-    let binding = null;
-    if (hit) for (let object = hit.object; object; object = object.parent) {
+      ?? raycaster.intersectObjects(available.filter(binding => !binding.helper && !binding.groundInstance).map(binding => binding.object), true)[0]
+      ?? raycaster.intersectObjects(registry.instanceMeshes(getLocation().id), false)[0];
+    let binding = registry.instanceBindingForHit(hit);
+    if (!binding && hit) for (let object = hit.object; object; object = object.parent) {
       binding = bindings.find(item => item.object === object); if (binding) break;
     }
     select(binding);
