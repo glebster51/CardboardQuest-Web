@@ -1,6 +1,6 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '129';
-import { FOG_DEFAULTS } from '../fog-settings.mjs';
+export const SCENE_BUILD = '130';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=2';
 import { catalogAsset } from './asset-catalog.mjs';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
@@ -21,12 +21,16 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
   if (!value || typeof value !== 'object') throw new Error('Scene value must be an object');
   if (fogPaths) return validateFogPaths(value);
   if (graph) return validateCampaignGraph(value);
-  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve'] : ['position', 'rotation', 'scale', 'asset', 'size'];
+  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
     if (!Number.isFinite(value.start) || !Number.isFinite(value.end) || value.start < -20 || value.end > 60 || value.end - value.start < .1
       || !/^#[0-9a-f]{6}$/i.test(value.color) || !Number.isFinite(value.tint) || value.tint < 0 || value.tint > 1
-      || !Number.isFinite(value.curve) || value.curve < .2 || value.curve > 4) throw new Error('Invalid fog settings');
+      || !Number.isFinite(value.curve) || value.curve < .2 || value.curve > 4
+      || (value.revealInnerRadius !== undefined && (!Number.isFinite(value.revealInnerRadius) || value.revealInnerRadius < 0 || value.revealInnerRadius > 240))
+      || (value.revealOuterRadius !== undefined && (!Number.isFinite(value.revealOuterRadius) || value.revealOuterRadius < 1 || value.revealOuterRadius > 320))
+      || (value.revealInnerRadius !== undefined && value.revealOuterRadius !== undefined
+        && value.revealOuterRadius <= value.revealInnerRadius)) throw new Error('Invalid fog settings');
   } else {
     for (const key of ['position', 'rotation', 'scale']) {
       if (!Array.isArray(value[key]) || value[key].length !== 3 || !value[key].every(Number.isFinite)
@@ -112,9 +116,12 @@ export function mergeSceneDiff(overrides, diff) {
     if (before === null && after === null) throw new Error('An empty edit has no effect');
     if (before === null && (!object.startsWith('placed:') || !after.asset)) throw new Error('New objects must come from the asset library');
     const current = fog ? { ...FOG_DEFAULTS, ...result.fog } : graph ? result.graph ?? before : result.locations[location]?.[object];
-    if ((fog || graph || Object.hasOwn(result.locations[location] ?? {}, object)) && !equal(current, before) && !equal(current, after))
+    const matches = (value, expected) => fog
+      ? Object.keys(expected).every(key => equal(value?.[key], expected[key]))
+      : equal(value, expected);
+    if ((fog || graph || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
       throw new Error(`Scene edit conflict: ${location}/${object}`);
-    if (fog) result.fog = clone(after);
+    if (fog) result.fog = { ...current, ...clone(after) };
     else if (graph) result.graph = clone(after);
     else { result.locations[location] ??= {}; result.locations[location][object] = clone(after); }
   }

@@ -1,4 +1,4 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=129';
+import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=130';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 

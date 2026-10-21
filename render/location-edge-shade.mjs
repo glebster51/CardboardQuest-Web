@@ -1,4 +1,4 @@
-import { FOG_DEFAULTS } from '../fog-settings.mjs';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=2';
 export const LOCATION_FAR_COLOR = 0x242039;
 
 function distanceToSegment(x, z, a, b) {
@@ -57,13 +57,16 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     if (!object.isMesh) return;
     const scenerySprite = isScenerySprite(object);
     const fogSurface = Boolean(object.userData?.locationFogSurface);
-    if (!/^(playfield|terrain)-top-/.test(object.name) && !scenerySprite && !fogSurface) return;
+    const terrainSurface = /^(playfield|terrain)-top-/.test(object.name);
+    if (!terrainSurface && !scenerySprite && !fogSurface) return;
+    const reveal = scenerySprite || /^terrain-top-/.test(object.name);
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
-      if ((scenerySprite && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
+      if ((reveal && (material?.isMeshStandardMaterial || material?.isMeshBasicMaterial)
+        || scenerySprite && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
         && !material.userData.locationEdgeShadePatched)
         material = material.clone();
-      patchMaterial(material);
+      patchMaterial(material, reveal);
       return material;
     });
     if (Array.isArray(object.material)) object.material = patchedMaterials;
@@ -71,7 +74,7 @@ export function applyLocationEdgeShade(root, patchMaterial) {
   });
 }
 
-export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, yieldWork = async () => {} }) {
+export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, revealUniforms = {}, yieldWork = async () => {} }) {
   settings = { ...FOG_DEFAULTS, ...settings };
   const points = location.walkablePoints ?? [];
   const paths = location.fogPaths?.paths ?? [];
@@ -101,17 +104,21 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     cqPathFogColor: { value: new THREE.Color(settings.color) },
     cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
     cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
-  const patchMaterial = material => {
+  const patchMaterial = (material, reveal = false) => {
     if ((!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) || material.userData.locationEdgeShadePatched) return;
     material.userData.locationEdgeShadePatched = true;
     material.userData.locationEdgeShadeTexture = texture;
     const previousCompile = material.onBeforeCompile;
     material.onBeforeCompile = shader => {
       previousCompile?.(shader);
-      Object.assign(shader.uniforms, uniforms);
+      Object.assign(shader.uniforms, uniforms, reveal ? revealUniforms : {});
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vCQLocationWorld;')
-        .replace('#include <project_vertex>', 'vCQLocationWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>');
+        .replace('#include <common>', `#include <common>
+          varying vec3 vCQLocationWorld;
+          ${reveal ? 'varying float vCQRevealDepth;' : ''}`)
+        .replace('#include <project_vertex>', `vCQLocationWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+          #include <project_vertex>
+          ${reveal ? 'vCQRevealDepth = -mvPosition.z;' : ''}`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>
           uniform sampler2D cqPathFogMap;
@@ -120,6 +127,12 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           uniform float cqPathFogCurve;
           uniform vec4 cqPathFogBounds;
           varying vec3 vCQLocationWorld;
+          ${reveal ? `uniform float cqRevealEnabled;
+            uniform vec2 cqRevealScreen;
+            uniform float cqRevealPlayerDepth;
+            uniform float cqRevealInnerRadius;
+            uniform float cqRevealOuterRadius;
+            varying float vCQRevealDepth;` : ''}
           vec3 cqLinearToOklab(vec3 c) {
             vec3 lms = vec3(
               0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
@@ -149,7 +162,11 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 cqPathFogUv = (vCQLocationWorld.xz - cqPathFogBounds.xy) / cqPathFogBounds.zw;
           float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r;`)
-        .replace('#include <opaque_fragment>', `
+        .replace('#include <opaque_fragment>', `${reveal ? `
+          float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
+          float cqRevealFade = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
+          float cqRevealBeforePlayer = step(vCQRevealDepth + 0.025, cqRevealPlayerDepth);
+          diffuseColor.a *= 1.0 - cqRevealEnabled * cqRevealFade * cqRevealBeforePlayer;` : ''}
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
           vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
@@ -158,7 +175,8 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'cq-location-path-fog-v8';
+    if (reveal) { material.transparent = true; material.depthWrite = false; }
+    material.customProgramCacheKey = () => `cq-location-path-fog-v9-reveal-${reveal}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);

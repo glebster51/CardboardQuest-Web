@@ -18,6 +18,7 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor input[type=range]{width:100%;margin:2px 0;accent-color:var(--se-accent);grid-column:1/-1;cursor:ew-resize}
 #scene-editor output{color:var(--se-accent);font-variant-numeric:tabular-nums}
 #scene-editor .se-fog .se-color{flex:0 0 88px;display:flex;align-items:center;gap:8px}
+#scene-editor .se-fog .se-reveal-control{flex:.8;min-width:90px}
 #scene-editor .se-render-mode{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid #ffffff18}
 #scene-editor .se-render-mode>span{font-size:10px;letter-spacing:1.3px;color:#b9ac97;margin-right:3px}
 #scene-editor .se-render-mode button{padding:5px 9px;font-size:11px}
