@@ -72,9 +72,17 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor .se-library header strong{font-size:14px}
 #scene-editor .se-library header small{letter-spacing:0;font-size:10px}
 #scene-editor #se-search{width:130px;margin-left:auto;background:#141820;color:#f0e7d6;border:1px solid #50535d;border-radius:5px;padding:6px;font:11px system-ui,sans-serif}
+#scene-editor #se-library-tabs{display:flex;gap:4px;overflow-x:auto;margin:-2px 0 8px;padding:2px 0}
+#scene-editor #se-library-tabs button{padding:5px 8px;font-size:10px;white-space:nowrap}
+#scene-editor #se-library-tabs button[aria-selected=true]{background:#d9ad6f;color:#24252b;border-color:#eac991}
 #scene-editor #se-assets{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;max-height:172px;overflow-y:auto;padding-right:3px}
 #scene-editor #se-assets button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px;min-height:88px;cursor:grab;background:#30343c}
 #scene-editor #se-assets button:active{cursor:grabbing}
+#scene-editor #se-assets button.se-library-entity{cursor:pointer;justify-content:flex-start;min-height:74px;background:#393a45}
+#scene-editor #se-assets .se-library-info{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:74px;padding:6px;background:#30343c;border:1px solid #64656d;border-radius:6px;text-align:center}
+#scene-editor #se-assets .se-library-info small{font-size:8px;color:#b9ac97}
+#scene-editor #se-assets .se-library-entity b{display:grid;place-items:center;width:38px;height:38px;margin:auto;border:1px solid #d0b98e;border-radius:50%;color:#f1bd6d;font-size:18px}
+#scene-editor #se-assets .se-library-empty{grid-column:1/-1;padding:8px;color:#b9ac97;font-size:11px}
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}
 @media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-fog{gap:8px}#scene-editor .se-render-mode{flex-wrap:wrap}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor .se-inspector{width:275px}#scene-editor button{padding:6px!important}}

@@ -26,9 +26,12 @@ export async function createStoryActors({ locations, createScenery, scale, campa
       && isPlayableFloor(location, saved.x, saved.z, spec.radius)
       ? saved : { x: spec.x * scale, z: spec.z * scale };
     const prop = await createScenery(`assets/${spec.sprite}.png`, position.x, position.z,
-      spec.height, location.sceneGroup, true, { base: true, fixedRadius: spec.radius, elevation: 0, yaw: 0 });
+      spec.height, location.sceneGroup, true, { base: true, fixedRadius: spec.radius, elevation: 0, yaw: 0,
+        sceneEditId: `character:${spec.id}`, sceneEditLabel: spec.id.replace(/^grandpa-/, 'Дедушка · ').replace(/^martyn$/, 'Мартын'),
+        sceneEditCategory: 'characters' });
     const body = location.obstacles.at(-1);
     Object.assign(body, { id: spec.id, health: 0, maxHealth: 0, fixed: !spec.dead, team: 'neutral', active: true });
+    if (prop) { prop.userData ??= {}; prop.userData.sceneEditBody = body; }
     actors.push({ spec, prop, body });
   }
   function update() {

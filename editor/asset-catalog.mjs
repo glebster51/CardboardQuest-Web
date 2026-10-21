@@ -12,9 +12,11 @@ const props = [
   ['hero-house', 'Дом героя', 3.6], ['cartographer-house', 'Дом картографа', 3.8],
 ];
 export const ASSET_CATALOG = [
-  ...foliage.map(([id, label, size]) => ({ id, label, size, group: 'Природа', asset: sceneryAsset(id) })),
-  ...props.map(([id, label, size]) => ({ id, label, size, group: 'Декорации', asset: sceneryAsset(id) })),
-  { id: 'troll-hut', label: 'Хижина', size: 3.2, group: 'Декорации', asset: 'assets/env-troll-hut.png' },
-  { id: 'fortress', label: 'Крепость', size: 4, group: 'Декорации', asset: 'assets/env-fortress.png' },
+  ...foliage.map(([id, label, size]) => ({ id, label, size, group: 'Природа', category: 'ordinary', asset: sceneryAsset(id) })),
+  ...props.map(([id, label, size]) => ({ id, label, size, group: 'Декорации',
+    category: ['totem', 'shrine', 'root-arch', 'cart', 'mill', 'healer-stump', 'broken-bridge', 'bell', 'hero-house', 'cartographer-house'].includes(id)
+      ? 'unique' : 'ordinary', asset: sceneryAsset(id) })),
+  { id: 'troll-hut', label: 'Хижина', size: 3.2, group: 'Декорации', category: 'unique', asset: 'assets/env-troll-hut.png' },
+  { id: 'fortress', label: 'Крепость', size: 4, group: 'Декорации', category: 'unique', asset: 'assets/env-fortress.png' },
 ];
 export const catalogAsset = asset => ASSET_CATALOG.find(item => item.asset === asset);

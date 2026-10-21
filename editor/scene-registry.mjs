@@ -1,4 +1,5 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=130';
+import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=131';
+import { catalogAsset } from './asset-catalog.mjs?v=2';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 
@@ -36,9 +37,16 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
   }
   function propBinding(location, bindings, object, born = false) {
     const body = object.userData.sceneEditBody, radius = body?.radius;
+    const inferredAsset = object.userData.sceneEditAsset ?? object.userData.sceneEditId?.match(/^scenery:(.+):\d+$/)?.[1];
+    const category = object.userData.sceneEditCategory ?? catalogAsset(inferredAsset)?.category ?? 'ordinary';
     return bind(location, bindings, object.userData.sceneEditId, object.userData.sceneEditLabel, object, {
       body, asset: object.userData.sceneEditAsset, size: object.userData.sceneEditSize,
-      sync() { if (body) { body.x = object.position.x; body.z = object.position.z; body.radius = radius * Math.max(object.scale.x, object.scale.z); } },
+      category,
+      sync() {
+        if (body) { body.x = object.position.x; body.z = object.position.z; body.radius = radius * Math.max(object.scale.x, object.scale.z); }
+        object.userData.sceneEditSync?.();
+      },
+      onDelete(deleted) { object.userData.sceneEditDelete?.(deleted); },
     }, born);
   }
   function bindGroundDetails(location, bindings) {
@@ -99,7 +107,7 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
         proxy.rotation.y = marker.rotation.y; proxy.scale.set((exit.halfWidth ?? 2.3) * 2, .6, (exit.halfDepth ?? 1.05) * 2);
         const barrier = location.exitBarriers?.[location.exits.indexOf(exit)];
         bind(location, bindings, `exit:${exit.to}:trigger`, `Выход → ${exit.to} · коллайдер`, proxy, {
-          helper: 'trigger', body: barrier, outputIndex,
+          helper: 'trigger', category: 'technical', body: barrier, outputIndex,
           onDelete(deleted) { exit.disabled = deleted; blocked.visible = !deleted && blocked.material.opacity > 0; },
           sync() {
             exit.x = proxy.position.x; exit.z = proxy.position.z;
@@ -110,14 +118,14 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
             if (barrier) Object.assign(barrier, createExitBarrierBodies(location)[location.exits.indexOf(exit)]);
           },
         });
-        bind(location, bindings, `exit:${exit.to}:shadow`, `Выход → ${exit.to} · листва`, shadow, { outputIndex });
+        bind(location, bindings, `exit:${exit.to}:shadow`, `Выход → ${exit.to} · листва`, shadow, { category: 'technical', outputIndex });
       }
       const spawn = (id, label, point, exit) => {
         const object = new THREE.Object3D(); object.position.set(point.x, .2, point.z);
         object.rotation.y = point.rotationY ?? (exit ? Math.atan2(-exit.dirX, -exit.dirZ) : 0);
         const from = id.startsWith('arrival:') ? id.slice(8) : null;
         bind(location, bindings, id, label, object, {
-          helper: 'spawn',
+          helper: 'spawn', category: 'technical',
           onDelete(deleted) {
             if (from) { if (deleted) delete location.arrivals[from]; else location.arrivals[from] = point; }
             else location.entry = deleted ? null : point;
@@ -146,6 +154,15 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       placedTemplates.set(JSON.stringify([location.id, object.userData.sceneEditId]), { location: location.id, object: object.userData.sceneEditId, value });
       const binding = propBinding(location, resident.get(location.id), object, true);
       model.set(location.id, binding.id, value); apply(binding, value); return binding;
+    },
+    bindEntity(location, id, label, object, options = {}) {
+      const bindings = resident.get(location.id);
+      if (!bindings) return null;
+      const existing = bindings.find(binding => binding.id === id);
+      if (existing) return existing;
+      object.userData.sceneEditId = id; object.userData.sceneEditLabel = label;
+      object.userData.sceneEditCategory = options.category;
+      return bind(location, bindings, id, label, object, options);
     },
     remove(binding) { model.set(binding.location, binding.id, null); apply(binding, null); },
     release(id) {

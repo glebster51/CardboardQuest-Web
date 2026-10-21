@@ -1,5 +1,5 @@
-import { readTransform } from './edit-model.mjs?v=130';
-import { ASSET_CATALOG } from './asset-catalog.mjs';
+import { readTransform } from './edit-model.mjs?v=131';
+import { ASSET_CATALOG } from './asset-catalog.mjs?v=2';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
@@ -66,7 +66,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     ui.objects.value = selected?.id ?? '';
   }
   function deleteSelection() {
-    if (!selected) return;
+    if (!selected || selected.deletable === false) return;
     model.commit(); registry.remove(selected); select(null); refreshObjects(); changed();
   }
   function dropPoint(x, y) {
@@ -132,6 +132,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function refreshInspector() {
     ui.selected.textContent = selected?.label ?? 'Выбери объект в сцене или списке';
     ui.fields.disabled = !selected;
+    panel.querySelector('#se-delete').disabled = !selected || selected.deletable === false;
     if (!selected) return;
     const transform = readTransform(selected.object);
     for (const input of ui.fields.querySelectorAll('input')) {
@@ -324,8 +325,16 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <output id="se-status" aria-live="polite">Изменения автоматически попадут в буфер</output>
         <details><summary>Показать текст диффа</summary><textarea id="se-diff" aria-label="Суммарный дифф сцены" readonly spellcheck="false"></textarea>
         <button id="se-download">Скачать дифф</button></details>
-      </aside><section class="se-library" aria-label="Библиотека ассетов"><header><strong>Библиотека</strong><small>Перетащи на сцену или нажми</small>
-      <input id="se-search" type="search" placeholder="Найти ассет…" aria-label="Поиск ассетов"></header><div id="se-assets"></div></section>`;
+      </aside><section class="se-library" aria-label="Библиотека сцены"><header><strong>Библиотека</strong><small>Ассеты — перетащи на сцену · элементы сцены — выбери для редактирования</small>
+      <input id="se-search" type="search" placeholder="Найти…" aria-label="Поиск в библиотеке"></header>
+      <nav id="se-library-tabs" role="tablist" aria-label="Категории библиотеки">
+        <button role="tab" data-library-category="ordinary" aria-selected="true">Обычные</button>
+        <button role="tab" data-library-category="unique" aria-selected="false">Уникальные</button>
+        <button role="tab" data-library-category="technical" aria-selected="false">Технические</button>
+        <button role="tab" data-library-category="interactive" aria-selected="false">Интерактивные</button>
+        <button role="tab" data-library-category="enemies" aria-selected="false">Враги</button>
+        <button role="tab" data-library-category="characters" aria-selected="false">Персонажи</button>
+      </nav><div id="se-assets" role="tabpanel"></div></section>`;
     document.body.append(panel);
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
@@ -374,10 +383,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       refreshObjects(); refreshInspector(); refreshFog(); syncFogPathVisuals(); changed();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
+    let activeLibraryCategory = 'ordinary';
     const renderAssets = () => {
       const list = panel.querySelector('#se-assets'), query = panel.querySelector('#se-search').value.toLocaleLowerCase();
       list.replaceChildren();
-      for (const item of ASSET_CATALOG.filter(item => `${item.label} ${item.group} ${item.id}`.toLocaleLowerCase().includes(query))) {
+      const assetCategory = activeLibraryCategory === 'ordinary' || activeLibraryCategory === 'unique';
+      const assets = ASSET_CATALOG.filter(item => item.category === activeLibraryCategory
+        && `${item.label} ${item.group} ${item.id}`.toLocaleLowerCase().includes(query));
+      for (const item of assets) {
         const button = document.createElement('button'); button.type = 'button'; button.draggable = true;
         button.dataset.asset = item.id; button.title = `${item.label} · ${item.group}`;
         const image = new Image(); image.src = new URL(`../${item.asset}`, import.meta.url).href; image.loading = 'lazy'; image.alt = ''; image.draggable = false;
@@ -388,7 +401,36 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         });
         list.append(button);
       }
+      if (!assetCategory) for (const binding of registry.bindings(getLocation().id).filter(item => item.category === activeLibraryCategory
+        && item.label.toLocaleLowerCase().includes(query))) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'se-library-entity';
+        button.title = `Выбрать на сцене: ${binding.label}`;
+        const glyph = document.createElement('b'); glyph.textContent = { technical: '⚙', interactive: '✦', enemies: '⚔', characters: '♟' }[activeLibraryCategory];
+        const label = document.createElement('span'); label.textContent = binding.label;
+        button.append(glyph, label); button.addEventListener('click', () => { select(binding); focusSelection(); }); list.append(button);
+      }
+      if (activeLibraryCategory === 'interactive' && 'осмотреть'.includes(query)) {
+        const marker = document.createElement('div'); marker.className = 'se-library-entity se-library-info';
+        marker.title = 'Маркер интерфейса появляется автоматически рядом с героем у точки интереса.';
+        const glyph = document.createElement('b'); glyph.textContent = '⌕';
+        const label = document.createElement('span'); label.textContent = 'Осмотреть · HUD';
+        const hint = document.createElement('small'); hint.textContent = 'Появляется у точки интереса';
+        marker.append(glyph, label, hint); list.append(marker);
+      }
+      if (!list.children.length) {
+        const empty = document.createElement('small'); empty.className = 'se-library-empty';
+        empty.textContent = activeLibraryCategory === 'interactive' ? 'На этой локации нет сундуков или интерактивных объектов.'
+          : activeLibraryCategory === 'technical' ? 'На этой локации нет технических точек.'
+            : activeLibraryCategory === 'enemies' ? 'На этой локации нет врагов.'
+              : activeLibraryCategory === 'characters' ? 'На этой локации нет персонажей.' : 'В этой категории пока нет ассетов.';
+        list.append(empty);
+      }
     };
+    for (const tab of panel.querySelectorAll('[data-library-category]')) tab.addEventListener('click', () => {
+      activeLibraryCategory = tab.dataset.libraryCategory;
+      for (const other of panel.querySelectorAll('[data-library-category]')) other.setAttribute('aria-selected', String(other === tab));
+      renderAssets();
+    });
     panel.querySelector('#se-search').addEventListener('input', renderAssets); ui.renderAssets = renderAssets;
     panel.querySelector('#se-copy').addEventListener('click', () => void copyDiff(model.text()));
     panel.querySelector('#se-speed').addEventListener('input', event => { speed = Number(event.target.value); });

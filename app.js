@@ -9,9 +9,9 @@ import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=11';
 import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=130';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=132';
-import { catalogAsset } from './editor/asset-catalog.mjs';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=131';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=133';
+import { catalogAsset } from './editor/asset-catalog.mjs?v=2';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
@@ -825,6 +825,9 @@ async function start() {
     location.cacheBody = body;
     if (!opened) location.obstacles.push(body);
     const group = new THREE.Group(); group.name = body.id;
+    group.userData.sceneEditId = 'interactive:cache'; group.userData.sceneEditLabel = 'Сундук';
+    group.userData.sceneEditCategory = 'interactive'; group.userData.sceneEditBody = body;
+    group.userData.sceneEditSync = () => { body.x = group.position.x; body.z = group.position.z; };
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.22, 48), ambientShadowMaterial);
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = .008; group.add(shadow);
     const puck = new THREE.Mesh(new THREE.CylinderGeometry(body.radius, body.radius, .2, 64), [
@@ -916,6 +919,11 @@ async function start() {
     for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) createStoryPickupVisual(location, pickup);
     await sceneRegistry.restorePlaced(location, createEditorAsset);
     sceneRegistry.prepare(location);
+    for (const figure of figures) if (figure.locationId === id && figure.body.team === 'enemy')
+      sceneRegistry.bindEntity(location, `enemy:${figure.body.id}`, `Враг · ${figure.body.archetype}`, figure.group, {
+        category: 'enemies', deletable: false,
+        sync() { figure.body.x = figure.group.position.x; figure.body.z = figure.group.position.z; figure.facing = figure.group.rotation.y; },
+      });
     location.edgeShade?.applyTo(location.sceneGroup);
     // Upload each bitmap while the scene is hidden, instead of uploading all of
     // a neighboring location's textures in its first visible frame.
