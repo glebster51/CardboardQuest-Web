@@ -1455,6 +1455,8 @@ async function start() {
           rotationY: chestVisuals.get(activeLocation.id)?.group.rotation.y ?? 0,
           lootVisible: chestVisuals.get(activeLocation.id)?.lootVisuals.some(item => item.group.visible) ?? false,
           lootSettled: chestVisuals.get(activeLocation.id)?.lootVisuals.every(item => !item.group.parent || !item.spawn) ?? true,
+          lootMotion: chestVisuals.get(activeLocation.id)?.lootVisuals.map(item => ({ parent: Boolean(item.group.parent),
+            age: item.spawn?.age ?? null, duration: item.spawn?.duration ?? null })) ?? [],
           openSprite: chestVisuals.get(activeLocation.id)?.stateArt[1].visible ?? false } : null,
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
         loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
