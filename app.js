@@ -63,6 +63,8 @@ let bodies = [heroBody];
 let state = heroBody;
 let selected = true;
 const GROUND_UI_Y = .026;
+const MAX_RENDER_FPS = 60;
+const FRAME_INTERVAL_MS = 1000 / MAX_RENDER_FPS;
 const AIM_DRAG_SENSITIVITY = 1 / 3;
 const AIM_MARKER_LENGTH_SCALE = 1 / 1.3;
 const MAX_AIM_MARKER_EXTENSION = 5.4 * AIM_MARKER_LENGTH_SCALE;
@@ -1620,8 +1622,12 @@ async function start() {
     },
   };
   let previousTime = null;
+  let nextFrameAt = 0;
   let previousAim = false;
   renderer.setAnimationLoop(time => {
+    if (time < nextFrameAt) return;
+    if (time - nextFrameAt > FRAME_INTERVAL_MS * 4) nextFrameAt = time;
+    nextFrameAt += FRAME_INTERVAL_MS;
     const frameDt = previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     const dt = simulationPaused ? 0 : frameDt;
     previousTime = time;
