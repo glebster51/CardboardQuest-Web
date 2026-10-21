@@ -30,7 +30,7 @@ import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlaye
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
 import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
-import { CACHE_OPEN_FRAME_DELAY, CACHE_SQUASH_DURATION, cacheSquashScale } from './game/cache-animation.mjs?v=1';
+import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, createCacheOpening } from './game/cache-animation.mjs?v=2';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
@@ -667,8 +667,9 @@ async function start() {
       new THREE.MeshStandardMaterial({ map: paper, roughness: .96, ...sceneStencil }),
       new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
     ]);
-    puck.position.y = .1; puck.castShadow = true; puck.receiveShadow = true; group.add(puck);
-    const artHolder = new THREE.Group(); artHolder.position.y = .21; group.add(artHolder);
+    puck.position.y = .1; puck.visible = !opened; puck.scale.setScalar(opened ? 0 : 1);
+    puck.castShadow = true; puck.receiveShadow = true; group.add(puck);
+    const artHolder = new THREE.Group(); artHolder.position.y = opened ? 0 : .21; group.add(artHolder);
     const stateArt = chestTemplates.map((template, index) => {
       const art = template.clone(true);
       const spriteHeight = 1.72, scale = spriteHeight / 2.05;
@@ -678,7 +679,8 @@ async function start() {
       return art;
     });
     group.position.set(body.x, 0, body.z); location.sceneGroup.add(group);
-    chestVisuals.set(location.id, { body, group, artHolder, stateArt, openingAge: null });
+    chestVisuals.set(location.id, { body, group, puck, artHolder, stateArt,
+      opening: null, lootVisuals: [], pendingStory: null });
   }
   let groundResources = null;
   async function buildLocation(id, stillWanted) {
@@ -975,41 +977,45 @@ async function start() {
     });
     bursts.push({ group, ring, dots, material, age: 0, strength });
   }
-  function spawnWorldLoot(location, sourceId, x, z, rewards) {
+  function spawnWorldLoot(location, sourceId, x, z, rewards, deferSpill = false) {
     if (!location || !rewards) return [];
     const drops = scatterWorldLoot({ sourceId, x, z, rewards,
       isInside: (px, pz) => isPlayableFloor(location, px, pz, .45),
       spread: [1.15, 2.65] });
     location.loot.push(...drops);
-    for (const item of drops) createLootVisual(location, item, { x, z });
+    for (const item of drops) {
+      const visual = createLootVisual(location, item, { x, z });
+      if (deferSpill) { visual.spillLocked = true; visual.group.visible = false; }
+    }
     return drops;
   }
   function openCache(body) {
-    if (body.opened || body.locationId !== activeLocation.id) return false;
+    if (!body || body.opened || body.opening || body.locationId !== activeLocation.id) return false;
     const result = openCampaignCache(campaignState, body.locationId);
     if (!result) return false;
-    body.opened = true;
-    audio.play('chest');
-    activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== body);
+    body.opening = true;
     const visual = chestVisuals.get(activeLocation.id);
     if (visual) {
-      visual.openingAge = 0;
-      visual.stateArt[0].visible = true;
-      visual.stateArt[1].visible = false;
+      visual.opening = createCacheOpening();
+      visual.pendingStory = { ...result, lines: getStoryDialogue(campaignState, activeLocation.id) };
+      const drops = spawnWorldLoot(activeLocation, body.id, body.x, body.z, result.rewards, true);
+      visual.lootVisuals = drops.map(item => worldItemVisuals.get(item.id)).filter(Boolean);
+    } else {
+      body.opened = true; body.opening = false;
+      activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== body);
+      spawnWorldLoot(activeLocation, body.id, body.x, body.z, result.rewards);
+      showStoryCard({ ...result, lines: getStoryDialogue(campaignState, activeLocation.id) });
     }
-    spawnWorldLoot(activeLocation, body.id, body.x, body.z, result.rewards);
     rebuildBodies();
-    burst(body.x, body.z, 1.2);
-    vibrate(28);
     persistCampaign();
     refreshLocationInfo();
-    showStoryCard({ ...result, lines: getStoryDialogue(campaignState, activeLocation.id) });
     return true;
   }
   function updateWorldLoot(dt) {
     for (const item of [...activeLocation.loot]) {
       let visual = worldItemVisuals.get(item.id);
       if (!visual) visual = createLootVisual(activeLocation, item);
+      if (visual.spillLocked) continue;
       if (visual.spawn) {
         visual.spawn.age += dt;
         const t = Math.min(1, visual.spawn.age / visual.spawn.duration);
@@ -1067,19 +1073,37 @@ async function start() {
   }
   function updateCacheAnimation(dt) {
     const visual = chestVisuals.get(activeLocation.id);
-    if (!visual || visual.openingAge === null) return;
-    visual.openingAge += dt;
-    if (visual.openingAge >= CACHE_OPEN_FRAME_DELAY) {
-      visual.stateArt[0].visible = false;
-      visual.stateArt[1].visible = true;
+    if (!visual?.opening) return;
+    const motion = advanceCacheOpening(visual.opening, dt);
+    visual.artHolder.position.y = motion.holderY + motion.lift;
+    visual.artHolder.scale.set(motion.scaleX, motion.scaleY, 1);
+    visual.puck.scale.setScalar(motion.puckScale);
+    if (motion.landed) {
+      burst(visual.body.x, visual.body.z, .72);
+      vibrate(28);
     }
-    const scale = cacheSquashScale(visual.openingAge);
-    visual.artHolder.scale.set(scale.x, scale.y, scale.z);
-    if (visual.openingAge >= CACHE_SQUASH_DURATION) {
-      visual.openingAge = null;
-      visual.artHolder.scale.set(1, 1, 1);
+    if (motion.opened) {
+      visual.body.opened = true; visual.body.opening = false;
+      activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== visual.body);
+      visual.puck.visible = false;
       visual.stateArt[0].visible = false;
       visual.stateArt[1].visible = true;
+      audio.play('chest');
+      rebuildBodies();
+    }
+    if (motion.spilled) for (const loot of visual.lootVisuals) {
+      loot.spillLocked = false; loot.group.visible = true;
+      loot.spawn = { x: visual.body.x, z: visual.body.z, age: 0, duration: CACHE_LOOT_SPAWN_DURATION };
+    }
+    if (motion.complete) {
+      visual.opening = null;
+      visual.artHolder.position.y = 0;
+      visual.artHolder.scale.set(1, 1, 1);
+      visual.puck.visible = false; visual.puck.scale.setScalar(0);
+      visual.stateArt[0].visible = false;
+      visual.stateArt[1].visible = true;
+      const story = visual.pendingStory; visual.pendingStory = null;
+      if (story) showStoryCard(story);
     }
   }
   function damage(target, damageQuarters, speed) {
@@ -1414,8 +1438,16 @@ async function start() {
         projectiles: projectiles.length,
         shots: projectiles.map(({ x, z, age }) => ({ x, z, age })),
         cache: activeLocation.cacheBody ? { opened: activeLocation.cacheBody.opened,
-          openingAge: chestVisuals.get(activeLocation.id)?.openingAge ?? null,
-          scale: chestVisuals.get(activeLocation.id)?.artHolder.scale.toArray() ?? null,
+          opening: chestVisuals.get(activeLocation.id)?.opening ? {
+            age: chestVisuals.get(activeLocation.id).opening.age,
+            phase: cacheOpeningPhase(chestVisuals.get(activeLocation.id).opening),
+          } : null,
+          collidable: bodies.includes(activeLocation.cacheBody),
+          puckVisible: chestVisuals.get(activeLocation.id)?.puck.visible ?? false,
+          puckScale: chestVisuals.get(activeLocation.id)?.puck.scale.x ?? 0,
+          holderY: chestVisuals.get(activeLocation.id)?.artHolder.position.y ?? 0,
+          rotationY: chestVisuals.get(activeLocation.id)?.group.rotation.y ?? 0,
+          lootVisible: chestVisuals.get(activeLocation.id)?.lootVisuals.some(item => item.group.visible) ?? false,
           openSprite: chestVisuals.get(activeLocation.id)?.stateArt[1].visible ?? false } : null,
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
         loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
@@ -1512,7 +1544,6 @@ async function start() {
     }
     for (const enemy of activeLocation.enemies)
       clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
-    updateCacheAnimation(dt);
     if (dialogue.isOpen()) { updateCamera(); renderer.render(scene, camera); return; }
     updateWorldLoot(dt);
     updateProjectiles(dt);
