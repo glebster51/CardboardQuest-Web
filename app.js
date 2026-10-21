@@ -7,7 +7,7 @@ import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
-import { createPointerInput } from './game/pointer-input.mjs?v=2';
+import { createPointerInput } from './game/pointer-input.mjs?v=3';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
@@ -951,6 +951,7 @@ async function start() {
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
   const dustGeometry = new THREE.SphereGeometry(.045, 5, 4);
   const selectedColor = new THREE.Color(0x65d536);
+  const unavailableAimColor = new THREE.Color(0x9299a2);
   const enemyColor = new THREE.Color(0xdf3830);
   const attackColor = new THREE.Color(0xffffff);
   function burst(x, z, strength = 1) {
@@ -1369,12 +1370,18 @@ async function start() {
       Object.assign(body, { x, z, vx, vz });
     },
     snapshot() {
+      const heroScreen = new THREE.Vector3(heroBody.x, .12, heroBody.z).project(camera);
       return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
         streaming: locationStreaming.snapshot(), memory: { ...renderer.info.memory },
         residentLocations: Object.keys(locationGroups), figureCount: figures.length,
-        hero: { x: heroBody.x, z: heroBody.z, health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer,
+        hero: { x: heroBody.x, z: heroBody.z, vx: heroBody.vx, vz: heroBody.vz,
+          screen: { x: (heroScreen.x + 1) * innerWidth / 2, y: (1 - heroScreen.y) * innerHeight / 2 },
+          health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer,
           renderedX: heroFigure.group.position.x, renderedZ: heroFigure.group.position.z, viewBack: heroFigure.viewBack,
           visualState: heroFigure.visualState },
+        aim: { active: Boolean(inputController.getAimingBody()), color: playerMarker.material.color.getHexString(),
+          opacity: playerMarker.material.opacity, x: playerMarker.group.position.x, z: playerMarker.group.position.z,
+          angle: playerMarker.group.rotation.y },
         dialogue: dialogue.frame(), elapsed,
         campaignFlags: { ...campaignState.flags },
         storyPickups: (activeLocation.storyPickups ?? []).filter(pickup => !campaignState.flags[pickup.flag])
@@ -1447,7 +1454,7 @@ async function start() {
     }
     const encounterCleared = canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL);
     const keepPlayerChargesFull = shouldMaintainFullCharges(activeLocation, encounterCleared);
-    const held = inputController.getHeldBody();
+    const aimingBody = inputController.getAimingBody();
     for (const body of bodies) {
       if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
@@ -1468,7 +1475,7 @@ async function start() {
       }
     }
     for (let remaining = dt; remaining > 0 && !dialogue.isOpen(); remaining -= 1 / 120) {
-      advanceWorld(bodies, Math.min(remaining, 1 / 120), held, onImpact, activeLocation.walkablePoints, {
+      advanceWorld(bodies, Math.min(remaining, 1 / 120), null, onImpact, activeLocation.walkablePoints, {
         fallZones: activeLocation.dropZones, hazards: activeLocation.hazards,
         fallable: body => body === heroBody || body.team === 'enemy', onFall: recoverPlayerFromFall,
       });
@@ -1505,7 +1512,7 @@ async function start() {
       const victoryPose = body.health > 0 && figure.victoryAnimation
         ? advanceVictoryLoop(figure.victoryAnimation, dt) : null;
       if (victoryPose) figure.group.rotation.y = figure.victoryBaseYaw + victoryPose.spinY;
-      else if (body.health > 0 && body !== held && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
+      else if (body.health > 0 && body !== aimingBody && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
         figure.facing = facingAngle(body.vx, body.vz, figure.facing);
       }
       if (body.health > 0 && !victoryPose) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
@@ -1525,8 +1532,8 @@ async function start() {
         : victoryPose ? victoryPose.sprite
           : figure.hurtAge < .55 ? 'on-hit'
           : figure.dealDamageAge < .32 ? 'deal-damage'
-            : body === held || (body.team === 'enemy' && body.aiPhase === 'aim') ? 'aiming'
-              : isAttacking(body) && body !== held ? 'attack' : 'idle';
+            : body === aimingBody || (body.team === 'enemy' && body.aiPhase === 'aim') ? 'aiming'
+              : isAttacking(body) ? 'attack' : 'idle';
       setVisualState(figure, visualState);
       const flashOpacity = figure.hurtAge < .42 && Math.floor(figure.hurtAge / .055) % 2 === 0 ? 1 : 0;
       figure.flashMaterial.opacity = figure.viewBack ? 0 : flashOpacity;
@@ -1547,7 +1554,7 @@ async function start() {
         figure.artGroup.position.y = 1.25 + Math.max(0, squash) * .2;
         figure.artGroup.rotation.set(0, 0, squash * .15 + Math.sin(elapsed * 19) * Math.min(speed / 20, 1) * .012);
       }
-      figure.attacking = isAttacking(body) && body !== held;
+      figure.attacking = isAttacking(body);
       const heartLevels = heartHealthLevels(body.health, body.maxHealth);
       figure.heartIcons.forEach((icon, index) => {
         const level = heartLevels[index];
@@ -1616,9 +1623,15 @@ async function start() {
     interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive
       || activeLocation.enemies.some(enemy => enemy.health > 0);
     interactButton.textContent = 'Осмотреть';
-    playerMarker.material.color.lerp(
-      state.health > 0 && isAttacking(state) && state !== held ? attackColor : selectedColor,
-      1 - Math.exp(-18 * dt));
+    if (aimingBody) {
+      playerMarker.material.color.copy(state.charges > 0 ? selectedColor : unavailableAimColor);
+    } else {
+      playerMarker.material.color.lerp(state.health > 0 && isAttacking(state) ? attackColor : selectedColor,
+        1 - Math.exp(-18 * dt));
+    }
+    playerMarker.material.opacity = aimingBody && state.charges <= 0 ? .5 : .96;
+    playerMarker.overlap.material.color.copy(playerMarker.material.color);
+    playerMarker.overlap.material.opacity = playerMarker.material.opacity * .52;
     playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
     updateCamera();
     for (const { prop, front, back } of sceneryFacePairs) {

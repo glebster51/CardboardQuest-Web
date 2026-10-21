@@ -58,7 +58,7 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
       gesture = { mode: 'blocked', pointer: event.pointerId };
     } else if (hit) {
       const body = getBody();
-      gesture = body.charges > 0 && body.health > 0
+      gesture = body.health > 0
         ? { mode: 'aim', pointer: event.pointerId, pull: { x: 0, z: 0 }, hit,
           startX: event.clientX, startY: event.clientY, moved: false }
         : { mode: 'blocked', pointer: event.pointerId };
@@ -91,7 +91,6 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
       const body = getBody();
       const figure = getActiveFigure();
       if (!gesture.aimStarted) {
-        body.vx = 0; body.vz = 0;
         gesture.aimStarted = true;
         host.classList.add('aiming');
       }
@@ -130,5 +129,5 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
   }, { passive: false });
   windowRef.addEventListener('blur', cancel);
 
-  return { cancel, getHeldBody: () => gesture?.mode === 'aim' ? getBody() : null };
+  return { cancel, getAimingBody: () => gesture?.mode === 'aim' && gesture.moved ? getBody() : null };
 }
