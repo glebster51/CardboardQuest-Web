@@ -11,7 +11,7 @@ import { createPointerInput } from './game/pointer-input.mjs?v=3';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
-import { createInventoryPanel } from './render/inventory-panel.mjs';
+import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
 import { createFigureFactory } from './render/figure-factory.mjs?v=2';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';

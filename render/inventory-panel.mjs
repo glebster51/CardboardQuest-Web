@@ -9,7 +9,7 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
   let selected = null, entries = [], page = 0, allEntries = [], previousFocus = null, warm = false, positioning = false;
   const cells = Array.from({ length: INVENTORY_CAPACITY }, (_, index) => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'inventory-slot';
-    button.innerHTML = '<span class="inventory-item-icon" aria-hidden="true"></span>';
+    button.innerHTML = '<span class="inventory-item-icon" aria-hidden="true"><span class="inventory-healing" hidden></span></span>';
     button.addEventListener('click', () => {
       const item = entries[index];
       selected = item?.key === selected ? null : item?.key ?? null;
@@ -72,9 +72,21 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
       const cell = cells[index], item = entries[index];
       cell.dataset.itemId = item?.id ?? '';
       cell.disabled = !item; cell.classList.toggle('is-empty', !item);
-      cell.setAttribute('aria-label', item ? item.name : `Пустая ячейка ${index + 1}`);
+      const healingLabel = item?.healing ? `, восстановление здоровья: ${String(item.healing / 4).replace('.', ',')} ♥` : '';
+      cell.setAttribute('aria-label', item ? item.name + healingLabel : `Пустая ячейка ${index + 1}`);
       const icon = cell.querySelector('.inventory-item-icon'); icon.hidden = !item;
       if (item) { icon.style.setProperty('--item-x', `${item.frame % 4 * 100 / 3}%`); icon.style.setProperty('--item-y', `${Math.floor(item.frame / 4) * 100}%`); }
+      const healing = icon.querySelector('.inventory-healing');
+      const healingLevels = item?.healing ? heartHealthLevels(item.healing, item.healing) : [];
+      healing.hidden = healingLevels.length === 0;
+      healing.style.setProperty('--healing-count', healingLevels.length);
+      healing.replaceChildren(...healingLevels.map((level, index) => {
+        const heart = document.createElement('span'); heart.className = 'inventory-healing-heart';
+        heart.dataset.level = String(level); heart.style.backgroundPosition = `${level * 25}% 50%`;
+        heart.style.setProperty('--healing-offset', index / Math.max(1, healingLevels.length - 1));
+        heart.style.zIndex = String(index);
+        return heart;
+      }));
     }
     root.querySelector('#inventory-capacity').textContent = 'В дорогу';
     root.querySelector('#inventory-empty').hidden = allEntries.some(Boolean);
