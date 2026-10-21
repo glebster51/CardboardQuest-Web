@@ -8,6 +8,11 @@ export const SCENE_OVERRIDES = {
     "tint": 1,
     "curve": 2.1
   },
+  "lighting": {
+    "direction": [-5, 12, 7],
+    "intensity": 3,
+    "color": "#ffebcb"
+  },
   "locations": {
     "home": {
       "arrival:forest": {

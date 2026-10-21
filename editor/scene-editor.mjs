@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs?v=133';
+import { readTransform } from './edit-model.mjs?v=134';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
@@ -30,6 +30,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       ?? bindings.find(binding => binding.location === location && binding.id === object)?.label;
     if (!label) {
       if (object === 'fog') label = 'Настройки тумана';
+      else if (object === 'lighting') label = 'Освещение';
       else if (object === 'fog-paths') label = 'Линии тумана';
       else if (object === 'campaign-graph') label = 'Граф карты мира';
       else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
@@ -228,7 +229,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   function restoreHistory(action) {
     if (!model[action]()) return;
-    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); changed();
+    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); changed();
   }
   async function openCampaignGraph() {
     if (graphOpen || !getCampaignGraphData) return;
@@ -242,7 +243,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           const location = getLocation(); clearHelpers();
           bindings = registry.bindings(location.id); rememberBindings(location);
           for (const binding of bindings) if (binding.helper) makeHelper(binding);
-          select(null); refreshObjects(); refreshFog(); makeFogPathVisuals(location); changed();
+          select(null); refreshObjects(); refreshFog(); refreshLighting(); makeFogPathVisuals(location); changed();
         } });
     }
     graphOpen = true; campaignGraphEditor.open(getCampaignGraphData());
@@ -252,6 +253,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       input.value = registry.fog[input.dataset.fog];
       const output = input.closest('label').querySelector('output');
       if (output) output.value = input.dataset.fog.startsWith('reveal') ? `${Number(input.value).toFixed(0)} px` : Number(input.value).toFixed(2);
+    }
+  }
+  function refreshLighting() {
+    for (const input of panel.querySelectorAll('[data-lighting]')) {
+      const key = input.dataset.lighting, directionIndex = key.startsWith('direction.') ? Number(key.split('.')[1]) : -1;
+      input.value = directionIndex >= 0 ? registry.lighting.direction[directionIndex] : registry.lighting[key];
+      const output = input.closest('label').querySelector('output');
+      if (output) output.value = Number(input.value).toFixed(1);
     }
   }
   function focusSelection(all = false) {
@@ -308,6 +317,13 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <button data-render-mode="overdraw" aria-pressed="false" title="Подсвечивает области, где поверх друг друга рисуется геометрия">OVERDRAW</button>
         <button data-render-mode="wireframe" aria-pressed="false" title="Показывает только рёбра треугольников геометрии">Только сетка</button>
         <small id="se-render-hint">Режимы работают только пока открыт редактор.</small>
+      </div><div class="se-lighting" role="group" aria-label="Настройки освещения">
+        <strong>ОСВЕЩЕНИЕ</strong>
+        <label>Направление X <output></output><input data-lighting="direction.0" aria-label="Направление света по X" type="range" min="-20" max="20" step=".1"></label>
+        <label>Направление Y <output></output><input data-lighting="direction.1" aria-label="Направление света по Y" type="range" min="-20" max="20" step=".1"></label>
+        <label>Направление Z <output></output><input data-lighting="direction.2" aria-label="Направление света по Z" type="range" min="-20" max="20" step=".1"></label>
+        <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
+        <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
       </div></div>
       <aside class="se-inspector"><div class="se-caption">ОБЪЕКТЫ СЦЕНЫ</div>
         <select id="se-objects" aria-label="Объект сцены"></select><strong id="se-selected"></strong>
@@ -368,7 +384,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-redo').addEventListener('click', () => restoreHistory('redo'));
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
-      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); changed();
+      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); changed();
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
       if (selected && model.reset(selected.location, selected.id)) { registry.sync(); refreshObjects(); refreshInspector(); changed(); }
@@ -380,7 +396,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       model.commit();
       if (!model.reset(location, object)) return;
       registry.sync(); campaignGraphEditor?.sync(); bindings = registry.bindings(getLocation().id);
-      refreshObjects(); refreshInspector(); refreshFog(); syncFogPathVisuals(); changed();
+      refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); syncFogPathVisuals(); changed();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
     let activeLibraryCategory = 'ordinary';
@@ -449,6 +465,17 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         registry.changeFog(settings); refreshFog(); changed();
       });
     }
+    for (const input of panel.querySelectorAll('[data-lighting]')) {
+      input.addEventListener('pointerdown', () => model.begin());
+      input.addEventListener('change', () => model.commit());
+      input.addEventListener('input', () => {
+        const key = input.dataset.lighting, settings = { ...registry.lighting, direction: [...registry.lighting.direction] };
+        if (key.startsWith('direction.')) settings.direction[Number(key.split('.')[1])] = Number(input.value);
+        else settings[key] = input.type === 'color' ? input.value : Number(input.value);
+        if (Math.hypot(...settings.direction) < .1) settings.direction[1] = .1;
+        registry.changeLighting(settings); refreshLighting(); changed();
+      });
+    }
   }
   async function initialize() {
     const { TransformControls } = await import('./vendor/TransformControls.mjs');
@@ -499,7 +526,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (binding.helper) makeHelper(binding);
       }
       makeFogPathVisuals(location);
-      controls.enabled = true; select(null); refreshObjects(); refreshFog(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
+      controls.enabled = true; select(null); refreshObjects(); refreshFog(); refreshLighting(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
       focusPoint.copy(camera.position).add(direction.set(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(15));
       if (model.diff().changes.length) void copyDiff(model.text());
     } catch (error) {

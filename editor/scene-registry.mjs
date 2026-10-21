@@ -1,12 +1,15 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=133';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=134';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
-export function createSceneRegistry({ THREE, overrides, setFog }) {
+export function createSceneRegistry({ THREE, overrides, setFog, setLighting = () => {} }) {
   const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
   const fog = { ...FOG_DEFAULTS, ...overrides.fog }; model.register(null, 'fog', fog);
+  const lighting = { ...LIGHTING_DEFAULTS, ...overrides.lighting,
+    direction: [...(overrides.lighting?.direction ?? LIGHTING_DEFAULTS.direction)] };
+  model.register(null, 'lighting', lighting);
   const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.asset ? { asset: binding.asset, size: binding.size } : {}) });
   function fogPathsMatchLocation(paths, location) {
     try {
@@ -91,7 +94,7 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
     return meshes;
   }
   return {
-    model, fog,
+    model, fog, lighting,
     prepare(location) {
       sources.set(location.id, { location, data: JSON.parse(JSON.stringify({
         entry: location.entry, arrivals: location.arrivals, exits: location.exits, fogPaths: location.fogPaths,
@@ -197,6 +200,11 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       const next = { ...fog, ...settings }; validateSceneValue(next, true);
       Object.assign(fog, next); setFog(fog); return model.set(null, 'fog', { ...fog });
     },
+    changeLighting(settings) {
+      const next = { ...lighting, ...settings, direction: [...(settings.direction ?? lighting.direction)] };
+      validateSceneValue(next, false, false, false, true);
+      Object.assign(lighting, next); setLighting(lighting); return model.set(null, 'lighting', { ...lighting, direction: [...lighting.direction] });
+    },
     fogPaths(location) { return model.get(location, 'fog-paths'); },
     changeFogPaths(location, paths) {
       validateSceneValue(paths, false, true);
@@ -209,6 +217,7 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
     },
     sync() {
       Object.assign(fog, model.get(null, 'fog')); setFog(fog);
+      Object.assign(lighting, model.get(null, 'lighting')); setLighting(lighting);
       for (const [id, source] of sources) {
         source.location.fogPaths = model.get(id, 'fog-paths');
         source.location.edgeShade?.updatePaths(source.location.fogPaths);

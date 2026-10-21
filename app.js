@@ -8,9 +8,9 @@ import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mj
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=13';
 import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=2';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=132';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=136';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=128';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=133';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=137';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -84,6 +84,7 @@ async function start() {
   host.append(renderer.domElement);
 
   const scene = new THREE.Scene();
+  let sunLight = null;
   const playerOcclusionReveal = createPlayerOcclusionReveal(THREE, renderer);
   scene.background = new THREE.Color(LOCATION_FAR_COLOR);
   let savedCampaign = null;
@@ -101,7 +102,12 @@ async function start() {
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
   if (activeCampaignGraph) for (const location of Object.values(locations)) applyCampaignGraphToLocation(location, activeCampaignGraph);
-  const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setFog(settings) {
+  const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setLighting(settings) {
+    if (!sunLight) return;
+    sunLight.position.set(...settings.direction);
+    sunLight.intensity = settings.intensity;
+    sunLight.color.set(settings.color);
+  }, setFog(settings) {
     scene.background.set(settings.color); renderer.setClearColor(settings.color);
     playerOcclusionReveal.updateSettings(settings);
     for (const location of Object.values(locations)) {
@@ -255,14 +261,16 @@ async function start() {
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
   let cameraManualOverride = 0;
   scene.add(new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5));
-  const sun = new THREE.DirectionalLight(0xffebcb, 3);
-  sun.position.set(-5, 12, 7);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -25.5, right: 25.5, top: 25.5, bottom: -25.5, far: 60 });
-  sun.shadow.normalBias = .025;
-  sun.shadow.bias = -.0002;
-  scene.add(sun);
+  sunLight = new THREE.DirectionalLight();
+  sunLight.position.set(...sceneRegistry.lighting.direction);
+  sunLight.intensity = sceneRegistry.lighting.intensity;
+  sunLight.color.set(sceneRegistry.lighting.color);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(2048, 2048);
+  Object.assign(sunLight.shadow.camera, { left: -25.5, right: 25.5, top: 25.5, bottom: -25.5, far: 60 });
+  sunLight.shadow.normalBias = .025;
+  sunLight.shadow.bias = -.0002;
+  scene.add(sunLight);
 
   function texture(width, height, draw) {
     const canvas = document.createElement('canvas');
