@@ -78,10 +78,9 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor #se-assets{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;max-height:172px;overflow-y:auto;padding-right:3px}
 #scene-editor #se-assets button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px;min-height:88px;cursor:grab;background:#30343c}
 #scene-editor #se-assets button:active{cursor:grabbing}
-#scene-editor #se-assets button.se-library-entity{cursor:pointer;justify-content:flex-start;min-height:74px;background:#393a45}
-#scene-editor #se-assets .se-library-info{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:74px;padding:6px;background:#30343c;border:1px solid #64656d;border-radius:6px;text-align:center}
-#scene-editor #se-assets .se-library-info small{font-size:8px;color:#b9ac97}
-#scene-editor #se-assets .se-library-entity b{display:grid;place-items:center;width:38px;height:38px;margin:auto;border:1px solid #d0b98e;border-radius:50%;color:#f1bd6d;font-size:18px}
+#scene-editor #se-assets button.se-library-reference{cursor:pointer;justify-content:flex-start;min-height:88px;background:#393a45}
+#scene-editor #se-assets .se-library-reference b{display:grid;place-items:center;width:58px;height:58px;margin:auto;border:1px solid #d0b98e;border-radius:12px;color:#f1bd6d;font-size:24px}
+#scene-editor #se-assets .se-library-reference small{font-size:8px;line-height:1.25;color:#b9ac97}
 #scene-editor #se-assets .se-library-empty{grid-column:1/-1;padding:8px;color:#b9ac97;font-size:11px}
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}

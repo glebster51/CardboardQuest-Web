@@ -1,5 +1,5 @@
 import { readTransform } from './edit-model.mjs?v=131';
-import { ASSET_CATALOG } from './asset-catalog.mjs?v=2';
+import { ASSET_CATALOG } from './asset-catalog.mjs?v=3';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
@@ -325,7 +325,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <output id="se-status" aria-live="polite">Изменения автоматически попадут в буфер</output>
         <details><summary>Показать текст диффа</summary><textarea id="se-diff" aria-label="Суммарный дифф сцены" readonly spellcheck="false"></textarea>
         <button id="se-download">Скачать дифф</button></details>
-      </aside><section class="se-library" aria-label="Библиотека сцены"><header><strong>Библиотека</strong><small>Ассеты — перетащи на сцену · элементы сцены — выбери для редактирования</small>
+      </aside><section class="se-library" aria-label="Библиотека игровых ассетов"><header><strong>Библиотека игровых ассетов</strong><small>Общий каталог игры · карточки с изображением можно перетащить на сцену</small>
       <input id="se-search" type="search" placeholder="Найти…" aria-label="Поиск в библиотеке"></header>
       <nav id="se-library-tabs" role="tablist" aria-label="Категории библиотеки">
         <button role="tab" data-library-category="ordinary" aria-selected="true">Обычные</button>
@@ -387,42 +387,37 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const renderAssets = () => {
       const list = panel.querySelector('#se-assets'), query = panel.querySelector('#se-search').value.toLocaleLowerCase();
       list.replaceChildren();
-      const assetCategory = activeLibraryCategory === 'ordinary' || activeLibraryCategory === 'unique';
       const assets = ASSET_CATALOG.filter(item => item.category === activeLibraryCategory
-        && `${item.label} ${item.group} ${item.id}`.toLocaleLowerCase().includes(query));
+        && `${item.label} ${item.group ?? ''} ${item.id} ${item.hint ?? ''}`.toLocaleLowerCase().includes(query));
       for (const item of assets) {
-        const button = document.createElement('button'); button.type = 'button'; button.draggable = true;
-        button.dataset.asset = item.id; button.title = `${item.label} · ${item.group}`;
-        const image = new Image(); image.src = new URL(`../${item.asset}`, import.meta.url).href; image.loading = 'lazy'; image.alt = ''; image.draggable = false;
-        const label = document.createElement('span'); label.textContent = item.label;
-        button.append(image, label); button.addEventListener('click', () => void addAsset(item));
-        button.addEventListener('dragstart', event => {
-          event.dataTransfer.setData('application/x-cardboardquest-asset', item.id); event.dataTransfer.effectAllowed = 'copy';
+        const placeable = Boolean(item.asset) && item.kind !== 'reference';
+        const button = document.createElement('button'); button.type = 'button'; button.draggable = placeable;
+        button.className = placeable ? '' : 'se-library-reference';
+        button.dataset.asset = item.id; button.title = `${item.label}${item.group ? ` · ${item.group}` : ''}`;
+        const imagePath = item.asset ?? item.preview;
+        if (imagePath) {
+          const image = new Image(); image.src = new URL(`../${imagePath}`, import.meta.url).href; image.loading = 'lazy'; image.alt = ''; image.draggable = false;
+          button.append(image);
+        } else {
+          const glyph = document.createElement('b'); glyph.textContent = item.icon ?? '✦'; button.append(glyph);
+        }
+        const label = document.createElement('span'); label.textContent = item.label; button.append(label);
+        if (item.hint) { const hint = document.createElement('small'); hint.textContent = item.hint; button.append(hint); }
+        if (placeable) {
+          button.addEventListener('click', () => void addAsset(item));
+          button.addEventListener('dragstart', event => {
+            event.dataTransfer.setData('application/x-cardboardquest-asset', item.id); event.dataTransfer.effectAllowed = 'copy';
+          });
+        } else button.addEventListener('click', () => {
+          if (item.id === 'fog-paths') setPathMode(true);
+          else if (item.id === 'level-graph') void openCampaignGraph();
+          else ui.status.textContent = item.hint ?? item.label;
         });
         list.append(button);
       }
-      if (!assetCategory) for (const binding of registry.bindings(getLocation().id).filter(item => item.category === activeLibraryCategory
-        && item.label.toLocaleLowerCase().includes(query))) {
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'se-library-entity';
-        button.title = `Выбрать на сцене: ${binding.label}`;
-        const glyph = document.createElement('b'); glyph.textContent = { technical: '⚙', interactive: '✦', enemies: '⚔', characters: '♟' }[activeLibraryCategory];
-        const label = document.createElement('span'); label.textContent = binding.label;
-        button.append(glyph, label); button.addEventListener('click', () => { select(binding); focusSelection(); }); list.append(button);
-      }
-      if (activeLibraryCategory === 'interactive' && 'осмотреть'.includes(query)) {
-        const marker = document.createElement('div'); marker.className = 'se-library-entity se-library-info';
-        marker.title = 'Маркер интерфейса появляется автоматически рядом с героем у точки интереса.';
-        const glyph = document.createElement('b'); glyph.textContent = '⌕';
-        const label = document.createElement('span'); label.textContent = 'Осмотреть · HUD';
-        const hint = document.createElement('small'); hint.textContent = 'Появляется у точки интереса';
-        marker.append(glyph, label, hint); list.append(marker);
-      }
       if (!list.children.length) {
         const empty = document.createElement('small'); empty.className = 'se-library-empty';
-        empty.textContent = activeLibraryCategory === 'interactive' ? 'На этой локации нет сундуков или интерактивных объектов.'
-          : activeLibraryCategory === 'technical' ? 'На этой локации нет технических точек.'
-            : activeLibraryCategory === 'enemies' ? 'На этой локации нет врагов.'
-              : activeLibraryCategory === 'characters' ? 'На этой локации нет персонажей.' : 'В этой категории пока нет ассетов.';
+        empty.textContent = 'В каталоге нет совпадений по этому запросу.';
         list.append(empty);
       }
     };

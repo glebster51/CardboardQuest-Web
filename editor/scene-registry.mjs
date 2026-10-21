@@ -1,5 +1,5 @@
 import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=131';
-import { catalogAsset } from './asset-catalog.mjs?v=2';
+import { catalogAsset } from './asset-catalog.mjs?v=3';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 
