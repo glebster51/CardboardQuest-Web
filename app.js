@@ -1102,9 +1102,15 @@ async function start() {
       visual.puck.visible = false; visual.puck.scale.setScalar(0);
       visual.stateArt[0].visible = false;
       visual.stateArt[1].visible = true;
-      const story = visual.pendingStory; visual.pendingStory = null;
-      if (story) showStoryCard(story);
     }
+  }
+  function showCacheStoryAfterLootLands() {
+    const visual = chestVisuals.get(activeLocation.id);
+    if (!visual?.pendingStory || visual.opening
+      || visual.lootVisuals.some(item => item.group.parent && item.spawn)) return false;
+    const story = visual.pendingStory; visual.pendingStory = null;
+    showStoryCard(story);
+    return true;
   }
   function damage(target, damageQuarters, speed) {
     if (target.hitCooldown > 0 || target.health <= 0) return false;
@@ -1448,6 +1454,7 @@ async function start() {
           holderY: chestVisuals.get(activeLocation.id)?.artHolder.position.y ?? 0,
           rotationY: chestVisuals.get(activeLocation.id)?.group.rotation.y ?? 0,
           lootVisible: chestVisuals.get(activeLocation.id)?.lootVisuals.some(item => item.group.visible) ?? false,
+          lootSettled: chestVisuals.get(activeLocation.id)?.lootVisuals.every(item => !item.group.parent || !item.spawn) ?? true,
           openSprite: chestVisuals.get(activeLocation.id)?.stateArt[1].visible ?? false } : null,
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
         loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
@@ -1546,6 +1553,7 @@ async function start() {
       clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
     if (dialogue.isOpen()) { updateCamera(); renderer.render(scene, camera); return; }
     updateWorldLoot(dt);
+    showCacheStoryAfterLootLands();
     updateProjectiles(dt);
     storyActors.update();
     if (isCampaignPositionSafe(activeLocation, heroBody)) heroBody.lastSafePosition = { x: heroBody.x, z: heroBody.z };
