@@ -82,21 +82,33 @@ async function start() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
-  let tiltShiftComposer = null, tiltShiftPass = null, tiltShiftPixelRatio = 1;
+  let tiltShiftComposer = null, tiltShiftPass = null, ssaoPass = null, tiltShiftPixelRatio = 1;
+  const setSsaoSize = () => {
+    if (!ssaoPass) return;
+    const scale = Math.min(.5, 720 / Math.max(1, innerWidth), 540 / Math.max(1, innerHeight));
+    ssaoPass.setSize(Math.max(1, Math.round(innerWidth * scale * tiltShiftPixelRatio)),
+      Math.max(1, Math.round(innerHeight * scale * tiltShiftPixelRatio)));
+  };
   const renderScene = () => {
     if (!tiltShiftComposer) return renderer.render(scene, camera);
     try { tiltShiftComposer.render(); }
     catch (error) {
-      tiltShiftComposer.dispose(); tiltShiftComposer = null;
-      console.warn('Tilt-shift остановлен; используется обычный рендер', error);
+      if (ssaoPass?.enabled) {
+        ssaoPass.enabled = false;
+        console.warn('SSAO отключён после ошибки; сохраняю остальные эффекты', error);
+        try { tiltShiftComposer.render(); return; } catch { /* Fall back to the direct renderer below. */ }
+      }
+      tiltShiftComposer.dispose(); tiltShiftComposer = null; ssaoPass = null;
+      console.warn('Постобработка остановлена; используется обычный рендер', error);
       renderer.render(scene, camera);
     }
   };
   async function enableTiltShift() {
     try {
-      const [composerModule, renderModule, shaderModule, shaderPassModule, outputModule] = await Promise.all([
+      const [composerModule, renderModule, ssaoModule, shaderModule, shaderPassModule, outputModule] = await Promise.all([
         import('three/addons/postprocessing/EffectComposer.js'),
         import('three/addons/postprocessing/RenderPass.js'),
+        import('three/addons/postprocessing/SSAOPass.js'),
         import('three/addons/shaders/VerticalTiltShiftShader.js'),
         import('three/addons/postprocessing/ShaderPass.js'),
         import('three/addons/postprocessing/OutputPass.js'),
@@ -107,15 +119,26 @@ async function start() {
       tiltShiftPixelRatio = Math.min(renderer.getPixelRatio(), 1);
       composer.setPixelRatio(tiltShiftPixelRatio);
       composer.addPass(new renderModule.RenderPass(scene, camera));
+      try {
+        const ssao = new ssaoModule.SSAOPass(scene, camera, innerWidth, innerHeight, 12);
+        ssao.kernelRadius = 5;
+        ssao.minDistance = .008;
+        ssao.maxDistance = .12;
+        composer.addPass(ssao);
+        ssaoPass = ssao;
+      } catch (error) {
+        console.warn('SSAO недоступен; остальные эффекты сохраняются', error);
+      }
       const tilt = new shaderPassModule.ShaderPass(shaderModule.VerticalTiltShiftShader);
       tilt.uniforms.r.value = .48;
       tilt.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
       composer.addPass(tilt);
       composer.addPass(new outputModule.OutputPass());
       composer.setSize(innerWidth, innerHeight);
+      setSsaoSize();
       tiltShiftComposer = composer; tiltShiftPass = tilt;
     } catch (error) {
-      console.warn('Tilt-shift недоступен; используется обычный рендер', error);
+      console.warn('Постобработка недоступна; используется обычный рендер', error);
     }
   }
 
@@ -1642,6 +1665,7 @@ async function start() {
     if (tiltShiftComposer) {
       tiltShiftComposer.setSize(innerWidth, innerHeight);
       tiltShiftPass.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      setSsaoSize();
     }
   }
   addEventListener('resize', resize); resize();
