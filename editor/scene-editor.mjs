@@ -15,6 +15,46 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
   const ui = {};
   const addJobs = new Set();
+  const objectLabels = new Map(), locationLabels = new Map();
+  const sceneKey = (location, object) => JSON.stringify([location, object]);
+  function rememberBindings(location) {
+    locationLabels.set(location.id, location.title);
+    for (const binding of registry.bindings(location.id)) objectLabels.set(sceneKey(binding.location, binding.id), binding.label);
+  }
+  function describeChange(change) {
+    const { location, object } = change;
+    const place = location ? locationLabels.get(location) ?? location : '';
+    let label = objectLabels.get(sceneKey(location, object))
+      ?? bindings.find(binding => binding.location === location && binding.id === object)?.label;
+    if (!label) {
+      if (object === 'fog') label = 'Настройки тумана';
+      else if (object === 'fog-paths') label = 'Линии тумана';
+      else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
+        .replace(/^placed:/, 'Добавленный объект · ').replace(/:/g, ' · ');
+    }
+    return place ? `${place} · ${label}` : label;
+  }
+  function refreshChangeList() {
+    if (!ui.changes) return;
+    const changes = model.diff().changes;
+    ui.changes.replaceChildren();
+    ui['change-count'].textContent = String(changes.length);
+    ui.changes.dataset.empty = String(changes.length === 0);
+    if (!changes.length) {
+      const empty = document.createElement('span'); empty.className = 'se-change-empty';
+      empty.textContent = 'Пока нет изменений'; ui.changes.append(empty); return;
+    }
+    for (const change of changes) {
+      const kind = change.before === null ? 'added' : change.after === null ? 'removed' : 'modified';
+      const tag = document.createElement('div'); tag.className = 'se-change-tag'; tag.dataset.kind = kind; tag.setAttribute('role', 'listitem');
+      const label = document.createElement('span'); label.className = 'se-change-name'; label.textContent = describeChange(change);
+      label.title = label.textContent;
+      const revert = document.createElement('button'); revert.type = 'button'; revert.className = 'se-change-revert';
+      revert.dataset.revert = sceneKey(change.location, change.object); revert.textContent = '×';
+      revert.title = `Откатить: ${label.textContent}`; revert.setAttribute('aria-label', revert.title);
+      tag.append(label, revert); ui.changes.append(tag);
+    }
+  }
   function refreshObjects() {
     ui.objects.replaceChildren(new Option('Выбери объект…', ''));
     for (const binding of bindings) if (model.get(binding.location, binding.id) !== null)
@@ -82,6 +122,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   function changed() {
     ui.diff.value = model.text(); ui.count.textContent = String(model.diff().changes.length);
+    refreshChangeList();
     try { localStorage.setItem('cardboardquest-editor-last-diff', ui.diff.value); } catch { /* Clipboard and download still work. */ }
     void copyDiff(ui.diff.value);
   }
@@ -253,6 +294,11 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label class="se-speed">Скорость камеры<input id="se-speed" aria-label="Скорость камеры" type="range" min="1" max="40" value="12"></label>
         <p class="se-help">ПКМ + WASD — полёт · Q/E — высота<br>Shift — быстрее · СКМ — сдвиг · колесо — зум<br><i class="se-exit-dot"></i> Выходы <i class="se-spawn-dot"></i> Точки входа</p>
         <div class="se-export"><span>Суммарный дифф <b id="se-count">0</b></span><button id="se-copy">Копировать</button></div>
+        <section class="se-change-panel" aria-label="Изменённые объекты">
+          <header><span>ОБЪЕКТЫ В ДИФФЕ</span><b id="se-change-count">0</b></header>
+          <div id="se-changes" role="list" aria-live="polite"></div>
+          <small>Жёлтый — изменён · зелёный — добавлен · красный — удалён</small>
+        </section>
         <output id="se-status" aria-live="polite">Изменения автоматически попадут в буфер</output>
         <details><summary>Показать текст диффа</summary><textarea id="se-diff" aria-label="Суммарный дифф сцены" readonly spellcheck="false"></textarea>
         <button id="se-download">Скачать дифф</button></details>
@@ -261,7 +307,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     document.body.append(panel);
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
-    for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint']) ui[name] = panel.querySelector(`#se-${name}`);
+    for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);
     for (const [property, label] of [['position', 'Позиция'], ['rotation', 'Поворот °'], ['scale', 'Масштаб']]) {
       const row = document.createElement('div'); row.className = 'se-vector';
       const title = document.createElement('span'); title.textContent = label; row.append(title);
@@ -294,6 +340,15 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
       if (selected && model.reset(selected.location, selected.id)) { registry.sync(); refreshObjects(); refreshInspector(); changed(); }
+    });
+    ui.changes.addEventListener('click', event => {
+      const button = event.target.closest('button[data-revert]');
+      if (!button) return;
+      const [location, object] = JSON.parse(button.dataset.revert);
+      model.commit();
+      if (!model.reset(location, object)) return;
+      registry.sync(); bindings = registry.bindings(getLocation().id);
+      refreshObjects(); refreshInspector(); refreshFog(); syncFogPathVisuals(); changed();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
     const renderAssets = () => {
@@ -372,6 +427,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (!controls) await initialize();
       setRenderMode('normal');
       const location = getLocation(); bindings = registry.bindings(location.id);
+      rememberBindings(location);
       document.body.classList.add('scene-editing'); panel.hidden = false; helperRoot.visible = true;
       ui.renderAssets();
       ui.location.textContent = location.title;
@@ -379,7 +435,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (binding.helper) makeHelper(binding);
       }
       makeFogPathVisuals(location);
-      controls.enabled = true; select(null); refreshObjects(); refreshFog(); ui.diff.value = model.text(); cameraAngles();
+      controls.enabled = true; select(null); refreshObjects(); refreshFog(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
       focusPoint.copy(camera.position).add(direction.set(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(15));
       if (model.diff().changes.length) void copyDiff(model.text());
     } catch (error) {

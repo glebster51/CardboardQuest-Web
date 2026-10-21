@@ -9,7 +9,7 @@ import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=9';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=127';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=128';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=129';
 import { catalogAsset } from './editor/asset-catalog.mjs';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';

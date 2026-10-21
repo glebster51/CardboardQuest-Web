@@ -46,6 +46,19 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor .se-export{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #ffffff18;padding-top:12px}
 #scene-editor #se-count{padding:2px 6px;border-radius:8px;background:#4b4b47;color:#f1bd6d;margin-left:3px}
 #scene-editor #se-copy{color:#24252b;background:var(--se-accent);border-color:#eac991;font-weight:600}
+#scene-editor .se-change-panel{margin-top:10px;padding:9px;border:1px solid #ffffff22;border-radius:8px;background:#15192299}
+#scene-editor .se-change-panel>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;font-size:9px;letter-spacing:1.2px;color:#b9ac97}
+#scene-editor .se-change-panel>header b{padding:1px 6px;border-radius:8px;background:#3a3b40;color:#e5c78d;font-size:10px;letter-spacing:0}
+#scene-editor #se-changes{display:flex;flex-wrap:wrap;gap:5px;max-height:112px;overflow:auto}
+#scene-editor #se-changes[data-empty=true]{display:block}
+#scene-editor .se-change-tag{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:100%;padding:2px 3px 2px 8px;border:1px solid #b88b42;border-radius:7px;background:#6b542b55;color:#ffe0a0;font-size:10px}
+#scene-editor .se-change-tag[data-kind=added]{border-color:#4b9c68;background:#24573a66;color:#b1f0bd}
+#scene-editor .se-change-tag[data-kind=removed]{border-color:#b95d5d;background:#642f3566;color:#ffc0b6}
+#scene-editor .se-change-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#scene-editor .se-change-revert{flex:0 0 19px;width:19px;height:19px;padding:0!important;border-radius:5px!important;background:#ffffff12!important;border-color:#ffffff20!important;color:inherit!important;font-size:15px!important;line-height:1;cursor:pointer}
+#scene-editor .se-change-revert:hover{background:#ffffff2b!important;border-color:#ffffff66!important}
+#scene-editor .se-change-empty{font-size:10px;color:#8f929a}
+#scene-editor .se-change-panel>small{display:block;margin-top:6px;color:#92939a;font-size:9px}
 #scene-editor #se-status{display:block;margin-top:8px;font-size:10px;min-height:28px;color:#aaa9ae}
 #scene-editor #se-status[data-copied=true]{color:#9ed3ac}
 #scene-editor details{font-size:11px;color:#bbb8b0}
