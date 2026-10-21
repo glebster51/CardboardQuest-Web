@@ -82,6 +82,42 @@ async function start() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
+  let tiltShiftComposer = null, tiltShiftPass = null, tiltShiftPixelRatio = 1;
+  const renderScene = () => {
+    if (!tiltShiftComposer) return renderer.render(scene, camera);
+    try { tiltShiftComposer.render(); }
+    catch (error) {
+      tiltShiftComposer.dispose(); tiltShiftComposer = null;
+      console.warn('Tilt-shift остановлен; используется обычный рендер', error);
+      renderer.render(scene, camera);
+    }
+  };
+  async function enableTiltShift() {
+    try {
+      const [composerModule, renderModule, shaderModule, shaderPassModule, outputModule] = await Promise.all([
+        import('three/addons/postprocessing/EffectComposer.js'),
+        import('three/addons/postprocessing/RenderPass.js'),
+        import('three/addons/shaders/VerticalTiltShiftShader.js'),
+        import('three/addons/postprocessing/ShaderPass.js'),
+        import('three/addons/postprocessing/OutputPass.js'),
+      ]);
+      const target = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false });
+      const composer = new composerModule.EffectComposer(renderer, target);
+      tiltShiftPixelRatio = Math.min(renderer.getPixelRatio(), 1);
+      composer.setPixelRatio(tiltShiftPixelRatio);
+      composer.addPass(new renderModule.RenderPass(scene, camera));
+      const tilt = new shaderPassModule.ShaderPass(shaderModule.VerticalTiltShiftShader);
+      tilt.uniforms.r.value = .48;
+      tilt.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      composer.addPass(tilt);
+      composer.addPass(new outputModule.OutputPass());
+      composer.setSize(innerWidth, innerHeight);
+      tiltShiftComposer = composer; tiltShiftPass = tilt;
+    } catch (error) {
+      console.warn('Tilt-shift недоступен; используется обычный рендер', error);
+    }
+  }
 
   const scene = new THREE.Scene();
   let sunLight = null;
@@ -1603,6 +1639,10 @@ async function start() {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix(); updateCamera();
+    if (tiltShiftComposer) {
+      tiltShiftComposer.setSize(innerWidth, innerHeight);
+      tiltShiftPass.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
+    }
   }
   addEventListener('resize', resize); resize();
   await locationStreaming.retain(activeLocation.id, false);
@@ -1745,11 +1785,11 @@ async function start() {
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
     if (sceneEditor.graphOpen) return;
     if (sceneEditor.active) {
-      sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderer.render(scene, camera); return;
+      sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;
     }
     updateCacheAnimation(dt);
     if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen()) {
-      updateCamera(); updatePlayerReveal(); renderer.render(scene, camera); return;
+      updateCamera(); updatePlayerReveal(); renderScene(); return;
     }
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
@@ -1819,7 +1859,7 @@ async function start() {
     }
     for (const enemy of activeLocation.enemies)
       clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
-    if (dialogue.isOpen()) { updateCamera(); updatePlayerReveal(); renderer.render(scene, camera); return; }
+    if (dialogue.isOpen()) { updateCamera(); updatePlayerReveal(); renderScene(); return; }
     updateWorldLoot(dt);
     showCacheStoryAfterLootLands();
     updateProjectiles(dt);
@@ -1990,10 +2030,11 @@ async function start() {
       figure.healthHUD.quaternion.copy(camera.quaternion);
     }
     updatePlayerReveal();
-    renderer.render(scene, camera);
+    renderScene();
   });
   frameWorkStarted = true;
   requestAnimationFrame(() => requestAnimationFrame(() => {
+    void enableTiltShift();
     if (!locationTransition) locationStreaming.retain(activeLocation.id)
       .catch(error => console.error('Не удалось подготовить соседние места', error));
   }));
