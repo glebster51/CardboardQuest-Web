@@ -1,11 +1,22 @@
-import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=127';
+import { createEditModel, FOG_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=128';
 import { createExitBarrierBodies } from '../location-network.mjs';
+import { createDefaultFogPaths } from '../fog-paths.mjs';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
 export function createSceneRegistry({ THREE, overrides, setFog }) {
   const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
   const fog = { ...FOG_DEFAULTS, ...overrides.fog }; model.register(null, 'fog', fog);
   const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.asset ? { asset: binding.asset, size: binding.size } : {}) });
+  function fogPathsMatchLocation(paths, location) {
+    try {
+      const expected = createDefaultFogPaths(location).paths;
+      const actual = new Map(paths.paths.map(path => [path.id, path]));
+      return expected.length === actual.size && expected.every(path => {
+        const saved = actual.get(path.id), start = saved?.points?.[0];
+        return start && Math.hypot(start[0] - path.points[0][0], start[1] - path.points[0][1]) < .001;
+      });
+    } catch { return false; }
+  }
   function apply(binding, value) {
     const deleted = value === null;
     binding.object.userData.sceneEditDeleted = deleted;
@@ -37,17 +48,17 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
         entry: location.entry, arrivals: location.arrivals, exits: location.exits, fogPaths: location.fogPaths,
       })) });
       const savedPaths = overrides.locations[location.id]?.['fog-paths'];
-      const fogPaths = savedPaths ?? location.fogPaths;
+      const fogPaths = savedPaths && fogPathsMatchLocation(savedPaths, location) ? savedPaths : location.fogPaths;
       validateSceneValue(fogPaths, false, true);
       location.fogPaths = model.register(location.id, 'fog-paths', fogPaths);
       location.edgeShade?.updatePaths(location.fogPaths);
       const bindings = [];
-      for (const { exit, marker, shadow, blocked } of location.exitVisuals?.markers ?? []) {
+      for (const [outputIndex, { exit, marker, shadow, blocked }] of (location.exitVisuals?.markers ?? []).entries()) {
         const proxy = new THREE.Object3D(); proxy.position.set(exit.x, .3, exit.z);
         proxy.rotation.y = marker.rotation.y; proxy.scale.set((exit.halfWidth ?? 2.3) * 2, .6, (exit.halfDepth ?? 1.05) * 2);
         const barrier = location.exitBarriers?.[location.exits.indexOf(exit)];
         bind(location, bindings, `exit:${exit.to}:trigger`, `Выход → ${exit.to} · коллайдер`, proxy, {
-          helper: 'trigger', body: barrier,
+          helper: 'trigger', body: barrier, outputIndex,
           onDelete(deleted) { exit.disabled = deleted; blocked.visible = !deleted && blocked.material.opacity > 0; },
           sync() {
             exit.x = proxy.position.x; exit.z = proxy.position.z;
@@ -58,7 +69,7 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
             if (barrier) Object.assign(barrier, createExitBarrierBodies(location)[location.exits.indexOf(exit)]);
           },
         });
-        bind(location, bindings, `exit:${exit.to}:shadow`, `Выход → ${exit.to} · листва`, shadow);
+        bind(location, bindings, `exit:${exit.to}:shadow`, `Выход → ${exit.to} · листва`, shadow, { outputIndex });
       }
       const spawn = (id, label, point, exit) => {
         const object = new THREE.Object3D(); object.position.set(point.x, .2, point.z);
@@ -98,6 +109,17 @@ export function createSceneRegistry({ THREE, overrides, setFog }) {
       const source = sources.get(id);
       if (source) Object.assign(source.location, source.data);
       sources.delete(id); resident.delete(id);
+    },
+    graphChanged(location) {
+      const source = sources.get(location.id);
+      if (source) source.data = JSON.parse(JSON.stringify({
+        entry: location.entry, arrivals: location.arrivals, exits: location.exits, fogPaths: location.fogPaths,
+      }));
+      for (const binding of resident.get(location.id) ?? []) if (Number.isInteger(binding.outputIndex)) {
+        const target = location.exits[binding.outputIndex]?.to ?? 'не подключён';
+        binding.label = `Выход → ${target} · ${binding.helper === 'trigger' ? 'коллайдер' : 'листва'}`;
+      }
+      if (model.has(location.id, 'fog-paths')) model.set(location.id, 'fog-paths', location.fogPaths);
     },
     bindings(id) { return resident.get(id) ?? []; },
     hasEdit(location, object) {

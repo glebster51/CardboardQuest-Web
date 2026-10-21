@@ -81,7 +81,7 @@ export function createLocationNetwork(scale = LOCATION_SCALE) {
 
 export function findNearbyExit(location, body, radius = EXIT_ZONE_RADIUS) {
   return location.exits.find(exit => {
-    if (exit.disabled) return false;
+    if (exit.disabled || !exit.to) return false;
     if (!exit.halfWidth) return Math.hypot(exit.x - body.x, exit.z - body.z) <= radius;
     const length = Math.hypot(exit.x, exit.z) || 1;
     const ux = exit.dirX ?? exit.x / length, uz = exit.dirZ ?? exit.z / length;

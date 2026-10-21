@@ -101,6 +101,21 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .map-pin.is-visited .map-pin-inner { fill: #66833d; }
 .map-pin.is-current .map-pin-outer { fill: #63ce32; stroke: #fff4cf; stroke-width: 4; }
 .map-pin.is-current .map-pin-inner { fill: #fff9df; }
+#world-map .campaign-edge { stroke: #73573b; stroke-width: 4; opacity: .65; }
+#world-map .campaign-node-label { fill: #493824; stroke: #f2dfb9; stroke-width: 3px; font-size: 15px; }
+#world-map .campaign-node.is-current .campaign-node-label { fill: #405d25; }
+#world-map .campaign-current-ring { stroke-width: 5; }
+#world-map .campaign-port.input { fill: #58a99d; }
+#world-map .campaign-port.output { fill: #bd7353; }
+#world-map .campaign-map-route { fill: none; stroke: #785633; stroke-width: 5; stroke-linecap: round; opacity: .55; }
+#world-map .campaign-map-pin-outer { fill: #e3d3ae; stroke: #745532; stroke-width: 4; }
+#world-map .campaign-map-pin-inner { fill: #8a6946; }
+#world-map .campaign-map-pin.is-visited .campaign-map-pin-outer { fill: #f1d69b; stroke: #7b5a33; }
+#world-map .campaign-map-pin.is-visited .campaign-map-pin-inner { fill: #66833d; }
+#world-map .campaign-map-pin.is-current .campaign-map-pin-outer { fill: #63ce32; stroke: #fff4cf; stroke-width: 5; }
+#world-map .campaign-map-pin.is-current .campaign-map-pin-inner { fill: #fff9df; }
+#world-map .campaign-map-label { fill: #493824; stroke: #f2dfb9; stroke-width: 4px; stroke-linejoin: round; paint-order: stroke; font: 700 20px/1 system-ui, sans-serif; }
+#world-map .campaign-map-pin.is-current .campaign-map-label { fill: #405d25; }
 #world-map footer { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 15px; padding: 10px 12px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid #8a694566; color: #59442e; font: 600 11px/1 system-ui, sans-serif; }
 #world-map footer span { display: inline-flex; align-items: center; gap: 5px; }
 .map-key { width: 9px; height: 9px; display: inline-block; border: 2px solid #745532; border-radius: 50%; background: #e3d3ae; }

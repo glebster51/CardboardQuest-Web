@@ -77,3 +77,37 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}
 @media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-fog{gap:8px}#scene-editor .se-render-mode{flex-wrap:wrap}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor .se-inspector{width:275px}#scene-editor button{padding:6px!important}}
+
+/* The campaign graph is a pure 2D editor; the Three.js scene is hidden and its loop is paused. */
+body.campaign-graph-open #scene,body.campaign-graph-open #hud-tools,body.campaign-graph-open #location-info,
+body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor{visibility:hidden!important;pointer-events:none!important}
+#campaign-graph-editor[hidden]{display:none!important}
+#campaign-graph-editor{position:fixed;inset:0;z-index:5000;display:grid;grid-template-rows:auto minmax(0,1fr);background:radial-gradient(ellipse at 50% 20%,#343046 0,#211f34 60%,#191726 100%);color:#f4e8ce;font:14px/1.4 system-ui,sans-serif}
+#campaign-graph-editor *{box-sizing:border-box}
+#campaign-graph-editor .cg-header{display:flex;align-items:center;gap:18px;padding:14px 20px;border-bottom:1px solid #f3d28b55;background:#171622eF;box-shadow:0 6px 24px #0005}
+#campaign-graph-editor .cg-header>div{display:grid;gap:2px;margin-right:auto}
+#campaign-graph-editor .cg-header nav{display:flex;gap:8px}
+#campaign-graph-editor .cg-header small{font-size:10px;letter-spacing:1.5px;color:#c6ae82}
+#campaign-graph-editor .cg-header strong{font-size:20px}
+#campaign-graph-editor #cg-hint{font-size:12px;color:#c6bda9}
+#campaign-graph-editor button{padding:9px 14px;border:1px solid #e3bc73;border-radius:8px;background:#493c32;color:#ffedc6;font:600 13px system-ui,sans-serif;cursor:pointer}
+#campaign-graph-editor button:hover{background:#68513b}
+#campaign-graph-editor .cg-scroll{overflow:auto;overscroll-behavior:contain;text-align:center;padding:22px 14px 48px;touch-action:pan-x pan-y;background-image:radial-gradient(#d1c4a51f 1px,transparent 1.2px);background-size:24px 24px}
+#campaign-graph-editor #cg-graph{display:block;width:min(100%,850px);height:auto;min-height:1200px;margin:0 auto;overflow:visible;user-select:none;touch-action:none}
+.campaign-edge{fill:none;stroke:#b9aa88;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;opacity:.68;marker-end:url(#campaign-arrow)}
+.campaign-edge.is-editable{stroke:#e8c985;stroke-width:3;opacity:.58}
+.campaign-edge.is-pending{stroke:#7ce2ce;stroke-width:5;stroke-dasharray:9 6;opacity:1}
+.campaign-edge.is-editable{pointer-events:stroke;cursor:pointer}
+.campaign-edge.is-selected{stroke:#ff785f;stroke-width:7;opacity:1}
+.campaign-node-image{filter:drop-shadow(0 6px 5px #100d18b0)}
+.campaign-node-label{fill:#f5e6c6;font:600 16px system-ui,sans-serif;paint-order:stroke;stroke:#211f34;stroke-width:4px;stroke-linejoin:round;pointer-events:none}
+.campaign-node.is-current .campaign-node-label{fill:#ffe58d}
+.campaign-current-ring{fill:#57dc4b21;stroke:#79ec54;stroke-width:6;pointer-events:none}
+.campaign-node.is-visited:not(.is-current) .campaign-node-image{filter:drop-shadow(0 4px 4px #0008) saturate(.8)}
+.campaign-port{stroke:#382d31;stroke-width:2.2;vector-effect:non-scaling-stroke}
+.campaign-port.input{fill:#79ddcb}
+.campaign-port.output{fill:#f08d67}
+.campaign-port.is-editable{cursor:crosshair;stroke:#fff1cf;stroke-width:1.5}
+.campaign-node.is-editable{cursor:grab}
+.campaign-node.is-editable:active{cursor:grabbing}
+@media(max-width:700px){#campaign-graph-editor .cg-header{padding:10px;gap:8px}#campaign-graph-editor .cg-header strong{font-size:17px}#campaign-graph-editor #cg-hint{font-size:10px}#campaign-graph-editor button{padding:8px;font-size:11px}#campaign-graph-editor .cg-scroll{padding:12px 6px 32px}#campaign-graph-editor #cg-graph{min-height:1000px}}

@@ -8,8 +8,8 @@ import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mj
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=9';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=127';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=127';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=129';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=128';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=130';
 import { catalogAsset } from './editor/asset-catalog.mjs';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -20,7 +20,10 @@ import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=1'
 import { followDirection, followMotion, nearestAwakeThreat } from './render/camera-follow.mjs?v=1';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
-import { createLocationMapView } from './render/location-map-view.mjs?v=1';
+import { createLocationMapView } from './render/location-map-view.mjs?v=3';
+import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=1';
+import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=1';
+import { buildLocationMapGraph } from './game/location-map-data.mjs';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
 import { createFigureFactory } from './render/figure-factory.mjs?v=3';
@@ -47,7 +50,7 @@ import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerS
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,
-  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=11';
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=12';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -86,6 +89,7 @@ async function start() {
   const campaignState = createCampaignState(savedCampaign);
   campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
   const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE, [campaignState.currentLocationId]);
+  let activeCampaignGraph = SCENE_OVERRIDES.graph ?? null;
   await loadLocationDepthMaps({ [campaignState.currentLocationId]: locations[campaignState.currentLocationId] });
   // Rebuild authored footprints now that raster-derived features (notably the
   // black river mask) are available to gameplay collision and floor cutting.
@@ -94,6 +98,7 @@ async function start() {
   const authoredEntry = SCENE_OVERRIDES.locations[campaignState.currentLocationId]?.entry;
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
+  if (activeCampaignGraph) for (const location of Object.values(locations)) applyCampaignGraphToLocation(location, activeCampaignGraph);
   const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setFog(settings) {
     scene.background.set(settings.color); renderer.setClearColor(settings.color);
     for (const location of Object.values(locations)) {
@@ -139,6 +144,74 @@ async function start() {
     viewport: document.querySelector('#world-map-viewport'), graph: document.querySelector('#world-map-graph'),
     progress: document.querySelector('#world-map-progress'), openButton: mapButton,
     closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
+  let campaignGraphData = null, campaignGraphDataKey = null;
+  function applyEditedAnchorsToGraphLayouts(layouts) {
+    const editsByLocation = Object.fromEntries(Object.entries(SCENE_OVERRIDES.locations ?? {}).map(([id, edits]) => [id, { ...edits }]));
+    for (const change of sceneRegistry.model.diff().changes) if (change.location && change.after !== null) {
+      editsByLocation[change.location] ??= {};
+      editsByLocation[change.location][change.object] = change.after;
+    }
+    for (const [id, edits] of Object.entries(editsByLocation)) {
+      const location = layouts[id]; if (!location?.layoutReady) continue;
+      const applyPoint = (value, previous = {}) => ({ ...previous, x: value.position[0], z: value.position[2], rotationY: value.rotation[1] });
+      if (edits.entry) location.entry = applyPoint(edits.entry, location.entry);
+      for (const [key, value] of Object.entries(edits)) {
+        const arrival = key.match(/^arrival:([a-z0-9-]+)$/);
+        if (arrival) location.arrivals[arrival[1]] = applyPoint(value, location.arrivals[arrival[1]]);
+        if (key === 'fog-paths') location.fogPaths = value;
+        const exit = key.match(/^exit:([a-z0-9-]+):trigger$/);
+        if (exit) {
+          const gate = location.exits.find(item => item.to === exit[1]);
+          if (gate) { gate.x = value.position[0]; gate.z = value.position[2];
+            gate.halfWidth = value.scale[0] / 2; gate.halfDepth = value.scale[2] / 2;
+            gate.dirX = Math.sin(value.rotation[1]); gate.dirZ = Math.cos(value.rotation[1]); }
+        }
+      }
+    }
+  }
+  function ensureCampaignGraphData(state = campaignState, { includeVisuals = true } = {}) {
+    const graphEdits = sceneRegistry.model.diff().changes.filter(change => change.object === 'fog-paths'
+      || change.object === 'entry' || /^arrival:/.test(change.object) || /^exit:.*:trigger$/.test(change.object));
+    const sourceKey = JSON.stringify({ fog: sceneRegistry.fog, location: activeLocation?.id,
+      edges: activeCampaignGraph?.edges, graphEdits });
+    if (campaignGraphData && sourceKey === campaignGraphDataKey) {
+      campaignGraphData.graph = activeCampaignGraph ?? campaignGraphData.graph;
+      if (includeVisuals && !campaignGraphData.visuals) {
+        const layouts = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE);
+        applyEditedAnchorsToGraphLayouts(layouts);
+        if (activeLocation?.layoutReady) layouts[activeLocation.id] = activeLocation;
+        campaignGraphData.visuals = createCampaignNodeVisuals(layouts, campaignGraphData.graph, sceneRegistry.fog);
+      }
+      campaignGraphData.currentLocationId = state?.currentLocationId ?? campaignState.currentLocationId;
+      campaignGraphData.visited = [...(state?.visited ?? campaignState.visited ?? [])];
+      locationMap.setCampaignGraph(campaignGraphData.graph);
+      return campaignGraphData;
+    }
+    const layouts = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE);
+    applyEditedAnchorsToGraphLayouts(layouts);
+    if (activeLocation?.layoutReady) layouts[activeLocation.id] = activeLocation;
+    const mapLayout = buildLocationMapGraph(CAMPAIGN, CAMPAIGN_EDGES);
+    const graph = createCampaignGraph(layouts, mapLayout, activeCampaignGraph);
+    const visuals = includeVisuals ? createCampaignNodeVisuals(layouts, graph, sceneRegistry.fog) : null;
+    campaignGraphData = { graph, visuals, labels: Object.fromEntries(CAMPAIGN.map(item => [item.id, item.title])) };
+    campaignGraphDataKey = sourceKey;
+    if (!activeCampaignGraph) activeCampaignGraph = graph;
+    campaignGraphData.currentLocationId = state?.currentLocationId ?? campaignState.currentLocationId;
+    campaignGraphData.visited = [...(state?.visited ?? campaignState.visited ?? [])];
+    locationMap.setCampaignGraph(activeCampaignGraph);
+    return campaignGraphData;
+  }
+  function applyCampaignGraph(graph) {
+    const topologyChanged = JSON.stringify(activeCampaignGraph?.edges ?? null) !== JSON.stringify(graph.edges);
+    activeCampaignGraph = graph;
+    if (topologyChanged) {
+      for (const location of Object.values(locations)) {
+        applyCampaignGraphToLocation(location, graph);
+        sceneRegistry.graphChanged?.(location);
+      }
+    }
+    if (campaignGraphData) locationMap.setCampaignGraph(graph);
+  }
   let inputController = null;
   let sceneEditor = null;
   const audioControls = createAudioControls({ audio, root: document.querySelector('#audio-panel'),
@@ -560,7 +633,14 @@ async function start() {
   mapButton.addEventListener('click', () => {
     if (dialogue.isOpen()) return;
     inputController?.cancel(); inventory.hide();
-    locationMap.show(campaignState);
+    try {
+      const graphData = ensureCampaignGraphData(campaignState, { includeVisuals: false });
+      locationMap.setCampaignGraph(activeCampaignGraph ?? graphData.graph);
+      locationMap.show(campaignState);
+    } catch (error) {
+      const message = document.querySelector('#error'); message.hidden = false;
+      message.textContent = `Не удалось построить карту мира: ${error.message}`;
+    }
   });
   interactButton.addEventListener('click', () => {
     const result = inspectCampaignLocation(campaignState, activeLocation.id);
@@ -788,6 +868,7 @@ async function start() {
       exits: location.exits, dropZones: location.dropZones, hazards: location.hazards,
       art: location.art, terrainStyle: location.terrainStyle });
     if (terrain.layout) Object.assign(location, terrain.layout);
+    if (activeCampaignGraph) { applyCampaignGraphToLocation(location, activeCampaignGraph); sceneRegistry.graphChanged(location); }
     location.sceneGroup = terrain.group; locationGroups[id] = terrain.group;
     terrain.group.visible = false; scene.add(terrain.group);
     location.terrainHeightMap = restoreTerrainSampler(terrain.heightMap,
@@ -875,7 +956,7 @@ async function start() {
     renderer.renderLists.dispose();
   }
   const locationStreaming = createLocationStreaming({
-    neighbors: id => locations[id].exits.map(exit => exit.to), build: buildLocation, release: releaseLocation,
+    neighbors: id => locations[id].exits.map(exit => exit.to).filter(Boolean), build: buildLocation, release: releaseLocation,
     schedule: callback => requestAnimationFrame(() => setTimeout(callback, 0)),
     onError: error => console.error('Не удалось подготовить соседнюю локацию', error),
   });
@@ -1513,6 +1594,7 @@ async function start() {
   if (initialStoryCard) showStoryCard(initialStoryCard);
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
+    getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
     onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
   if (debugMode) window.__CQ_DEBUG__ = {
     locations: Object.keys(locations),
@@ -1567,6 +1649,7 @@ async function start() {
     snapshot() {
       const heroScreen = new THREE.Vector3(heroBody.x, .12, heroBody.z).project(camera);
       return { location: activeLocation.id, combatTriggered: activeLocation.combatTriggered, victorySequenceActive,
+        campaignGraph: activeCampaignGraph,
         editor: { active: sceneEditor.active, ...sceneEditor.inspect(), fog: { ...sceneRegistry.fog }, diff: sceneRegistry.model.diff(),
           camera: { position: camera.position.toArray(), quaternion: camera.quaternion.toArray() },
           exits: activeLocation.exits.map(exit => ({ ...exit })), arrivals: activeLocation.arrivals,
@@ -1635,6 +1718,7 @@ async function start() {
       nextAmbience: audioAmbience(activeLocation),
       paused: sceneEditor.active || simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
+    if (sceneEditor.graphOpen) return;
     if (sceneEditor.active) {
       sceneEditor.update(frameDt); updateEditorPresentation(); renderer.render(scene, camera); return;
     }

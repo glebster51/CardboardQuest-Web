@@ -1,14 +1,16 @@
-import { readTransform } from './edit-model.mjs?v=127';
+import { readTransform } from './edit-model.mjs?v=128';
 import { ASSET_CATALOG } from './asset-catalog.mjs';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
 
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
-export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset }) {
+export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset,
+  getCampaignGraphData, onCampaignGraphChange }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
+  let campaignGraphEditor = null, graphOpen = false;
   let originalCamera, pointerStart = null, right = false, middle = false, lastPointer = null;
   let yaw = 0, pitch = 0, copyPending = null, copying = false, speed = 12;
   const keys = new Set(), focusPoint = new THREE.Vector3(), direction = new THREE.Vector3();
@@ -29,6 +31,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     if (!label) {
       if (object === 'fog') label = 'Настройки тумана';
       else if (object === 'fog-paths') label = 'Линии тумана';
+      else if (object === 'campaign-graph') label = 'Граф карты мира';
       else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
         .replace(/^placed:/, 'Добавленный объект · ').replace(/:/g, ' · ');
     }
@@ -224,7 +227,24 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   function restoreHistory(action) {
     if (!model[action]()) return;
-    registry.sync(); refreshObjects(); refreshInspector(); refreshFog(); changed();
+    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); changed();
+  }
+  async function openCampaignGraph() {
+    if (graphOpen || !getCampaignGraphData) return;
+    if (!campaignGraphEditor) {
+      const { createCampaignGraphEditor } = await import('./campaign-graph-editor.mjs?v=1');
+      campaignGraphEditor = createCampaignGraphEditor({ model, getData: getCampaignGraphData, changed,
+        onGraphChange: onCampaignGraphChange ?? (() => {}), onClose(play) {
+          graphOpen = false;
+          if (play) { void toggle(); return; }
+          if (!active) return;
+          const location = getLocation(); clearHelpers();
+          bindings = registry.prepare(location); rememberBindings(location);
+          for (const binding of bindings) if (binding.helper) makeHelper(binding);
+          select(null); refreshObjects(); refreshFog(); makeFogPathVisuals(location); changed();
+        } });
+    }
+    graphOpen = true; campaignGraphEditor.open(getCampaignGraphData());
   }
   function refreshFog() {
     for (const input of panel.querySelectorAll('[data-fog]')) {
@@ -270,7 +290,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           <button data-mode="rotate" aria-pressed="false" title="E — вращение"><kbd>E</kbd> Вращать</button>
           <button data-mode="scale" aria-pressed="false" title="R — масштаб"><kbd>R</kbd> Масштаб</button></div>
         <button id="se-undo" title="Ctrl+Z">↶</button><button id="se-redo" title="Ctrl+Y">↷</button>
-        <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
+        <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
         <button id="se-close" title="~ / Ё">Вернуться в игру ×</button>
       </header><div class="se-fog">
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
@@ -331,12 +351,13 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-close').addEventListener('click', () => void toggle());
     panel.querySelector('#se-focus').addEventListener('click', () => focusSelection());
     panel.querySelector('#se-overview').addEventListener('click', () => focusSelection(true));
+    panel.querySelector('#se-level-graph').addEventListener('click', () => void openCampaignGraph());
     panel.querySelector('#se-fog-paths').addEventListener('click', () => setPathMode(!pathMode));
     panel.querySelector('#se-undo').addEventListener('click', () => restoreHistory('undo'));
     panel.querySelector('#se-redo').addEventListener('click', () => restoreHistory('redo'));
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
-      model.resetAll(); registry.sync(); refreshObjects(); refreshInspector(); refreshFog(); changed();
+      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); changed();
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
       if (selected && model.reset(selected.location, selected.id)) { registry.sync(); refreshObjects(); refreshInspector(); changed(); }
@@ -347,7 +368,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       const [location, object] = JSON.parse(button.dataset.revert);
       model.commit();
       if (!model.reset(location, object)) return;
-      registry.sync(); bindings = registry.bindings(getLocation().id);
+      registry.sync(); campaignGraphEditor?.sync(); bindings = registry.bindings(getLocation().id);
       refreshObjects(); refreshInspector(); refreshFog(); syncFogPathVisuals(); changed();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
@@ -447,6 +468,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     } finally { opening = false; }
   }
   addEventListener('keydown', event => {
+    if (graphOpen) {
+      if (event.code === 'Backquote' && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); campaignGraphEditor?.close(); }
+      return;
+    }
     if (event.code === 'Backquote' && !event.repeat && !editable(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); void toggle(); return; }
     if (!active || editable(event.target)) return;
     keys.add(event.code);
@@ -546,6 +571,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   });
   return {
     get active() { return active; },
+    get graphOpen() { return graphOpen; },
     inspect() {
       const handles = [];
       const group = controls?.getHelper().children.find(object => object.gizmo)?.gizmo[controls.mode];
