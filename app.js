@@ -11,7 +11,7 @@ import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=4';
-import { followMotion } from './render/camera-follow.mjs?v=1';
+import { followDirection, followMotion, nearestAwakeThreat } from './render/camera-follow.mjs?v=1';
 import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=1';
@@ -1398,8 +1398,12 @@ async function start() {
   function updateCamera(dt = 0, followMovement = false) {
     if (followMovement && dt > 0) {
       cameraManualOverride = Math.max(0, cameraManualOverride - dt);
-      if (cameraManualOverride === 0 && !inputController.isOrbiting() && !inputController.getAimingBody())
-        orbit.theta = followMotion(orbit.theta, heroBody.vx, heroBody.vz, dt);
+      if (cameraManualOverride === 0 && !inputController.isOrbiting() && !inputController.getAimingBody()) {
+        const threat = heroBody.health > 0 ? nearestAwakeThreat(heroBody, activeLocation.enemies) : null;
+        orbit.theta = threat
+          ? followDirection(orbit.theta, threat.x - heroBody.x, threat.z - heroBody.z, dt)
+          : followMotion(orbit.theta, heroBody.vx, heroBody.vz, dt);
+      }
     }
     camera.position.set(target.x + orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta),
       target.y + orbit.distance * Math.cos(orbit.phi), target.z + orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta));
