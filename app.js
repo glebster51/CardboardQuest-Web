@@ -1,4 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import { createGameAudio } from './audio/game-audio.mjs';
+import { createAudioControls } from './audio/audio-controls.mjs';
+import { audioMood, audioAmbience } from './audio/audio-rules.mjs';
 import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
@@ -39,6 +42,7 @@ import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCH
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
+const audio = createGameAudio();
 const scaled = value => value * LOCATION_SCALE;
 const yieldFrameWork = () => new Promise(resolve => {
   if (window.requestIdleCallback) window.requestIdleCallback(resolve, { timeout: 120 });
@@ -114,6 +118,8 @@ async function start() {
     progress: document.querySelector('#world-map-progress'), openButton: mapButton,
     closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
   let inputController = null;
+  const audioControls = createAudioControls({ audio, root: document.querySelector('#audio-panel'),
+    trigger: document.querySelector('#audio-toggle'), onOpen() { inputController?.cancel(); } });
   const dialogue = createDialoguePanel({ root: dialoguePanel,
     onOpen() { inputController?.cancel(); inventory.hide(); },
     onClose() {
@@ -136,6 +142,7 @@ async function start() {
     onUse(id, slotIndex) {
       const result = consumeInventoryItem(campaignState, id, heroBody.health, heroBody.maxHealth);
       if (result.consumed) {
+        audio.play(id === 'bandage' ? 'bandage' : 'eat');
         heroBody.health = result.health;
         campaignState.inventorySlots[slotIndex] = null;
         persistCampaign();
@@ -812,6 +819,7 @@ async function start() {
   function beginVictorySequence() {
     if (victorySequenceActive) return;
     victorySequenceActive = true;
+    audio.play('defeat');
     inputController.cancel(); selected = false;
     playerMarker.group.visible = false;
     heroBody.vx = 0; heroBody.vz = 0;
@@ -868,6 +876,7 @@ async function start() {
       heroFigure.victoryAnimation = null;
       clearProjectiles();
       activeLocation = next;
+      audio.play('transition');
       dialogue.close();
       protectedEntryFrom = fromLocationId;
       const remembered = lastExitPosition(activeLocation, fromLocationId);
@@ -980,6 +989,7 @@ async function start() {
     const result = openCampaignCache(campaignState, body.locationId);
     if (!result) return false;
     body.opened = true;
+    audio.play('chest');
     activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== body);
     const visual = chestVisuals.get(activeLocation.id);
     if (visual) {
@@ -1027,6 +1037,7 @@ async function start() {
       worldItemVisuals.delete(item.id);
       visual.glow.geometry.dispose(); visual.glow.material.dispose();
       addItems(campaignState, { [pickup.itemId]: 1 });
+      audio.play('pickup');
       renderInventory();
       burst(item.x, item.z, .48);
       vibrate(16);
@@ -1045,6 +1056,7 @@ async function start() {
       if (heroBody.health <= 0 || Math.hypot(heroBody.x - pickup.x, heroBody.z - pickup.z) > PUCK_RADIUS + .35) continue;
       const collected = collectCampaignStoryPickup(campaignState, activeLocation.id, pickup.id);
       if (!collected) continue;
+      audio.play('clue');
       activeLocation.sceneGroup.remove(visual.group); storyPickupVisuals.delete(pickup.id);
       visual.glow.geometry.dispose(); visual.glow.material.dispose();
       burst(pickup.x, pickup.z, .7); vibrate(24); persistCampaign();
@@ -1075,6 +1087,8 @@ async function start() {
     const rawDamage = Math.max(1, Math.trunc(damageQuarters));
     const armor = target.team === 'player' ? campaignState.defenseBonus : 0;
     target.health = Math.max(0, target.health - Math.max(1, rawDamage - armor));
+    audio.play(target.team === 'player' ? 'hurt' : target.health <= 0 ? 'enemyDeath' : 'hit',
+      { pan: (target.x - heroBody.x) / 15 });
     target.hitCooldown = .65;
     if (target.team === 'enemy') target.aiStunRemaining = Math.max(target.aiStunRemaining || 0, .55);
     const figure = figures.find(item => item.body === target);
@@ -1119,6 +1133,7 @@ async function start() {
       return;
     }
     if (body !== heroBody) return;
+    audio.play('fall');
     const safe = body.lastSafePosition ?? activeLocation.entry;
     recoverAfterFall(body, safe);
     const figure = figures.find(item => item.body === body);
@@ -1128,6 +1143,7 @@ async function start() {
     persistCampaign();
   }
   function onImpact(a, b, speed, attackingA = false, attackingB = false) {
+    if (a === heroBody || b === heroBody) audio.play('impact', { strength: Math.min(1, speed / 10) });
     for (const figure of figures) {
       if (figure.body === a || figure.body === b) {
         figure.hitAge = 0;
@@ -1284,11 +1300,12 @@ async function start() {
     host.classList.remove('aiming');
   }
   inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
-    isBlocked: () => locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen(),
+    isBlocked: () => locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
     maxAimMarkerExtension: MAX_AIM_MARKER_EXTENSION,
     onLaunch(body, pull) {
+      audio.play('dash');
       if (body === heroBody) heroFigure.victoryAnimation = null;
       body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
       launch(body, pull);
@@ -1364,6 +1381,7 @@ async function start() {
       updateCamera();
     },
     openCache() { return openCache(activeLocation.cacheBody); },
+    audioCue(name) { return audio.play(name); },
     place(id, x, z, vx = 0, vz = 0) {
       const body = id === 'hero' ? heroBody : activeLocation.enemies.find(enemy => enemy.id === id);
       if (!body) throw new Error(`Unknown test unit: ${id}`);
@@ -1382,6 +1400,7 @@ async function start() {
         aim: { active: Boolean(inputController.getAimingBody()), color: playerMarker.material.color.getHexString(),
           opacity: playerMarker.material.opacity, x: playerMarker.group.position.x, z: playerMarker.group.position.z,
           angle: playerMarker.group.rotation.y },
+        audio: audio.snapshot(),
         dialogue: dialogue.frame(), elapsed,
         campaignFlags: { ...campaignState.flags },
         storyPickups: (activeLocation.storyPickups ?? []).filter(pickup => !campaignState.flags[pickup.flag])
@@ -1407,11 +1426,16 @@ async function start() {
     },
   };
   let previousTime = null;
+  let previousAim = false;
   renderer.setAnimationLoop(time => {
     const dt = simulationPaused || previousTime === null ? 0 : Math.min((time - previousTime) / 1000, .05);
     previousTime = time;
+    audio.setScene({ nextMood: audioMood(activeLocation, heroBody.health, canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL)),
+      nextAmbience: audioAmbience(activeLocation),
+      paused: simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
+      speed: Math.hypot(heroBody.vx, heroBody.vz) });
     updateCacheAnimation(dt);
-    if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen()) {
+    if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen()) {
       updateCamera(); renderer.render(scene, camera); return;
     }
     elapsed += dt;
@@ -1420,6 +1444,7 @@ async function start() {
     if (!victorySequenceActive && heroBody.health > 0 && !celebratedLocations.has(activeLocation.id)
       && canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL)) {
       celebratedLocations.add(activeLocation.id);
+      audio.play('victory');
       clearProjectiles();
       startUnitVictory(heroFigure);
     }
@@ -1455,6 +1480,8 @@ async function start() {
     const encounterCleared = canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL);
     const keepPlayerChargesFull = shouldMaintainFullCharges(activeLocation, encounterCleared);
     const aimingBody = inputController.getAimingBody();
+    if (aimingBody && !previousAim) audio.play('aim');
+    previousAim = Boolean(aimingBody);
     for (const body of bodies) {
       if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
@@ -1462,14 +1489,16 @@ async function start() {
         body.charges = body.maxCharges;
         body.rechargeTimer = 0;
       } else {
-        advanceChargeRecharge(body, dt);
+        const restored = advanceChargeRecharge(body, dt);
+        if (body === heroBody && restored > 0) audio.play('ready');
       }
       if (body.team !== 'enemy') continue;
       if (victorySequenceActive) continue;
       const figure = figures.find(item => item.body === body);
       const decision = advanceEnemyAI(body, state, figure, dt, randomBetween);
-      if (decision.launched) burst(body.x, body.z, .45);
+      if (decision.launched) { burst(body.x, body.z, .45); audio.play('enemyDash', { pan: (body.x - heroBody.x) / 15 }); }
       if (decision.shot) {
+        audio.play('projectile', { pan: (body.x - heroBody.x) / 15 });
         spawnStoneProjectile(decision.shot);
         if (figure) figure.dealDamageAge = 0;
       }

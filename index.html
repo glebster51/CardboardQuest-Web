@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=83">
+  <link rel="stylesheet" href="style.css?v=85">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
@@ -25,13 +25,8 @@
       </svg>
       <span id="inventory-count" class="hud-count" hidden aria-hidden="true"></span>
     </button>
-    <button id="restart" class="hud-icon" type="button" aria-label="Начать игру заново" title="Начать игру заново">
-      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-        <g stroke="#4b3020" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M35 14a16 16 0 1 1-22 0l-4-4 16-2-3 16-4-5a9 9 0 1 0 12 0z" fill="#82964f"/>
-          <path d="m12 12 9-1-2 9M35 27a11 11 0 0 1-8 9" fill="none" stroke="#c4d18b" stroke-width="1.8"/>
-        </g>
-      </svg>
+    <button id="audio-toggle" class="hud-icon" type="button" aria-label="Настройки" aria-controls="audio-panel" aria-haspopup="dialog" aria-expanded="false" title="Настройки">
+      <img src="assets/ui/settings-gear.webp" width="46" height="46" alt="" decoding="async">
     </button>
     <button id="map-toggle" class="hud-icon" type="button" aria-label="Карта" aria-controls="world-map" aria-haspopup="dialog" aria-expanded="false" title="Карта">
       <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
@@ -102,9 +97,31 @@
       <footer><span><i class="map-key current"></i>Ты здесь</span><span><i class="map-key visited"></i>Был здесь</span><span><i class="map-key"></i>Впереди</span></footer>
     </article>
   </section>
+  <section id="audio-panel" hidden role="dialog" aria-modal="true" aria-labelledby="audio-title">
+    <header><h2 id="audio-title">Настройки</h2><button id="audio-close" type="button" aria-label="Закрыть настройки">×</button></header>
+    <label for="audio-master">Общая громкость <output id="audio-master-value"></output></label>
+    <input id="audio-master" data-audio-setting="master" type="range" min="0" max="100" step="1">
+    <label for="audio-music">Музыка <output id="audio-music-value"></output></label>
+    <input id="audio-music" data-audio-setting="music" type="range" min="0" max="100" step="1">
+    <label for="audio-effects">Игровые звуки <output id="audio-effects-value"></output></label>
+    <input id="audio-effects" data-audio-setting="effects" type="range" min="0" max="100" step="1">
+    <label for="audio-ambience">Звуки природы <output id="audio-ambience-value"></output></label>
+    <input id="audio-ambience" data-audio-setting="ambience" type="range" min="0" max="100" step="1">
+    <button id="audio-mute" type="button" aria-pressed="false">Выключить звук</button>
+    <button id="restart" type="button" aria-label="Начать игру заново" title="Начать игру заново">
+      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <g stroke="#4b3020" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M35 14a16 16 0 1 1-22 0l-4-4 16-2-3 16-4-5a9 9 0 1 0 12 0z" fill="#82964f"/>
+          <path d="m12 12 9-1-2 9M35 27a11 11 0 0 1-8 9" fill="none" stroke="#c4d18b" stroke-width="1.8"/>
+        </g>
+      </svg>
+      <span>Начать заново</span>
+    </button>
+    <small id="audio-credit">Музыка: Suno · звуковые эффекты: CardboardQuest</small>
+  </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-  <script type="module" src="app.js?v=103"></script>
+  <script type="module" src="app.js?v=105"></script>
 </body>
 </html>
 
