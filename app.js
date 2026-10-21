@@ -7,7 +7,7 @@ import { createGeometryClient } from './render/geometry-client.mjs';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
-import { advanceEnemyAI } from './game/enemy-ai.mjs?v=2';
+import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=4';
@@ -24,7 +24,7 @@ import { createLocationExitVisuals, updateLocationExitLock } from './render/loca
 import { createScenerySystem } from './render/scenery-system.mjs?v=9';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
-import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER } from './physics.mjs?v=24';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=25';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress, shouldMaintainFullCharges } from './charge-recharge.mjs?v=2';
@@ -1418,7 +1418,8 @@ async function start() {
       body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
       const isPlayerDash = body === heroBody;
       launch(body, pull, isPlayerDash ? PLAYER_DASH_DISTANCE_MULTIPLIER : 1,
-        isPlayerDash ? PLAYER_DASH_SPEED_MULTIPLIER : 1);
+        isPlayerDash ? PLAYER_DASH_SPEED_MULTIPLIER : 1,
+        isPlayerDash ? LAUNCH_GAIN * GOBLIN_DASH_MAX_POWER * 1.02 : Infinity);
       if (Math.hypot(body.vx, body.vz) > 1) burst(body.x, body.z, .55);
     },
   });

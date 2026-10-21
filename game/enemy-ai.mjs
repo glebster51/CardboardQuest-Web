@@ -1,4 +1,4 @@
-import { facingAngle, launch } from '../physics.mjs';
+import { facingAngle, launch, GOBLIN_DASH_MAX_POWER } from '../physics.mjs';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -61,7 +61,8 @@ export function advanceEnemyAI(enemy, player, figure, dt, randomBetween = (min, 
       vx: aimX / Math.max(.001, aimDistance) * 10.5, vz: aimZ / Math.max(.001, aimDistance) * 10.5,
       damageQuarters: 2, age: 0, lifetime: 2.2 } };
   }
-  const power = enemy.archetype === 'boar' ? clamp(aimDistance * .22, .95, 1.6) : clamp(aimDistance * .12, .55, .95);
+  const power = enemy.archetype === 'boar' ? clamp(aimDistance * .22, .95, 1.6)
+    : clamp(aimDistance * .12, .55, GOBLIN_DASH_MAX_POWER);
   enemy.charges--;
   enemy.aiPhase = 'dash';
   enemy.attackRicochets = 0;

@@ -4,7 +4,8 @@ import { hazardAtPoint } from './game/world-hazards.mjs';
 export const MAX_PULL = 1.8;
 // Distance under constant friction is proportional to speed squared.
 export const LAUNCH_GAIN = 8.5 * Math.SQRT2;
-export const PLAYER_DASH_DISTANCE_MULTIPLIER = 1.5;
+export const GOBLIN_DASH_MAX_POWER = .95;
+export const PLAYER_DASH_DISTANCE_MULTIPLIER = 1.1;
 export const PLAYER_DASH_SPEED_MULTIPLIER = .5;
 export const FRICTION = 6.5;
 export const REBOUND = 0.55;
@@ -49,11 +50,16 @@ export function clampPull(x, z) {
   return { x: x * scale, z: z * scale };
 }
 
-export function launch(state, drag, distanceMultiplier = 1, speedMultiplier = 1) {
+export function launch(state, drag, distanceMultiplier = 1, speedMultiplier = 1, speedCap = Infinity) {
   const pull = clampPull(drag.x, drag.z);
   const gain = LAUNCH_GAIN * Math.sqrt(Math.max(0, distanceMultiplier)) * Math.max(0, speedMultiplier);
   state.vx = -pull.x * gain || 0;
   state.vz = -pull.z * gain || 0;
+  const speed = Math.hypot(state.vx, state.vz);
+  if (speed > speedCap) {
+    const scale = speedCap / speed;
+    state.vx *= scale; state.vz *= scale;
+  }
 }
 
 export function advance(state, dt, arenaPoints = ARENA_POINTS, fallZones = [], canFall = false) {
