@@ -6,7 +6,7 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
-import { createLocationEdgeShade } from './render/location-edge-shade.mjs?v=1';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=2';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
@@ -21,7 +21,7 @@ import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=2';
 import { createFigureFactory } from './render/figure-factory.mjs?v=3';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=3';
-import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=2';
+import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=3';
 import { createScenerySystem } from './render/scenery-system.mjs?v=9';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
 import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
@@ -67,13 +67,14 @@ const randomBetween = (min, max) => min + Math.random() * (max - min);
 async function start() {
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor(0xc7b391);
+  renderer.setClearColor(LOCATION_FAR_COLOR);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
 
   const scene = new THREE.Scene();
+  scene.background = new THREE.Color(LOCATION_FAR_COLOR);
   let savedCampaign = null;
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
   const campaignState = createCampaignState(savedCampaign);

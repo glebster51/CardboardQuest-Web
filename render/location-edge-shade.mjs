@@ -1,3 +1,4 @@
+export const LOCATION_FAR_COLOR = 0x242039;
 const EDGE_FADE_WIDTH = 4.6;
 const MAX_EDGE_MIX = .92;
 
@@ -53,6 +54,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = false; texture.needsUpdate = true;
   const uniforms = { cqEdgeShadeMap: { value: texture },
+    cqEdgeShadeColor: { value: new THREE.Color(LOCATION_FAR_COLOR) },
     cqEdgeShadeBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
   const patchMaterial = material => {
     if (!material?.isMeshStandardMaterial || material.userData.locationEdgeShadePatched) return;
@@ -66,16 +68,16 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <common>', '#include <common>\nvarying vec3 vCQLocationWorld;')
         .replace('#include <project_vertex>', 'vCQLocationWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D cqEdgeShadeMap;\nuniform vec4 cqEdgeShadeBounds;\nvarying vec3 vCQLocationWorld;')
+        .replace('#include <common>', '#include <common>\nuniform sampler2D cqEdgeShadeMap;\nuniform vec3 cqEdgeShadeColor;\nuniform vec4 cqEdgeShadeBounds;\nvarying vec3 vCQLocationWorld;')
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 cqEdgeUv = (vCQLocationWorld.xz - cqEdgeShadeBounds.xy) / cqEdgeShadeBounds.zw;
           float cqEdgeShade = texture2D(cqEdgeShadeMap, cqEdgeUv).r;
           float cqLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
           vec3 cqMuted = mix(diffuseColor.rgb, vec3(cqLuma), cqEdgeShade * 0.78);
-          vec3 cqTwilight = vec3(0.035, 0.026, 0.105) + cqMuted * 0.12;
-          diffuseColor.rgb = mix(cqMuted, cqTwilight, cqEdgeShade);`);
+          diffuseColor.rgb = cqMuted;`)
+        .replace('#include <opaque_fragment>', 'outgoingLight = mix(outgoingLight, cqEdgeShadeColor, cqEdgeShade);\n#include <opaque_fragment>');
     };
-    material.customProgramCacheKey = () => 'cq-location-edge-shade-v1';
+    material.customProgramCacheKey = () => 'cq-location-edge-shade-v2';
     material.needsUpdate = true;
   };
   location.sceneGroup.traverse(object => {

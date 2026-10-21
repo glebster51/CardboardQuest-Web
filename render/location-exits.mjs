@@ -1,9 +1,11 @@
+import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=2';
+
 function makeFoliageShadowTexture(THREE) {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
   const context = canvas.getContext('2d');
   context.filter = 'blur(13px)';
-  context.fillStyle = 'rgba(18,14,39,.82)';
-  context.strokeStyle = 'rgba(18,14,39,.82)';
+  context.fillStyle = 'rgba(255,255,255,1)';
+  context.strokeStyle = 'rgba(255,255,255,1)';
   context.lineCap = 'round'; context.lineJoin = 'round';
   const branches = [
     [[-70, 20], [75, 130], [180, 225], [275, 510]],
@@ -59,8 +61,8 @@ export function createLocationExitVisuals({ THREE, location, locked }) {
   const root = new THREE.Group(); root.name = `location-exits-${location.id}`;
   const foliageTexture = makeFoliageShadowTexture(THREE);
   const blockedTexture = makeBlockedGroundTexture(THREE);
-  const shadowMaterial = new THREE.MeshBasicMaterial({ map: foliageTexture, transparent: true,
-    opacity: .76, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const shadowMaterial = new THREE.MeshBasicMaterial({ map: foliageTexture, color: LOCATION_FAR_COLOR, transparent: true,
+    opacity: 1, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
   const blockedMaterial = new THREE.MeshBasicMaterial({ map: blockedTexture, transparent: true,
     opacity: locked ? 1 : 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
   const arrowOutlineMaterial = new THREE.MeshBasicMaterial({ color: 0x171426, transparent: true,
