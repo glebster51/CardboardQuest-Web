@@ -617,6 +617,43 @@ async function start() {
     opacity: .9, side: THREE.DoubleSide, depthTest: true, depthWrite: false,
     blending: THREE.AdditiveBlending, toneMapped: false });
   const lootBeamGeometry = new THREE.PlaneGeometry(1, 1);
+  function makeLootRayTexture() {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d'), center = 128;
+    const halo = context.createRadialGradient(center, center, 4, center, center, 126);
+    halo.addColorStop(0, 'rgba(255,245,204,.8)'); halo.addColorStop(.24, 'rgba(255,207,105,.48)');
+    halo.addColorStop(.72, 'rgba(255,159,54,.12)'); halo.addColorStop(1, 'rgba(255,159,54,0)');
+    context.fillStyle = halo; context.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 28; i++) {
+      const angle = i * Math.PI * 2 / 28, inner = i % 2 ? 43 : 36, outer = i % 2 ? 118 : 92;
+      const spread = i % 2 ? .035 : .052;
+      context.beginPath(); context.moveTo(center + Math.cos(angle) * inner, center + Math.sin(angle) * inner);
+      context.lineTo(center + Math.cos(angle - spread) * outer, center + Math.sin(angle - spread) * outer);
+      context.lineTo(center + Math.cos(angle + spread) * outer, center + Math.sin(angle + spread) * outer);
+      context.closePath(); context.fillStyle = i % 4 ? 'rgba(255,198,91,.24)' : 'rgba(255,243,188,.42)'; context.fill();
+    }
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
+  }
+  function makeLootGlintTexture() {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+    const context = canvas.getContext('2d'), center = 64;
+    const glow = context.createRadialGradient(center, center, 0, center, center, 61);
+    glow.addColorStop(0, 'rgba(255,255,255,1)'); glow.addColorStop(.08, 'rgba(255,248,211,.96)');
+    glow.addColorStop(.27, 'rgba(255,215,130,.58)'); glow.addColorStop(1, 'rgba(255,200,100,0)');
+    context.fillStyle = glow; context.fillRect(0, 0, 128, 128);
+    for (const [width, height, alpha] of [[8, 60, .9], [60, 8, .9], [5, 38, .58], [38, 5, .58]]) {
+      context.fillStyle = `rgba(255,250,222,${alpha})`; context.beginPath();
+      context.ellipse(center, center, width / 2, height / 2, 0, 0, Math.PI * 2); context.fill();
+    }
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
+  }
+  const lootRayTexture = makeLootRayTexture(), lootRayMaterial = new THREE.SpriteMaterial({ map: lootRayTexture,
+    color: 0xffd27c, transparent: true, opacity: .78, depthTest: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false });
+  const lootGlintTexture = makeLootGlintTexture(), lootGlintMaterial = new THREE.SpriteMaterial({ map: lootGlintTexture,
+    color: 0xfff1c0, transparent: true, opacity: 0, depthTest: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false });
+  const lootGlintOffsets = [[-.28, .31], [.34, .03], [-.12, -.33]];
   function createLootVisual(location, item, source = null) {
     const group = new THREE.Group();
     group.name = item.id;
@@ -625,14 +662,15 @@ async function start() {
     icon.scale.set(iconScale, iconScale, 1); icon.position.y = .11 + iconHeight / 2; group.add(icon);
     const facePair = { prop: group, front: icon.getObjectByName('scenery-front'), back: icon.getObjectByName('scenery-back') };
     sceneryFacePairs.push(facePair);
-    const glow = new THREE.Mesh(new THREE.CircleGeometry(.22, 28),
-      new THREE.MeshBasicMaterial({ color: 0xffd879, transparent: true, opacity: .05, depthWrite: false, toneMapped: false }));
-    glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
-    const beam = new THREE.Mesh(lootBeamGeometry, lootBeamMaterial);
-    beam.scale.set(.82, 1.44, 1); beam.position.set(0, 1.02, -.025); beam.renderOrder = 5; group.add(beam);
+    const rays = new THREE.Sprite(lootRayMaterial); rays.name = 'loot-rays';
+    rays.scale.set(1.9, 1.9, 1); rays.position.set(0, icon.position.y, -.12); rays.renderOrder = 4; group.add(rays);
+    const glints = lootGlintOffsets.map(([x, y], index) => {
+      const sprite = new THREE.Sprite(lootGlintMaterial.clone()); sprite.name = `loot-glint-${index}`;
+      sprite.position.set(x, icon.position.y + y, .12); sprite.scale.setScalar(.22); sprite.renderOrder = 7; group.add(sprite); return sprite;
+    });
     group.position.set(item.x, 0, item.z);
     location.sceneGroup.add(group);
-    const visual = { group, icon, beam, glow, facePair, spawn: source ? { ...source, age: 0, duration: .62 } : null };
+    const visual = { group, icon, rays, glints, facePair, spawn: source ? { ...source, age: 0, duration: .62 } : null };
     worldItemVisuals.set(item.id, visual);
     return visual;
   }
@@ -767,6 +805,7 @@ async function start() {
     disposeUnusedScenes(removed, retained, [paper, cardboardGrain, corrugation, terrainCorrugation,
       ambientShadowMaterial, contactShadowMaterial, ...heartMaterials,
       ...heartTextures, puckAmbientShadow, figureContactShadow, lootBeamGeometry, lootBeamMaterial, lootBeamTexture,
+      lootRayMaterial, lootRayTexture, lootGlintTexture, lootGlintMaterial,
       storyPickupIconGeometry, storyPickupIconMaterial, storyPickupIconMaterial.map,
       ...[...(groundResources?.materials.values() ?? [])], ...[...(groundResources?.textures.values() ?? [])]]);
     if (location.art.depthMapUrl) delete location.art.depthMap;
@@ -1029,11 +1068,21 @@ async function start() {
       } else {
         visual.group.position.set(item.x, 0, item.z);
       }
-      const pulse = .82 + Math.sin(elapsed * 3.4 + item.x * 2 + item.z) * .12;
-      visual.beam.scale.y = 1.44 * pulse;
-      visual.beam.position.y = .30 + .72 * pulse;
-      visual.beam.material.opacity = .78 + (Math.sin(elapsed * 4 + item.z) + 1) * .1;
-      visual.glow.material.opacity = .035 + (Math.sin(elapsed * 4 + item.z) + 1) * .018;
+      const cameraDx = camera.position.x - visual.group.position.x, cameraDz = camera.position.z - visual.group.position.z;
+      const cameraOnFront = cameraDx * Math.sin(visual.group.rotation.y) + cameraDz * Math.cos(visual.group.rotation.y) >= 0;
+      const faceSign = cameraOnFront ? 1 : -1;
+      visual.rays.position.z = -faceSign * .12;
+      lootRayMaterial.rotation = elapsed * .32;
+      const pulse = .96 + Math.sin(elapsed * 2.7 + item.x * 2 + item.z) * .055;
+      visual.rays.scale.setScalar(1.9 * pulse);
+      for (let i = 0; i < visual.glints.length; i++) {
+        const glint = visual.glints[i], phase = (elapsed * (1.35 + i * .13) + i * 1.9 + item.x * .4) % 3.4;
+        const flash = Math.max(0, 1 - Math.abs(phase - 1.7) / .42);
+        glint.position.z = faceSign * .12;
+        glint.material.opacity = flash * .94;
+        glint.material.rotation = elapsed * (i % 2 ? -.42 : .52) + i;
+        glint.scale.setScalar(.07 + flash * .19);
+      }
       if (heroBody.health <= 0 || Math.hypot(heroBody.x - item.x, heroBody.z - item.z) > PUCK_RADIUS + .35) continue;
       const pickup = takeWorldLoot(activeLocation.loot, item.id);
       if (!pickup) continue;
@@ -1041,7 +1090,7 @@ async function start() {
       const facePairIndex = sceneryFacePairs.indexOf(visual.facePair);
       if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
       worldItemVisuals.delete(item.id);
-      visual.glow.geometry.dispose(); visual.glow.material.dispose();
+      for (const glint of visual.glints) glint.material.dispose();
       addItems(campaignState, { [pickup.itemId]: 1 });
       audio.play('pickup');
       renderInventory();
