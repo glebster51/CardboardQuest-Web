@@ -1,35 +1,46 @@
 import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=3';
 
 function makeFoliageShadowTexture(THREE) {
-  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1024;
   const context = canvas.getContext('2d');
-  context.filter = 'blur(13px)';
-  context.fillStyle = 'rgba(255,255,255,1)';
-  context.strokeStyle = 'rgba(255,255,255,1)';
-  context.lineCap = 'round'; context.lineJoin = 'round';
-  const branches = [
-    [[-70, 20], [75, 130], [180, 225], [275, 510]],
-    [[530, 5], [420, 120], [330, 235], [235, 500]],
-    [[150, -20], [240, 110], [300, 210], [390, 430]],
-  ];
-  for (const [start, c1, c2, end] of branches) {
-    context.lineWidth = 17; context.beginPath(); context.moveTo(...start);
-    context.bezierCurveTo(...c1, ...c2, ...end); context.stroke();
-    const steps = 11;
-    for (let index = 0; index < steps; index++) {
-      const t = .12 + index / steps * .8;
-      const x = (1 - t) ** 3 * start[0] + 3 * (1 - t) ** 2 * t * c1[0] + 3 * (1 - t) * t ** 2 * c2[0] + t ** 3 * end[0];
-      const y = (1 - t) ** 3 * start[1] + 3 * (1 - t) ** 2 * t * c1[1] + 3 * (1 - t) * t ** 2 * c2[1] + t ** 3 * end[1];
-      for (const side of [-1, 1]) {
-        const angle = -.72 + side * .78;
-        context.save(); context.translate(x + side * 34, y - 10);
-        context.rotate(angle + (index % 2 ? .24 : -.2));
-        context.beginPath(); context.ellipse(0, 0, 52, 17, 0, 0, Math.PI * 2); context.fill();
-        context.restore();
-      }
+  const size = canvas.width;
+  const margin = 72;
+  const rowCount = 56;
+  const smoothstep = value => {
+    const t = Math.max(0, Math.min(1, value));
+    return t * t * (3 - 2 * t);
+  };
+  const drawLeaf = (x, y, width, length, angle, opacity) => {
+    context.save(); context.translate(x, y); context.rotate(angle);
+    context.globalAlpha = opacity;
+    context.fillStyle = '#fff';
+    context.beginPath(); context.moveTo(0, -length);
+    context.quadraticCurveTo(width * .78, -length * .58, width, 0);
+    context.quadraticCurveTo(width * .62, length * .72, 0, length);
+    context.quadraticCurveTo(-width * .62, length * .72, -width, 0);
+    context.quadraticCurveTo(-width * .78, -length * .58, 0, -length);
+    context.closePath(); context.fill(); context.restore();
+  };
+
+  // Rows stay distinct like paper-cut leaves. Their count and opacity grow
+  // linearly toward the far end, where overlaps become a solid fog-colored veil.
+  for (let row = 0; row < rowCount; row++) {
+    const progress = row / (rowCount - 1);
+    const y = margin + progress * (size - margin * 2);
+    const leafCount = 3 + Math.round(progress * 29);
+    const leafWidth = 11 + progress * 5;
+    const leafLength = 21 + progress * 8;
+    const rowOpacity = .12 + progress * .88;
+    const spacing = (size - margin * 2) / leafCount;
+    const verticalFade = smoothstep((y - 10) / margin) * smoothstep((size - y - 10) / margin);
+    for (let column = 0; column < leafCount; column++) {
+      const seed = Math.sin((row + 1) * 91.17 + (column + 3) * 17.43);
+      const x = margin + spacing * (column + .5 + seed * .2);
+      const sideFade = smoothstep(Math.min(x, size - x) / margin);
+      const angle = seed * .42 + ((row + column) % 2 ? .58 : -.58);
+      drawLeaf(x, y + seed * 8, leafWidth, leafLength, angle, rowOpacity * verticalFade * sideFade);
     }
   }
-  context.filter = 'none';
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
@@ -48,15 +59,7 @@ function makeBlockedGroundTexture(THREE) {
   return texture;
 }
 
-function makeArrowShape(THREE) {
-  const shape = new THREE.Shape();
-  shape.moveTo(0, -.78); shape.lineTo(-.52, -.12); shape.lineTo(-.2, -.12);
-  shape.lineTo(-.2, .62); shape.lineTo(.2, .62); shape.lineTo(.2, -.12);
-  shape.lineTo(.52, -.12); shape.closePath();
-  return new THREE.ShapeGeometry(shape);
-}
-
-/** Mark each exit with a broad, flat canopy shadow and ground-only lock cues. */
+/** Mark each exit with a leaf-built fog gradient and ground-only lock cues. */
 export function createLocationExitVisuals({ THREE, location, locked }) {
   const root = new THREE.Group(); root.name = `location-exits-${location.id}`;
   const foliageTexture = makeFoliageShadowTexture(THREE);
@@ -65,32 +68,22 @@ export function createLocationExitVisuals({ THREE, location, locked }) {
     opacity: 1, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
   const blockedMaterial = new THREE.MeshBasicMaterial({ map: blockedTexture, transparent: true,
     opacity: locked ? 1 : 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const arrowOutlineMaterial = new THREE.MeshBasicMaterial({ color: 0x171426, transparent: true,
-    opacity: locked ? .32 : .76, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xf0dca5, transparent: true,
-    opacity: locked ? .18 : .98, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-  const floor = new THREE.PlaneGeometry(1, 1), arrowGeometry = makeArrowShape(THREE), markers = [];
+  const floor = new THREE.PlaneGeometry(1, 1), markers = [];
   for (const exit of location.exits ?? []) {
     const radius = Math.hypot(exit.x, exit.z) || 1;
     const dx = exit.dirX ?? exit.x / radius, dz = exit.dirZ ?? exit.z / radius;
     const width = (exit.halfWidth ?? 2.3) * 2;
     const marker = new THREE.Group(); marker.position.set(exit.x, 0, exit.z); marker.rotation.y = Math.atan2(dx, dz);
     const shadow = new THREE.Mesh(floor, shadowMaterial);
-    shadow.rotation.x = -Math.PI / 2; shadow.scale.set(Math.max(12, width * 2.2), 13, 1);
-    shadow.position.set(0, .023, 5.1); shadow.renderOrder = 1; marker.add(shadow);
-    const arrowOutline = new THREE.Mesh(arrowGeometry, arrowOutlineMaterial);
-    arrowOutline.rotation.x = -Math.PI / 2; arrowOutline.scale.set(1.52, 1.52, 1);
-    arrowOutline.position.set(0, .035, -.55); arrowOutline.renderOrder = 2; marker.add(arrowOutline);
-    const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
-    arrow.rotation.x = -Math.PI / 2; arrow.scale.set(1.2, 1.2, 1);
-    arrow.position.set(0, .041, -.55); arrow.renderOrder = 3; marker.add(arrow);
+    shadow.rotation.x = -Math.PI / 2; shadow.scale.set(Math.max(12, width * 2.2), 25, 1);
+    shadow.position.set(0, .023, 14); shadow.renderOrder = 1; marker.add(shadow);
     const blocked = new THREE.Mesh(floor, blockedMaterial);
     blocked.rotation.x = -Math.PI / 2; blocked.scale.set(Math.max(5, width + 1.5), 2.4, 1);
-    blocked.position.set(0, .048, 1.5); blocked.renderOrder = 4; marker.add(blocked);
+    blocked.position.set(0, .048, 1.5); blocked.renderOrder = 2; marker.add(blocked);
     marker.name = `exit-${exit.to}`; root.add(marker); markers.push({ blocked });
   }
   location.sceneGroup.add(root);
-  return { root, markers, shadowMaterial, blockedMaterial, arrowOutlineMaterial, arrowMaterial,
+  return { root, markers, shadowMaterial, blockedMaterial,
     locked: Boolean(locked), blockedOpacity: locked ? 1 : 0 };
 }
 
@@ -104,8 +97,6 @@ export function updateLocationExitLock(system, locked, dt = 0) {
   system.blockedOpacity += Math.sign(targetOpacity - system.blockedOpacity)
     * Math.min(Math.abs(targetOpacity - system.blockedOpacity), step);
   system.blockedMaterial.opacity = system.blockedOpacity;
-  system.arrowOutlineMaterial.opacity = system.locked ? .4 : .76;
-  system.arrowMaterial.opacity = system.locked ? .22 : .98;
   for (const marker of system.markers) marker.blocked.visible = system.blockedOpacity > .015;
   return changed;
 }
