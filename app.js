@@ -12,9 +12,9 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=12';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=131';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=142';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=161';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=132';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=143';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=162';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -31,7 +31,7 @@ import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campai
 import { buildLocationMapGraph } from './game/location-map-data.mjs';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
-import { createFigureFactory } from './render/figure-factory.mjs?v=5';
+import { createFigureFactory } from './render/figure-factory.mjs?v=6';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=4';
 import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9';
 import { createScenerySystem } from './render/scenery-system.mjs?v=10';
