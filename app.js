@@ -96,20 +96,7 @@ async function start() {
       Math.max(1, Math.round(innerHeight * scale * tiltShiftPixelRatio)));
   };
   const renderScene = () => {
-    if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift)) {
-      return renderer.render(scene, camera);
-    }
-    try { tiltShiftComposer.render(); }
-    catch (error) {
-      if (ssaoPass?.enabled) {
-        ssaoPass.enabled = false;
-        console.warn('SSAO отключён после ошибки; сохраняю остальные эффекты', error);
-        try { tiltShiftComposer.render(); return; } catch { /* Fall back to the direct renderer below. */ }
-      }
-      tiltShiftComposer.dispose(); tiltShiftComposer = null; ssaoPass = null;
-      console.warn('Постобработка остановлена; используется обычный рендер', error);
-      renderer.render(scene, camera);
-    }
+    renderer.render(scene, camera);
   };
   async function enableTiltShift() {
     if ((!screenEffects.ssao && !screenEffects.tiltShift) || tiltShiftComposer) return;
@@ -2125,7 +2112,6 @@ async function start() {
   });
   frameWorkStarted = true;
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    void enableTiltShift();
     if (!locationTransition) locationStreaming.retain(activeLocation.id)
       .catch(error => console.error('Не удалось подготовить соседние места', error));
   }));
