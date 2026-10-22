@@ -2399,11 +2399,13 @@ async function start() {
       || activeLocation.enemies.some(enemy => enemy.health > 0);
     interactButton.textContent = 'Осмотреть';
     if (activeLocation.inspectionMarker) {
-      activeLocation.inspectionMarker.visible = !activeLocation.inspectionMarker.userData.sceneEditDeleted
+      const marker = activeLocation.inspectionMarker;
+      marker.visible = !marker.userData.sceneEditDeleted
         && !activeLocation.secret && !campaignState.collected[activeLocation.id];
       if (activeLocation.terrainHeightMap)
-        activeLocation.inspectionMarker.position.y = activeLocation.terrainHeightMap.sample(
-          activeLocation.inspectionMarker.position.x, activeLocation.inspectionMarker.position.z);
+        marker.position.y = activeLocation.terrainHeightMap.sample(marker.position.x, marker.position.z);
+      const cameraYaw = Math.atan2(camera.position.x - marker.position.x, camera.position.z - marker.position.z);
+      marker.rotation.y = turnToward(marker.rotation.y, cameraYaw, dt);
     }
     if (aimingBody) {
       playerMarker.material.color.copy(state.charges > 0 ? selectedColor : unavailableAimColor);
