@@ -1,4 +1,4 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=148';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=149';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=7';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
@@ -13,7 +13,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   getItemMagnetSettings = () => ({ radius: 4, worldDuration: .48, worldArc: 3.4, iconDuration: .7, iconArc: 220 }),
   onItemMagnetSettingsChange = () => {}, onFogSettingsChange = () => {}, onFogPathsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
-  let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
+  let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, localBox, gizmoSpace = 'world', pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
   let terrainOpen = false, terrainBrush, terrainMode = 'level', terrainRadius = 5, terrainStrength = .45;
   let terrainStroke = null, terrainMap = null, terrainEdits = null, terrainLast = null, terrainStrokeChanged = false, terrainTimer = 0;
@@ -160,10 +160,60 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       input.value = Number((input.dataset.property === 'rotation' ? value * 180 / Math.PI : value).toFixed(3));
     }
   }
+  function localBoundsOf(root) {
+    root.updateWorldMatrix(true, true);
+    const inverseRoot = root.matrixWorld.clone().invert();
+    const bounds = new THREE.Box3().makeEmpty();
+    const corner = new THREE.Vector3();
+    root.traverse(object => {
+      if (!object.isMesh || !object.geometry || object.userData.cqRenderDebugExclude) return;
+      const geometry = object.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      const source = geometry.boundingBox;
+      if (!source || source.isEmpty()) return;
+      object.updateWorldMatrix(true, false);
+      for (let mask = 0; mask < 8; mask++) {
+        corner.set(mask & 1 ? source.max.x : source.min.x, mask & 2 ? source.max.y : source.min.y,
+          mask & 4 ? source.max.z : source.min.z).applyMatrix4(object.matrixWorld).applyMatrix4(inverseRoot);
+        bounds.expandByPoint(corner);
+      }
+    });
+    return bounds;
+  }
+  function hideLocalBox() { if (localBox) { localBox.visible = false; localBox.removeFromParent(); } }
+  function refreshSelectionBounds() {
+    if (!selected || !box || !localBox) { if (box) box.visible = false; hideLocalBox(); return; }
+    if (gizmoSpace === 'local') {
+      box.visible = false;
+      const bounds = localBoundsOf(selected.object);
+      if (!bounds.isEmpty()) {
+        selected.object.add(localBox);
+        localBox.position.copy(bounds.getCenter(new THREE.Vector3()));
+        localBox.scale.copy(bounds.getSize(new THREE.Vector3()));
+        localBox.visible = true;
+      } else hideLocalBox();
+    } else {
+      hideLocalBox();
+      box.setFromObject(selected.object);
+      box.visible = true;
+    }
+  }
+  function setGizmoSpace(space = gizmoSpace === 'world' ? 'local' : 'world') {
+    if (!controls || controls.dragging || !['world', 'local'].includes(space)) return;
+    gizmoSpace = space;
+    controls.setSpace(space);
+    if (panel) {
+      const button = panel.querySelector('#se-space');
+      button.textContent = `${space === 'world' ? 'World' : 'Local'} · X`;
+      button.setAttribute('aria-pressed', String(space === 'local'));
+      button.title = `Пространство гизмо и рамки: ${space === 'world' ? 'мировое' : 'локальное'} · X`;
+    }
+    refreshSelectionBounds();
+  }
   function select(binding) {
     model.commit(); selected = binding ?? null;
-    if (selected) { controls.attach(selected.object); box.setFromObject(selected.object); box.visible = true; }
-    else { controls.detach(); box.visible = false; }
+    if (selected) { controls.attach(selected.object); refreshSelectionBounds(); }
+    else { controls.detach(); box.visible = false; hideLocalBox(); }
     ui.objects.value = selected?.id ?? ''; refreshInspector();
   }
   function setMode(mode) {
@@ -179,8 +229,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     pathMode = enabled; pathRoot.visible = enabled;
     panel.querySelector('#se-fog-paths').setAttribute('aria-pressed', String(enabled));
     canvas.style.cursor = enabled ? 'crosshair' : '';
-    if (enabled) { controls.detach(); box.visible = false; }
-    else if (selected) { controls.attach(selected.object); box.setFromObject(selected.object); box.visible = true; }
+    if (enabled) { controls.detach(); box.visible = false; hideLocalBox(); }
+    else if (selected) { controls.attach(selected.object); refreshSelectionBounds(); }
     ui.pathHint.textContent = enabled ? 'Тропы: наведи на точку и перетащи · жёлтая — Hover · оранжевая — Active'
       : 'Туман строится вдоль линий троп от входов к центру карты.';
   }
@@ -362,7 +412,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-terrain-window').hidden = !open;
     if (open) {
       if (pathMode) setPathMode(false);
-      controls.detach(); box.visible = false; controls.enabled = false;
+      controls.detach(); box.visible = false; hideLocalBox(); controls.enabled = false;
       terrainBrush.visible = false; panel.querySelector('#se-inspector')?.classList.add('se-terrain-inspector-hidden');
       panel.querySelector('.se-library')?.classList.add('se-terrain-library-hidden');
       ui.status.textContent = 'Игровой пол защищён; кисть меняет только окружающие картонные слои.';
@@ -370,6 +420,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       finishTerrainStroke(); terrainBrush.visible = false; controls.enabled = true;
       panel.querySelector('#se-inspector')?.classList.remove('se-terrain-inspector-hidden');
       panel.querySelector('.se-library')?.classList.remove('se-terrain-library-hidden');
+      if (selected) { controls.attach(selected.object); refreshSelectionBounds(); }
       canvas.style.cursor = '';
     }
   }
@@ -465,7 +516,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const screenEffects = getScreenEffects();
     panel.innerHTML = `<div class="se-toolbar">
       <header><div><small>РЕДАКТОР СЦЕНЫ · ИГРА НА ПАУЗЕ</small><strong id="se-location"></strong></div>
-        <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button><button id="se-close" type="button" aria-label="Закрыть редактор сцены">Закрыть ×</button>
+        <button id="se-space" type="button" aria-pressed="false" title="Пространство гизмо и рамки: мировое · X">World · X</button><button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button><button id="se-close" type="button" aria-label="Закрыть редактор сцены">Закрыть ×</button>
       </header></div><aside class="se-controls" aria-label="Параметры сцены">
       <details class="se-module" open><summary>Туман</summary><div class="se-module-content se-fog">
         <label><input data-fog="enabled" aria-label="Отображать туман" type="checkbox"> Отображать туман</label>
@@ -797,10 +848,15 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     terrainBrush.userData.cqRenderDebugExclude = true; scene.add(terrainBrush);
     renderDebug = createRenderDebugModes({ THREE, scene, renderer });
     controls = new TransformControls(camera, canvas); controls.enabled = false; controls.setSize(.9);
+    controls.setSpace(gizmoSpace);
     scene.add(controls.getHelper());
     controls.getHelper().userData.cqRenderDebugExclude = true;
     box = new THREE.BoxHelper(new THREE.Object3D(), 0xffe09b); box.userData.cqRenderDebugExclude = true;
     box.material.depthTest = false; box.renderOrder = 10003; box.visible = false; scene.add(box);
+    localBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.LineBasicMaterial({ color: 0xffe09b, depthTest: false, depthWrite: false }));
+    localBox.userData.cqRenderDebugExclude = true; localBox.renderOrder = 10003; localBox.visible = false;
+    panel.querySelector('#se-space').addEventListener('click', () => setGizmoSpace());
     controls.addEventListener('mouseDown', () => model.begin());
     controls.addEventListener('objectChange', () => {
       if (!selected) return;
@@ -817,7 +873,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (terrainOpen) setTerrainModeOpen(false);
       setRenderMode('normal');
       panel.querySelector('#se-fog-paths').setAttribute('aria-pressed', 'false'); canvas.style.cursor = '';
-      model.commit(); controls.detach(); controls.enabled = false; box.visible = false;
+      model.commit(); controls.detach(); controls.enabled = false; box.visible = false; hideLocalBox();
       controls.dragging = false; pointerStart = null; lastPointer = null;
       clearHelpers(); panel.hidden = true; keys.clear(); right = middle = false;
       bindings = []; selected = null; box.setFromObject(new THREE.Object3D());
@@ -888,6 +944,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     if (right) { event.preventDefault(); return; }
     if ((event.ctrlKey || event.metaKey) && event.code === 'KeyZ') { event.preventDefault(); restoreHistory(event.shiftKey ? 'redo' : 'undo'); return; }
     if ((event.ctrlKey || event.metaKey) && event.code === 'KeyY') { event.preventDefault(); restoreHistory('redo'); return; }
+    if (event.code === 'KeyX' && controls && !controls.dragging) { event.preventDefault(); setGizmoSpace(); return; }
     const mode = { KeyW: 'translate', KeyE: 'rotate', KeyR: 'scale' }[event.code];
     if (controls && mode) { event.preventDefault(); setMode(mode); }
     if (event.code === 'KeyF' && controls) { event.preventDefault(); focusSelection(); }
@@ -1013,7 +1070,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (movement.lengthSq()) camera.position.addScaledVector(movement.normalize(), speed * dt
           * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 3 : 1));
       }
-      camera.updateMatrixWorld(); if (selected) box.setFromObject(selected.object);
+      camera.updateMatrixWorld(); if (selected && gizmoSpace === 'world') box.setFromObject(selected.object);
     },
   };
 }

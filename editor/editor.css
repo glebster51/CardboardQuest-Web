@@ -11,6 +11,7 @@ body.scene-editing #hud-tools,body.scene-editing #scene-editor-toggle,body.scene
 #scene-editor button,#scene-editor select{font:inherit;background:#353942;color:#f1e8d9;border:1px solid #64656d;border-radius:6px;padding:7px 10px;cursor:pointer}
 #scene-editor button:hover{background:#484a51;border-color:var(--se-accent)}
 #scene-editor button[aria-pressed=true]{background:#d9ad6f;color:#24252b;border-color:#eac991}
+#scene-editor #se-space{min-width:96px;font-weight:700;letter-spacing:.02em}
 #scene-editor kbd{font:11px ui-monospace,monospace;font-weight:700;margin-right:4px}
 #scene-editor .se-modes{display:flex;gap:4px}
 #scene-editor .se-controls{position:absolute;left:0;top:var(--se-top,154px);width:308px;padding:8px;max-height:calc(100% - var(--se-top,154px));overflow-y:auto}
