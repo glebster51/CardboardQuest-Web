@@ -8,8 +8,8 @@ import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=13';
-import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=2';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=14';
+import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=3';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
 import { installSceneEditor } from './editor/scene-editor.mjs?v=140';
