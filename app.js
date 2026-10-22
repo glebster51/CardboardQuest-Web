@@ -10,6 +10,7 @@ import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=24';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=4';
+import { createHexTiltShiftShader } from './render/hex-tilt-shift.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=137';
@@ -116,11 +117,10 @@ async function start() {
     if ((!screenEffects.ssao && !screenEffects.tiltShift) || tiltShiftComposer) return;
     if (postProcessingPromise) return postProcessingPromise;
     postProcessingPromise = (async () => { try {
-      const [composerModule, renderModule, ssaoModule, shaderModule, shaderPassModule, outputModule] = await Promise.all([
+      const [composerModule, renderModule, ssaoModule, shaderPassModule, outputModule] = await Promise.all([
         import('three/addons/postprocessing/EffectComposer.js'),
         import('three/addons/postprocessing/RenderPass.js'),
         import('three/addons/postprocessing/SSAOPass.js'),
-        import('three/addons/shaders/VerticalTiltShiftShader.js'),
         import('three/addons/postprocessing/ShaderPass.js'),
         import('three/addons/postprocessing/OutputPass.js'),
       ]);
@@ -143,9 +143,10 @@ async function start() {
       } catch (error) {
         console.warn('SSAO недоступен; остальные эффекты сохраняются', error);
       }
-      const tilt = new shaderPassModule.ShaderPass(shaderModule.VerticalTiltShiftShader);
-      tilt.uniforms.r.value = screenEffects.tiltShiftFocus;
-      tilt.uniforms.v.value = screenEffects.tiltShiftBlur / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      const tilt = new shaderPassModule.ShaderPass(createHexTiltShiftShader(THREE));
+      tilt.uniforms.focus.value = screenEffects.tiltShiftFocus;
+      tilt.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
+      tilt.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
       tilt.enabled = screenEffects.tiltShift;
       composer.addPass(tilt);
       composer.addPass(new outputModule.OutputPass());
@@ -171,8 +172,8 @@ async function start() {
       ssaoPass.maxDistance = screenEffects.ssaoMaxDistance;
     }
     if (tiltShiftPass) {
-      tiltShiftPass.uniforms.r.value = screenEffects.tiltShiftFocus;
-      tiltShiftPass.uniforms.v.value = screenEffects.tiltShiftBlur / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      tiltShiftPass.uniforms.focus.value = screenEffects.tiltShiftFocus;
+      tiltShiftPass.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
     }
     if (screenEffects.ssao || screenEffects.tiltShift) void enableTiltShift();
   }
@@ -1736,7 +1737,7 @@ async function start() {
     camera.updateProjectionMatrix(); updateCamera();
     if (tiltShiftComposer) {
       tiltShiftComposer.setSize(innerWidth, innerHeight);
-      tiltShiftPass.uniforms.v.value = screenEffects.tiltShiftBlur / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      tiltShiftPass.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
       setSsaoSize();
     }
   }
