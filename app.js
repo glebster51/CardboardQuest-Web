@@ -38,7 +38,7 @@ import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_PO
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
 import { advanceChargeRecharge, chargeRechargeProgress, PLAYER_CHARGE_RECHARGE_INTERVAL } from './charge-recharge.mjs?v=4';
-import { heartHealthLevels, ricochetDamageQuarters } from './heart-health.mjs?v=1';
+import { heartHealthLevels, ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=2';
 import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
 import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=2';
@@ -668,7 +668,7 @@ async function start() {
         figure.viewBack = false; figure.locationId = 'camp';
         setVisualState(figure, body.health > 0 ? 'idle' : 'dead');
         figure.group.visible = activeLocation.id === 'camp';
-        figure.healthHUD.visible = figure.group.visible && body.health > 0;
+        figure.healthHUD.visible = figure.group.visible && shouldShowHealthHud(body.team, body.health, body.maxHealth);
         if (figure.enemyMarker) figure.enemyMarker.group.visible = figure.group.visible && body.health > 0;
         locations.camp.enemies.push(body);
         if (isBoss) campOgrePool = null;
@@ -1093,7 +1093,7 @@ async function start() {
       const active = figure.body === heroBody || figure.locationId === activeLocation.id;
       const spawning = Boolean(figure.spawnAnimation);
       figure.group.visible = !figure.poolDormant && !figure.body.fell && active && (!spawning || figure.spawnAnimation.age >= 0);
-      figure.healthHUD.visible = active && figure.body.health > 0 && !spawning;
+      figure.healthHUD.visible = active && shouldShowHealthHud(figure.body.team, figure.body.health, figure.body.maxHealth) && !spawning;
       if (figure.enemyMarker) figure.enemyMarker.group.visible = active && !victorySequenceActive
         && figure.body.health > 0 && !spawning;
     }
@@ -1109,7 +1109,7 @@ async function start() {
     figure.victoryAnimation = createVictoryLoop();
     figure.victoryBaseYaw = figure.group.rotation.y;
     figure.group.visible = figure.body === heroBody || figure.locationId === activeLocation.id;
-    figure.healthHUD.visible = figure.group.visible;
+    figure.healthHUD.visible = figure.group.visible && shouldShowHealthHud(figure.body.team, figure.body.health, figure.body.maxHealth);
     if (figure.enemyMarker) figure.enemyMarker.group.visible = false;
   }
   function beginVictorySequence() {
@@ -1868,7 +1868,7 @@ async function start() {
         figure.body.spawnReady = true;
         figure.spawnAnimation = null;
         if (figure.locationId === activeLocation.id) {
-          figure.healthHUD.visible = figure.body.health > 0;
+          figure.healthHUD.visible = shouldShowHealthHud(figure.body.team, figure.body.health, figure.body.maxHealth);
           if (figure.enemyMarker) figure.enemyMarker.group.visible = figure.body.health > 0;
           rebuildBodies();
         }
@@ -1938,6 +1938,7 @@ async function start() {
         continue;
       }
       if (figure.spawnAnimation) continue;
+      figure.healthHUD.visible = shouldShowHealthHud(body.team, body.health, body.maxHealth);
       figure.group.position.set(body.x, 0, body.z);
       const speed = Math.hypot(body.vx, body.vz);
       const victoryPose = body.health > 0 && figure.victoryAnimation
