@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { traceSpriteContours } from './sprite-geometry.mjs?v=8';
+import { traceSpriteContours } from './sprite-geometry.mjs?v=9';
 import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=1';
 import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 

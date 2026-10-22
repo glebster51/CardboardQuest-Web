@@ -91,7 +91,7 @@ function findDeepConcavities(points, minArmLength, minDepth) {
     if (chordDepth < minDepth) continue;
     candidates.push({ index: i, score: chordDepth * turn, concave: true });
   }
-  // Keep sharp outer tips too, so smoothing a nearby notch cannot shave off a
+  // Keep sharp outer tips too, so simplifying a nearby notch cannot shave off a
   // narrow printed point from a character pose or scenery silhouette.
   for (const [axis, direction] of [['x', 1], ['x', -1], ['y', 1], ['y', -1]]) {
     let index = -1, extreme = direction > 0 ? -Infinity : Infinity;
@@ -140,32 +140,6 @@ function simplifyClosedKeepingFeatures(points, tolerance, features) {
     output.push(...simplifyOpen(arc, tolerance).slice(0, -1));
   }
   return { points: output.length >= 3 ? output : points, featurePositions };
-}
-
-function bezierSegments(points, tension = .42) {
-  return points.map((p1, index) => {
-    const p0 = points[(index + points.length - 1) % points.length];
-    const p2 = points[(index + 1) % points.length];
-    const p3 = points[(index + 2) % points.length];
-    const span = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-    let c1 = { x: p1.x + (p2.x - p0.x) * tension / 6,
-      y: p1.y + (p2.y - p0.y) * tension / 6 };
-    let c2 = { x: p2.x - (p3.x - p1.x) * tension / 6,
-      y: p2.y - (p3.y - p1.y) * tension / 6 };
-    const limitHandle = (point, control) => {
-      const dx = control.x - point.x, dy = control.y - point.y, length = Math.hypot(dx, dy), limit = span * .42;
-      return length > limit && length > 0 ? { x: point.x + dx * limit / length, y: point.y + dy * limit / length } : control;
-    };
-    c1 = limitHandle(p1, c1); c2 = limitHandle(p2, c2);
-    const evaluate = t => {
-      const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
-      return { x: a * p1.x + b * c1.x + c * c2.x + d * p2.x,
-        y: a * p1.y + b * c1.y + c * c2.y + d * p2.y };
-    };
-    const samples = Array.from({ length: 25 }, (_unused, i) => evaluate(i / 24));
-    const lengths = samples.slice(1).map((point, i) => Math.hypot(point.x - samples[i].x, point.y - samples[i].y));
-    return { start: p1, end: p2, samples, lengths, length: lengths.reduce((sum, value) => sum + value, 0) };
-  });
 }
 
 function resampleClosed(points, spacing) {
@@ -236,15 +210,6 @@ function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
     sampleArc(arc, arc.length * step / shares[i].intervals)));
 }
 
-function resampleBezierLoop(points, spacing, featurePositions = []) {
-  const segments = bezierSegments(points), dense = [], anchors = [];
-  segments.forEach((segment, index) => {
-    if (featurePositions.includes(index)) anchors.push(dense.length);
-    dense.push(...segment.samples.slice(0, -1));
-  });
-  return resampleClosedKeepingFeatures(dense, spacing, anchors);
-}
-
 function traceLoops(mask, width, height) {
   const edges = [], starts = new Map();
   const filled = (x, y) => x >= 0 && y >= 0 && x < width && y < height && mask[y * width + x] !== 0;
@@ -292,6 +257,25 @@ function traceLoops(mask, width, height) {
   return loops;
 }
 
+function insetOpaqueMask(mask, width, height, insetPixels) {
+  if (!(insetPixels > 0)) return mask;
+  const radius = Math.ceil(insetPixels), inset = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const index = y * width + x;
+    if (!mask[index]) continue;
+    let nearestTransparentSq = Infinity;
+    for (let oy = -radius; oy <= radius; oy++) for (let ox = -radius; ox <= radius; ox++) {
+      const distanceSq = ox * ox + oy * oy;
+      if (distanceSq > insetPixels * insetPixels) continue;
+      const nx = x + ox, ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height || !mask[ny * width + nx])
+        nearestTransparentSq = Math.min(nearestTransparentSq, distanceSq);
+    }
+    if (nearestTransparentSq > insetPixels * insetPixels) inset[index] = 1;
+  }
+  return inset;
+}
+
 export function traceSpriteContours(alpha, width, height, worldWidth, worldHeight, options = {}) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || alpha.length !== width * height) {
     throw new RangeError('Sprite alpha mask must match its dimensions');
@@ -304,14 +288,25 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
   for (let y = 0; y < gridHeight; y++) for (let x = 0; x < gridWidth; x++) {
     const sx = Math.min(width - 1, Math.floor((x + .5) * width / gridWidth));
     const sy = Math.min(height - 1, Math.floor((y + .5) * height / gridHeight));
-    mask[y * gridWidth + x] = alpha[sy * width + sx] >= (options.threshold ?? 81) ? 1 : 0;
+    // Keep the mesh edge on the same alpha boundary as the printed cap
+    // (MeshStandardMaterial.alphaTest is .5, i.e. 128/255).
+    mask[y * gridWidth + x] = alpha[sy * width + sx] >= (options.threshold ?? 128) ? 1 : 0;
   }
-  const raw = traceLoops(mask, gridWidth, gridHeight);
+  // Let the printed cap cover the outer cardboard edge. Perspective exposes
+  // the sidewall, while the alpha artwork remains the visual silhouette.
+  // This deliberate inset is measured in contour pixels; set it to zero for
+  // diagnostics. Euclidean erosion rounds corners without moving valley tips.
+  const extrusionMask = insetOpaqueMask(mask, gridWidth, gridHeight, options.insetPixels ?? 2);
+  const raw = traceLoops(extrusionMask, gridWidth, gridHeight);
   const normalized = raw.map(points => points.map(p => ({
     x: (p.x / gridWidth - .5) * worldWidth,
     y: (.5 - p.y / gridHeight) * worldHeight,
   })));
-  const simplifyTolerance = Math.max(worldWidth, worldHeight) / 64;
+  // Simplify in the source-mask's pixel scale. The old world-size / 64
+  // tolerance was several pixels wide and cubic handles then overshot the
+  // printed silhouette, leaving a visible halo/gap between art and cardboard.
+  const pixelSize = Math.max(worldWidth / gridWidth, worldHeight / gridHeight);
+  const simplifyTolerance = pixelSize * .35;
   const contours = normalized.map((loop, index) => {
     // Detect valleys on the untouched pixel contour, before simplification can
     // erase shallow concave corners. The pixel-scale thresholds are deliberately
@@ -320,12 +315,14 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
     const simplified = simplifyClosedKeepingFeatures(loop, simplifyTolerance, rawFeatures);
     return { points: simplified.points, features: simplified.featurePositions };
   });
-  const spacing = Math.max(worldWidth, worldHeight) / 96;
-  let sampled = contours.map(contour => resampleBezierLoop(contour.points, spacing, contour.features));
+  // Sample the faithful, simplified polyline evenly. Do not spline across the
+  // alpha boundary. Concavities remain pinned through resampling.
+  const spacing = pixelSize * 1.25;
+  let sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing, contour.features));
   const total = sampled.reduce((sum, loop) => sum + loop.length, 0);
   if (total > 256) {
     const factor = total / 256;
-    sampled = contours.map(contour => resampleBezierLoop(contour.points, spacing * factor, contour.features));
+    sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing * factor, contour.features));
   }
   const sorted = sampled.map(points => ({ points, area: Math.abs(signedArea(points)) }))
     .sort((a, b) => b.area - a.area);
