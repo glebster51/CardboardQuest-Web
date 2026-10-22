@@ -1148,7 +1148,54 @@ async function start() {
     await checkpoint();
     location.runtimeReady = true;
     reportLoadStage(`Локация ${id}: готова`, 'ready');
+    if (!location.secret) void ensureInspectionMarker(location);
     return location;
+  }
+  async function ensureInspectionMarker(location) {
+    if (!location || location.secret || location.inspectionMarker || !location.sceneGroup) return;
+    const parent = location.sceneGroup;
+    try {
+      const groundY = location.terrainHeightMap?.sample(0, 0) ?? 0;
+      const marker = await createScenery('assets/poi-inspection-bark.webp', 0, 0, .72, parent, true,
+        { elevation: groundY, yaw: 0 });
+      if (!marker || location.sceneGroup !== parent) {
+        if (marker) {
+          parent.remove(marker);
+          for (let index = sceneryFacePairs.length - 1; index >= 0; index--)
+            if (sceneryFacePairs[index].prop === marker) sceneryFacePairs.splice(index, 1);
+        }
+        return;
+      }
+      marker.name = `inspection-marker:${location.id}`;
+      const art = marker.children[0];
+      if (art) art.position.y += 1.12;
+      const dark = new THREE.MeshBasicMaterial({ color: 0x3c241c, ...sceneStencil });
+      const cream = new THREE.MeshBasicMaterial({ color: 0xffe9b0, ...sceneStencil });
+      const dotOuter = new THREE.Mesh(new THREE.CylinderGeometry(.145, .145, .055, 20), dark);
+      dotOuter.position.y = .03;
+      const dotCenter = new THREE.Mesh(new THREE.CylinderGeometry(.105, .105, .058, 20), cream);
+      dotCenter.position.y = .034;
+      marker.add(dotOuter, dotCenter);
+      const dashCount = 7, dashHeight = .075, dashPitch = .15;
+      // Outline and fill keep the doubled dash width readable at phone scale.
+      const outerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.062, .062, dashHeight, 8), dark, dashCount);
+      const innerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.037, .037, dashHeight, 8), cream, dashCount);
+      const dashTransform = new THREE.Object3D();
+      for (let index = 0; index < dashCount; index++) {
+        dashTransform.position.set(0, .18 + index * dashPitch, 0);
+        dashTransform.updateMatrix();
+        outerDashes.setMatrixAt(index, dashTransform.matrix);
+        innerDashes.setMatrixAt(index, dashTransform.matrix);
+      }
+      outerDashes.instanceMatrix.needsUpdate = true;
+      innerDashes.instanceMatrix.needsUpdate = true;
+      marker.add(outerDashes, innerDashes);
+      location.edgeShade?.applyTo(marker);
+      for (const resource of sceneResources([marker])) if (resource.isTexture) renderer.initTexture(resource);
+      location.inspectionMarker = marker;
+    } catch (error) {
+      console.warn(`Не удалось создать маркер осмотра для ${location.id}`, error);
+    }
   }
   let terrainFogRebuildTimer = 0, terrainFogRebuildChain = Promise.resolve();
   function scheduleTerrainFogRebuild() {
@@ -1210,6 +1257,7 @@ async function start() {
       if (storyActors.actors[index].spec.location === id) storyActors.actors.splice(index, 1);
     chestVisuals.delete(id); delete locationGroups[id];
     delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails;
+    delete location.inspectionMarker;
     delete location.edgeShade;
     delete location.cacheBody; delete location.exitVisuals; delete location.exitBarriers;
     location.enemies = []; location.obstacles = []; location.runtimeReady = false;
@@ -2239,6 +2287,11 @@ async function start() {
     interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive
       || activeLocation.enemies.some(enemy => enemy.health > 0);
     interactButton.textContent = 'Осмотреть';
+    if (activeLocation.inspectionMarker) {
+      activeLocation.inspectionMarker.visible = !activeLocation.secret && !campaignState.collected[activeLocation.id];
+      if (activeLocation.terrainHeightMap)
+        activeLocation.inspectionMarker.position.y = activeLocation.terrainHeightMap.sample(0, 0);
+    }
     if (aimingBody) {
       playerMarker.material.color.copy(state.charges > 0 ? selectedColor : unavailableAimColor);
     } else {
