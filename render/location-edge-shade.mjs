@@ -140,14 +140,17 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     if (!object.isMesh) return;
     const scenerySprite = isScenerySprite(object);
     const fogSurface = Boolean(object.userData?.locationFogSurface);
-    const terrainSurface = /^(playfield|terrain)-top-/.test(object.name);
+    const terrainSurface = Boolean(object.userData?.terrainSurface)
+      || /^(playfield|terrain)-/.test(object.name)
+      || /^(playfield|terrain)-/.test(object.parent?.name ?? '');
+    const revealableScenery = scenerySprite && !terrainSurface && !fogSurface;
     if (!terrainSurface && !scenerySprite && !fogSurface) return;
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
-      if ((scenerySprite && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
+      if ((revealableScenery && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
         && !material.userData.locationEdgeShadePatched)
         material = material.clone();
-      patchMaterial(material, scenerySprite);
+      patchMaterial(material, revealableScenery);
       return material;
     });
     if (Array.isArray(object.material)) object.material = patchedMaterials;
