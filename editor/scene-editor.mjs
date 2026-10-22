@@ -725,10 +725,12 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       document.body.classList.remove('scene-editing');
       camera.position.copy(originalCamera.position); camera.quaternion.copy(originalCamera.quaternion);
       camera.updateMatrixWorld(); onActiveChange(false);
+      syncEditorToggleButton();
       if (model.diff().changes.length) void copyDiff(model.text());
       return;
     }
     active = true; opening = true; onActiveChange(true);
+    syncEditorToggleButton();
     originalCamera = { position: camera.position.clone(), quaternion: camera.quaternion.clone() };
     try {
       if (!controls) await initialize();
@@ -747,12 +749,25 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (model.diff().changes.length) void copyDiff(model.text());
     } catch (error) {
       active = false; onActiveChange(false); document.body.classList.remove('scene-editing');
+      syncEditorToggleButton();
       if (panel) panel.hidden = true;
       console.error('Не удалось открыть редактор сцены', error);
       const errorBox = document.querySelector('#error');
       if (errorBox) { errorBox.hidden = false; errorBox.textContent = `Редактор не открылся: ${error.message}. Нажми ~ для повторной попытки.`; }
     } finally { opening = false; }
   }
+  const editorToggleButton = document.querySelector('#scene-editor-toggle');
+  function syncEditorToggleButton() {
+    if (!editorToggleButton) return;
+    const label = active ? 'Закрыть редактор сцены' : 'Открыть редактор сцены';
+    editorToggleButton.setAttribute('aria-pressed', String(active));
+    editorToggleButton.setAttribute('aria-label', label);
+    editorToggleButton.title = `${label} — ~`;
+  }
+  editorToggleButton?.addEventListener('click', event => {
+    event.preventDefault(); event.stopPropagation(); void toggle();
+  });
+  syncEditorToggleButton();
   addEventListener('keydown', event => {
     if (graphOpen) {
       if (event.code === 'Backquote' && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); campaignGraphEditor?.close(); }

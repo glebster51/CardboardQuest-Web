@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=87">
+  <link rel="stylesheet" href="style.css?v=88">
   <link rel="stylesheet" href="editor/editor.css?v=142">
   <script type="importmap">
     {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
@@ -44,6 +44,9 @@
           <circle cx="12" cy="32" r="2.7" fill="#748d46"/>
         </g>
       </svg>
+    </button>
+    <button id="scene-editor-toggle" class="hud-icon scene-editor-toggle" type="button" aria-label="Открыть редактор сцены" aria-pressed="false" title="Редактор сцены — ~">
+      <span aria-hidden="true">~</span>
     </button>
   </nav>
   <div id="story-actions">
@@ -125,7 +128,7 @@
   </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-  <script type="module" src="app.js?v=179"></script>
+  <script type="module" src="app.js?v=180"></script>
 </body>
 </html>
 

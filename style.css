@@ -10,6 +10,8 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .hud-icon { position: relative; display: grid; place-items: center; flex: 0 0 52px; width: 52px; height: 52px; padding: 3px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform .12s ease; }
 .hud-icon svg, .hud-icon img { display: block; width: 46px; height: 46px; object-fit: contain; pointer-events: none; overflow: visible; filter: drop-shadow(1px 0 0 #fff0cc) drop-shadow(-1px 0 0 #fff0cc) drop-shadow(0 1px 0 #fff0cc) drop-shadow(0 -1px 0 #fff0cc); }
 .hud-icon:active { transform: translateY(2px) scale(.95); }
+.scene-editor-toggle span { display: grid; place-items: center; width: 40px; height: 40px; border: 2px solid #4b3020; border-radius: 10px; color: #f3d99d; background: #a45b36; box-shadow: inset 0 0 0 2px #f3d99d, 1px 2px 2px #34251f; font: 700 29px/1 Georgia, serif; text-shadow: 1px 1px #4b3020; }
+.scene-editor-toggle[aria-pressed="true"] span { color: #fff0cc; background: #789451; }
 .hud-icon:focus-visible { outline: 2px solid #fff8de; outline-offset: 2px; }
 @media (hover: hover) { .hud-icon:hover { transform: translateY(-2px); } .hud-icon:active { transform: translateY(2px) scale(.95); } }
 .hud-count { position: absolute; top: -2px; right: 0; min-width: 12px; color: #4b3020; font: 900 12px/1.2 system-ui, sans-serif; text-shadow: -1px -1px #fff0cc, 1px -1px #fff0cc, -1px 1px #fff0cc, 1px 1px #fff0cc; pointer-events: none; }
