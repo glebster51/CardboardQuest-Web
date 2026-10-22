@@ -1,12 +1,13 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=152';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=154';
 import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=10';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs?v=2';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
-export function createSceneRegistry({ THREE, overrides, setFog, setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {} }) {
+export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog, setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {} }) {
   const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
+  if (savedDiff) model.restore(savedDiff);
   const fog = { ...FOG_DEFAULTS, ...overrides.fog }; model.register(null, 'fog', fog);
   const lighting = { ...LIGHTING_DEFAULTS, ...overrides.lighting,
     direction: [...(overrides.lighting?.direction ?? LIGHTING_DEFAULTS.direction)] };

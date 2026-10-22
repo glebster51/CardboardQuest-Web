@@ -17,7 +17,7 @@ export function createItemMagnetSettingsMarkup(settings) {
   const controls = Object.entries(CONTROL_INFO).map(([key, info]) => `<div class="se-magnet-control" data-magnet-control="${key}">
     <label><span>${info.label} <output>${itemValue(key, normalized[key])}</output></span><input data-item-magnet="${key}" aria-label="${info.aria}" type="range" min="${info.min}" max="${info.max}" step="${info.step}" value="${normalized[key]}"></label>
   </div>`).join('');
-  return `<details class="se-module"><summary>Магнит предметов</summary><div class="se-module-content se-item-magnet" role="group" aria-label="Настройки автоматического подбора предметов">
+  return `<details class="se-module" data-editor-state="item-magnet"><summary>Магнит предметов</summary><div class="se-module-content se-item-magnet" role="group" aria-label="Настройки автоматического подбора предметов">
     ${controls}
     <small>Наведи на ползунок: круг и дуги подбора появятся вокруг игрока в сцене, экранные траектории — от игрока до рюкзака.</small>
     <small>Движущиеся маркеры показывают настоящее время полёта; разброс экранных дуг совпадает с игровой формулой.</small>

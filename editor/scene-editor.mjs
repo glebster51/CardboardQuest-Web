@@ -1,4 +1,4 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=152';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=154';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=10';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
@@ -6,6 +6,7 @@ import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-m
 import { createItemMagnetPreview } from './item-magnet-preview.mjs?v=1';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 import { fogPathRadiusAt, setFogPathRadius } from '../fog-paths.mjs?v=2';
+import { clearLocalEditorDraft, readLocalEditorPanelState, writeLocalEditorDraft, writeLocalEditorPanelState } from './local-editor-state.mjs?v=1';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
 
@@ -154,6 +155,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     refreshChangeList();
     ui.apply.disabled = applying || !model.diff().changes.length;
     try { localStorage.setItem('cardboardquest-editor-last-diff', ui.diff.value); } catch { /* Clipboard and download still work. */ }
+    writeLocalEditorDraft(localStorage, Boolean(applyToSource), model.diff());
     void copyDiff(ui.diff.value);
   }
   async function applySource() {
@@ -167,6 +169,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     overlay.textContent = 'Сохраняю изменения в исходный проект…'; document.body.append(overlay);
     try {
       await applyToSource(diff);
+      clearLocalEditorDraft(localStorage, Boolean(applyToSource));
       // A full reload starts a clean baseline and refreshes all worker/streamed scene data too.
       // Local server sends no-store for every resource; no stale module/worker cache survives Apply.
       overlay.textContent = 'Сохранено. Загружаю обновлённую сцену…';
@@ -571,7 +574,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       <header><div><small>РЕДАКТОР СЦЕНЫ · ИГРА НА ПАУЗЕ</small><strong id="se-location"></strong></div>
         <button id="se-space" type="button" aria-pressed="false" title="Пространство гизмо и рамки: мировое · X">World · X</button><button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть объекты к сохранённому состоянию исходного проекта">Сброс к сохранённому</button><button id="se-apply" type="button" title="Записать суммарный дифф в исходный проект и перезагрузить сцену" disabled>Apply · в проект</button><button id="se-close" type="button" aria-label="Закрыть редактор сцены">Закрыть ×</button>
       </header><output id="se-apply-status" role="status" hidden></output></div><aside class="se-controls" aria-label="Параметры сцены">
-      <details class="se-module" open><summary>Туман</summary><div class="se-module-content se-fog">
+      <details class="se-module" data-editor-state="fog" open><summary>Туман</summary><div class="se-module-content se-fog">
         <label><input data-fog="enabled" aria-label="Отображать туман" type="checkbox"> Отображать туман</label>
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
         <label>Конец тумана <output></output><input data-fog="end" aria-label="Конец тумана" type="range" min=".1" max="50" step=".1"></label>
@@ -579,7 +582,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
-      </div></details>${createPlayerRevealSettingsMarkup()}${createItemMagnetSettingsMarkup(getItemMagnetSettings())}<details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
+      </div></details>${createPlayerRevealSettingsMarkup()}${createItemMagnetSettingsMarkup(getItemMagnetSettings())}<details class="se-module" data-editor-state="screen-effects" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
         <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>
         <label><input type="checkbox" data-screen-effect="tiltShift" ${screenEffects.tiltShift ? 'checked' : ''}> Tilt-shift</label>
         <label>Радиус SSAO <output>${screenEffects.ssaoKernelRadius}</output><input data-effect-setting="ssaoKernelRadius" aria-label="Радиус SSAO" type="range" min="0" max="16" step=".25" value="${screenEffects.ssaoKernelRadius}"></label>
@@ -592,22 +595,22 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Умножение градиента <output>${screenEffects.tiltShiftGradientMultiplier.toFixed(2)}</output><input data-effect-setting="tiltShiftGradientMultiplier" aria-label="Умножение экранного градиента Tilt-shift" type="range" min="0" max="4" step=".05" value="${screenEffects.tiltShiftGradientMultiplier}"></label>
         <label><input type="checkbox" data-screen-effect="tiltShiftShowGradient" ${screenEffects.tiltShiftShowGradient ? 'checked' : ''}> Показать градиент Tilt-shift</label>
         <small>Настройки сохраняются в этом браузере.</small>
-      </div></details><details class="se-module"><summary>Освещение</summary><div class="se-module-content se-lighting" role="group" aria-label="Настройки освещения">
+      </div></details><details class="se-module" data-editor-state="lighting"><summary>Освещение</summary><div class="se-module-content se-lighting" role="group" aria-label="Настройки освещения">
         <label>Угол Y <output></output><input data-lighting-angle="y" aria-label="Угол света по Y" type="range" min="-180" max="180" step="1"></label>
         <label>Угол X <output></output><input data-lighting-angle="x" aria-label="Угол света по X" type="range" min="-90" max="90" step="1"></label>
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
-      </div></details><details class="se-module"><summary>Шайбы под юнитами</summary><div class="se-module-content se-unit-pucks" role="group" aria-label="Цвета шайб игрока и врагов">
+      </div></details><details class="se-module" data-editor-state="unit-pucks"><summary>Шайбы под юнитами</summary><div class="se-module-content se-unit-pucks" role="group" aria-label="Цвета шайб игрока и врагов">
         <label class="se-color">Шайба игрока<input data-unit-puck-color="player" aria-label="Цвет шайбы игрока" type="color"></label>
         <label class="se-color">Шайбы врагов<input data-unit-puck-color="enemy" aria-label="Цвет шайб врагов" type="color"></label>
-      </div></details><details class="se-module"><summary>Кромки террас · глобально</summary><div class="se-module-content se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
+      </div></details><details class="se-module" data-editor-state="terrain-edges"><summary>Кромки террас · глобально</summary><div class="se-module-content se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
         <label>Аддитивная подсветка верхнего края<input data-terrain-style="edgeColor" aria-label="Цвет аддитивной подсветки верхней кромки рельефа" type="color"></label>
         <label>Сила <output></output><input data-terrain-style="edgeStrength" aria-label="Сила подсветки кромки" type="range" min="0" max="1" step=".01"></label>
         <label>Ширина <output></output><input data-terrain-style="edgeWidth" aria-label="Ширина полосы подсветки" type="range" min=".03" max=".5" step=".01"></label>
         <label>Мультипликативное затемнение низа<input data-terrain-style="baseColor" aria-label="Цвет мультипликативного затенения нижней кромки рельефа" type="color"></label>
         <label>AO-сила <output></output><input data-terrain-style="baseStrength" aria-label="Сила затемнения основания слоя" type="range" min="0" max="1" step=".01"></label>
         <label>AO-ширина <output></output><input data-terrain-style="baseWidth" aria-label="Ширина затемнённой полосы у основания" type="range" min=".03" max=".5" step=".01"></label>
-      </div></details><details class="se-module"><summary>Диагностика рендера</summary><div class="se-module-content se-render-mode" role="group" aria-label="Диагностический режим рендера">
+      </div></details><details class="se-module" data-editor-state="render-debug"><summary>Диагностика рендера</summary><div class="se-module-content se-render-mode" role="group" aria-label="Диагностический режим рендера">
         <span>РЕНДЕР</span>
         <button data-render-mode="normal" aria-pressed="true">Обычный</button>
         <button data-render-mode="overdraw" aria-pressed="false" title="Подсвечивает области, где поверх друг друга рисуется геометрия">OVERDRAW</button>
@@ -642,7 +645,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           <small>Жёлтый — изменён · зелёный — добавлен · красный — удалён</small>
         </section>
         <output id="se-status" aria-live="polite">Изменения автоматически попадут в буфер</output>
-        <details><summary>Показать текст диффа</summary><textarea id="se-diff" aria-label="Суммарный дифф сцены" readonly spellcheck="false"></textarea>
+        <details data-editor-state="diff-text"><summary>Показать текст диффа</summary><textarea id="se-diff" aria-label="Суммарный дифф сцены" readonly spellcheck="false"></textarea>
         <button id="se-download">Скачать дифф</button></details>
       </aside><section class="se-library" aria-label="Библиотека игровых ассетов"><header><strong>Библиотека игровых ассетов</strong><small>Щелчок — разместить · двойной — редактировать общую заготовку · перетащи для размещения</small>
       <input id="se-search" type="search" placeholder="Найти…" aria-label="Поиск в библиотеке"></header>
@@ -665,6 +668,15 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
     for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);
+    const panelState = readLocalEditorPanelState(localStorage, Boolean(applyToSource));
+    for (const module of panel.querySelectorAll('details[data-editor-state]')) {
+      const key = module.dataset.editorState;
+      if (Object.hasOwn(panelState, key)) module.open = panelState[key];
+      module.addEventListener('toggle', () => {
+        panelState[key] = module.open;
+        writeLocalEditorPanelState(localStorage, Boolean(applyToSource), panelState);
+      });
+    }
     ui.apply = panel.querySelector('#se-apply');
     ui.applyStatus = panel.querySelector('#se-apply-status');
     ui.apply.addEventListener('click', () => void applySource());

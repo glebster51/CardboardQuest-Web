@@ -31,5 +31,5 @@ export async function loadLocalEditorUi() {
   button.type = 'button'; button.title = 'Редактор сцены — ~'; button.setAttribute('aria-label', 'Открыть редактор сцены');
   button.setAttribute('aria-pressed', 'false'); button.innerHTML = '<span aria-hidden="true">~</span>';
   document.body.append(button);
-  return import('./scene-editor.mjs?v=177');
+  return import('./scene-editor.mjs?v=178');
 }

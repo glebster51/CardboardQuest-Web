@@ -14,8 +14,10 @@ import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/he
 import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=2';
 import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=151';
+import { SCENE_OVERRIDES as RELEASE_SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=153';
+import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=154';
+import { isLocalEditorOrigin, readLocalEditorDraft } from './editor/local-editor-state.mjs?v=1';
 import { connectLocalEditor, loadLocalEditorUi } from './editor/local-editor-client.mjs?v=1';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=10';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
@@ -113,6 +115,17 @@ const randomBetween = (min, max) => min + Math.random() * (max - min);
 
 async function start() {
   const localEditor = await connectLocalEditor();
+  const persistEditorState = Boolean(localEditor) && isLocalEditorOrigin(location.hostname);
+  let savedEditorDiff = readLocalEditorDraft(localStorage, persistEditorState), sceneOverrides = RELEASE_SCENE_OVERRIDES;
+  if (savedEditorDiff) {
+    if (savedEditorDiff.baseBuild !== SCENE_BUILD) {
+      console.warn('Черновик редактора пропущен: версия исходной сцены изменилась');
+      savedEditorDiff = null;
+    } else {
+      try { sceneOverrides = mergeSceneDiff(RELEASE_SCENE_OVERRIDES, savedEditorDiff); }
+      catch (error) { console.warn('Черновик редактора не удалось восстановить', error); savedEditorDiff = null; }
+    }
+  }
   let heroEquipment = null;
   let shop = null;
   const merchantActors = [];
@@ -255,7 +268,7 @@ async function start() {
   campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
   const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE, [campaignState.currentLocationId]);
   reportLoadStage('Сохранение кампании и текущая локация', 'ready', campaignState.currentLocationId);
-  let activeCampaignGraph = SCENE_OVERRIDES.graph ?? null;
+  let activeCampaignGraph = sceneOverrides.graph ?? null;
   reportLoadStage(`Карта глубины: ${campaignState.currentLocationId}`);
   await loadLocationDepthMaps({ [campaignState.currentLocationId]: locations[campaignState.currentLocationId] });
   // Rebuild authored footprints now that raster-derived features (notably the
@@ -263,12 +276,12 @@ async function start() {
   if (locations[campaignState.currentLocationId].art.depthMap)
     createCampaignLocations(locations, LOCATION_SCALE, [campaignState.currentLocationId]);
   reportLoadStage(`Карта глубины: ${campaignState.currentLocationId}`, 'ready');
-  const authoredEntry = SCENE_OVERRIDES.locations[campaignState.currentLocationId]?.entry;
+  const authoredEntry = sceneOverrides.locations[campaignState.currentLocationId]?.entry;
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
   if (activeCampaignGraph) for (const location of Object.values(locations)) applyCampaignGraphToLocation(location, activeCampaignGraph);
   let playerOcclusionDither = null, applyUnitPuckColors = () => {};
-  const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setUnitPuckColors(settings) {
+  const sceneRegistry = createSceneRegistry({ THREE, overrides: sceneOverrides, savedDiff: savedEditorDiff, setUnitPuckColors(settings) {
     applyUnitPuckColors(settings);
   }, setLighting(settings) {
     if (!sunLight) return;
@@ -342,7 +355,7 @@ async function start() {
     closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
   let campaignGraphData = null, campaignGraphDataKey = null;
   function applyEditedAnchorsToGraphLayouts(layouts) {
-    const editsByLocation = Object.fromEntries(Object.entries(SCENE_OVERRIDES.locations ?? {}).map(([id, edits]) => [id, { ...edits }]));
+    const editsByLocation = Object.fromEntries(Object.entries(sceneOverrides.locations ?? {}).map(([id, edits]) => [id, { ...edits }]));
     for (const change of sceneRegistry.model.diff().changes) if (change.location && change.after !== null) {
       editsByLocation[change.location] ??= {};
       editsByLocation[change.location][change.object] = change.after;

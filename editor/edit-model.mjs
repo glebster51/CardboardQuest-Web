@@ -120,6 +120,28 @@ export function createEditModel() {
       if (!records.has(key)) records.set(key, { location, object, before: clone(value), after: clone(value) });
       return clone(records.get(key).after);
     },
+    restore(diff) {
+      this.commit();
+      if (diff?.format !== SCENE_DIFF_FORMAT || diff.baseBuild !== SCENE_BUILD || !Array.isArray(diff.changes) || diff.changes.length > 5000)
+        throw new Error('Incompatible saved scene diff');
+      const restored = [], seen = new Set();
+      for (const change of diff.changes) {
+        if (!change || typeof change.object !== 'string') throw new Error('Invalid saved scene change');
+        const { location, object, before, after } = change;
+        const key = id(location, object);
+        if (records.has(key) || seen.has(key)) throw new Error(`Duplicate saved scene change: ${object}`);
+        seen.add(key);
+        const prefabId = object.startsWith('prefab:') ? object.slice(7) : null;
+        const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
+          lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style',
+          unitPuckColors = object === 'unit-puck-colors';
+        validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
+        validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
+        restored.push({ location, object, before: clone(before), after: clone(after) });
+      }
+      for (const entry of restored) records.set(id(entry.location, entry.object), entry);
+      return restored.length;
+    },
     has(location, object) { return records.has(id(location, object)); },
     get(location, object) { const entry = records.get(id(location, object)); return entry ? clone(entry.after) : null; },
     begin() { if (!transaction) transaction = new Map(); },
