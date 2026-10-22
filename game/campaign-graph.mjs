@@ -1,4 +1,4 @@
-import { createDefaultFogPaths } from '../fog-paths.mjs';
+import { createDefaultFogPaths, fogPathRadiusAt } from '../fog-paths.mjs?v=2';
 
 export const CAMPAIGN_GRAPH_FORMAT = 'cardboardquest.campaign-graph.v1';
 
@@ -93,6 +93,7 @@ export function applyCampaignGraphToLocation(location, graph) {
     const old = previous.get(path.id);
     if (old) {
       path.points = clone(old.points);
+      if (old.radii) path.radii = clone(old.radii);
       const start = path.id === 'entry' ? location.entry : incoming[path.id.slice('arrival:'.length)];
       if (start) path.points[0] = [start.x, start.z];
     }
@@ -100,6 +101,9 @@ export function applyCampaignGraphToLocation(location, graph) {
       const start = path.points[0], end = oldCenter;
       path.points = [start, ...[.25, .5, .75].map(t => [start[0] + (end[0] - start[0]) * t,
         start[1] + (end[1] - start[1]) * t]), [...end]];
+      const firstOld = previous.values().next().value;
+      const centerRadius = fogPathRadiusAt(firstOld, firstOld.points.length - 1);
+      if (centerRadius !== 1) path.radii = path.points.map((_, index) => index === path.points.length - 1 ? centerRadius : 1);
     }
   }
   location.fogPaths = base;

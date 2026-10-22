@@ -1,7 +1,7 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=148';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=150';
 import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7';
 import { createExitBarrierBodies } from '../location-network.mjs';
-import { createDefaultFogPaths } from '../fog-paths.mjs';
+import { createDefaultFogPaths } from '../fog-paths.mjs?v=2';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
@@ -53,14 +53,18 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       const prefab = catalogAsset(binding.asset);
       binding.prefabId = object.userData.sceneEditPrefabId ?? prefab?.id;
       const definition = catalogPrefab(binding.prefabId);
-      binding.prefabScale = definition ? prefabs.get(binding.prefabId).size / definition.size : 1;
+      const settings = prefabs.get(binding.prefabId);
+      binding.prefabScale = definition && settings ? settings.size / definition.size : 1;
     } else binding.prefabScale = 1;
     let original = snapshot(binding);
     const saved = overrides.locations[location.id];
     if (saved && Object.hasOwn(saved, id)) {
-      const value = { ...saved[id] };
-      if (value.asset) { value.prefabId = value.prefabId ?? catalogAsset(value.asset)?.id; delete value.size; }
-      validateSceneValue(value); original = value;
+      if (saved[id] === null) original = null;
+      else {
+        const value = { ...saved[id] };
+        if (value.asset) { value.prefabId = value.prefabId ?? catalogAsset(value.asset)?.id; delete value.size; }
+        validateSceneValue(value); original = value;
+      }
     }
     const current = model.register(location.id, id, born ? null : original);
     bindings.push(binding); apply(binding, current); return binding;
@@ -322,7 +326,10 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
         if (model.has(id, 'terrain')) source.location.terrainEdits = model.get(id, 'terrain');
       }
       for (const bindings of resident.values()) for (const binding of bindings) {
-        if (binding.prefabId) binding.prefabScale = prefabs.get(binding.prefabId).size / catalogPrefab(binding.prefabId).size;
+        if (binding.prefabId) {
+          const prefab = prefabs.get(binding.prefabId), definition = catalogPrefab(binding.prefabId);
+          if (prefab && definition) binding.prefabScale = prefab.size / definition.size;
+        }
         apply(binding, model.get(binding.location, binding.id));
       }
     },

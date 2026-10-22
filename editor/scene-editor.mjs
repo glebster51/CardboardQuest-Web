@@ -1,9 +1,10 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=149';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=150';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=7';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
 import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=2';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
+import { fogPathRadiusAt, setFogPathRadius } from '../fog-paths.mjs?v=2';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
 
@@ -14,7 +15,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   onItemMagnetSettingsChange = () => {}, onFogSettingsChange = () => {}, onFogPathsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, localBox, gizmoSpace = 'world', pathRoot, renderDebug;
-  let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
+  let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null, pathDrag = null;
   let terrainOpen = false, terrainBrush, terrainMode = 'level', terrainRadius = 5, terrainStrength = .45;
   let terrainStroke = null, terrainMap = null, terrainEdits = null, terrainLast = null, terrainStrokeChanged = false, terrainTimer = 0;
   let terrainRebuildPending = false, terrainRebuildTask = null;
@@ -231,21 +232,26 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     canvas.style.cursor = enabled ? 'crosshair' : '';
     if (enabled) { controls.detach(); box.visible = false; hideLocalBox(); }
     else if (selected) { controls.attach(selected.object); refreshSelectionBounds(); }
-    ui.pathHint.textContent = enabled ? 'Тропы: наведи на точку и перетащи · жёлтая — Hover · оранжевая — Active'
+    ui.pathHint.textContent = enabled ? 'Драг — перемещение · Shift + драг вправо/вверх — увеличить радиус, влево/вниз — уменьшить · жёлтая — Hover · оранжевая — Active'
       : 'Туман строится вдоль линий троп от входов к центру карты.';
   }
   function setPathState(handle, state) {
     if (!handle) return;
     handle.userData.pathState = state;
     handle.material.color.set(state === 'active' ? 0xff805d : state === 'hover' ? 0xffdf70 : 0xd5c5a6);
-    handle.scale.setScalar(state === 'active' ? 1.32 : state === 'hover' ? 1.18 : 1);
+    handle.scale.setScalar((handle.userData.radiusScale ?? 1) * (state === 'active' ? 1.32 : state === 'hover' ? 1.18 : 1));
   }
   function syncFogPathVisuals(paths = registry.fogPaths(getLocation().id)) {
     const center = paths.paths[0]?.points.at(-1) ?? [0, 0];
     for (const handle of pathHandles) {
       const { pathIndex, pointIndex, sharedCenter } = handle.userData.fogPath;
       const point = sharedCenter ? center : paths.paths[pathIndex]?.points[pointIndex];
-      if (point) handle.position.set(point[0], .24, point[1]);
+      if (point) {
+        handle.position.set(point[0], .24, point[1]);
+        const path = paths.paths[sharedCenter ? 0 : pathIndex];
+        handle.userData.radiusScale = fogPathRadiusAt(path, sharedCenter ? path.points.length - 1 : pointIndex);
+        setPathState(handle, handle.userData.pathState ?? 'idle');
+      }
     }
     for (const line of pathLines) {
       const points = paths.paths[line.userData.pathIndex]?.points ?? [];
@@ -259,7 +265,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       child.traverse(object => { object.geometry?.dispose(); for (const material of [object.material].flat()) material?.dispose(); });
       child.removeFromParent();
     }
-    pathHandles = []; pathLines = []; hoveredPath = activePath = null;
+    pathHandles = []; pathLines = []; hoveredPath = activePath = pathDrag = null;
     const paths = registry.fogPaths(location.id);
     const lineMaterial = new THREE.LineBasicMaterial({ color: 0xd7c7ff, transparent: true, opacity: .92, depthTest: false });
     paths.paths.forEach((path, pathIndex) => {
@@ -284,16 +290,35 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const rect = canvas.getBoundingClientRect();
     mouse.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2);
     raycaster.setFromCamera(mouse, camera); scene.updateMatrixWorld(true);
-    return raycaster.intersectObjects(pathHandles, false)[0]?.object ?? null;
+    const hit = raycaster.intersectObjects(pathHandles, false)[0]?.object;
+    if (hit) return hit;
+    // Even the smallest radius remains selectable without inflating its visual marker.
+    let nearest = null, closest = 10;
+    for (const handle of pathHandles) {
+      const screen = handle.position.clone().project(camera);
+      if (screen.z < -1 || screen.z > 1) continue;
+      const distance = Math.hypot((screen.x + 1) * rect.width / 2 - (event.clientX - rect.left),
+        (1 - screen.y) * rect.height / 2 - (event.clientY - rect.top));
+      if (distance < closest) { nearest = handle; closest = distance; }
+    }
+    return nearest;
   }
   function dragFogPath(event) {
-    const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -.24), new THREE.Vector3());
-    if (!point || !activePath) return;
+    if (!activePath || !pathDrag) return;
     const location = getLocation(), paths = registry.fogPaths(location.id);
     const { pathIndex, pointIndex, sharedCenter } = activePath.userData.fogPath;
-    const next = JSON.parse(JSON.stringify(paths));
-    if (sharedCenter) for (const path of next.paths) path.points[path.points.length - 1] = [point.x, point.z];
-    else next.paths[pathIndex].points[pointIndex] = [point.x, point.z];
+    let next;
+    if (pathDrag.resize) {
+      const delta = event.clientX - pathDrag.x - (event.clientY - pathDrag.y);
+      next = setFogPathRadius(paths, pathIndex, pointIndex, pathDrag.radius * Math.exp(delta * .008), sharedCenter);
+      ui.pathHint.textContent = `Радиус точки ×${fogPathRadiusAt(next.paths[pathIndex], pointIndex).toFixed(2)} · вправо/вверх — больше, влево/вниз — меньше`;
+    } else {
+      const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -.24), new THREE.Vector3());
+      if (!point) return;
+      next = structuredClone(paths);
+      if (sharedCenter) for (const path of next.paths) path.points[path.points.length - 1] = [point.x, point.z];
+      else next.paths[pathIndex].points[pointIndex] = [point.x, point.z];
+    }
     registry.changeFogPaths(location, next); syncFogPathVisuals(next); onFogPathsChange(location); changed();
   }
   function terrainPointAt(event) {
@@ -427,7 +452,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function restoreHistory(action) {
     if (!model[action]()) return;
     registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); changed();
-    onFogPathsChange(getLocation());
+    syncFogPathVisuals(); onFogPathsChange(getLocation());
     requestTerrainRebuild();
   }
   async function openCampaignGraph() {
@@ -607,6 +632,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
     for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);
+    ui.pathHint = ui['path-hint'];
     ui.terrainLevel = panel.querySelector('#se-terrain-level');
     for (const [property, label] of [['position', 'Позиция'], ['rotation', 'Поворот °'], ['scale', 'Масштаб']]) {
       const row = document.createElement('div'); row.className = 'se-vector';
@@ -669,6 +695,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); changed();
+      syncFogPathVisuals();
       onFogPathsChange(getLocation());
       requestTerrainRebuild();
     });
@@ -869,7 +896,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     if (opening || (!active && !canOpen())) return;
     if (active) {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
-      active = false; pathMode = false; activePath = hoveredPath = null; pathRoot.visible = false;
+      active = false; pathMode = false; activePath = hoveredPath = pathDrag = null; pathRoot.visible = false;
       if (terrainOpen) setTerrainModeOpen(false);
       setRenderMode('normal');
       panel.querySelector('#se-fog-paths').setAttribute('aria-pressed', 'false'); canvas.style.cursor = '';
@@ -956,7 +983,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   canvas.addEventListener('pointercancel', () => {
     right = middle = false; pointerStart = lastPointer = null;
     if (terrainStroke) finishTerrainStroke();
-    if (activePath) { setPathState(activePath, hoveredPath === activePath ? 'hover' : 'idle'); activePath = null; model.commit(); changed(); }
+    if (activePath) { setPathState(activePath, hoveredPath === activePath ? 'hover' : 'idle'); activePath = pathDrag = null; model.commit(); changed(); }
   });
   canvas.addEventListener('contextmenu', event => { if (active) event.preventDefault(); });
   canvas.addEventListener('pointerdown', event => {
@@ -971,6 +998,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       event.preventDefault(); event.stopImmediatePropagation();
       if (handle) {
         activePath = handle; hoveredPath = handle; setPathState(handle, 'active'); model.begin();
+        pathDrag = { resize: event.shiftKey, x: event.clientX, y: event.clientY, radius: handle.userData.radiusScale ?? 1 };
+        canvas.style.cursor = pathDrag.resize ? 'nwse-resize' : 'grabbing';
         canvas.setPointerCapture(event.pointerId); lastPointer = [event.clientX, event.clientY];
         return;
       }
@@ -997,7 +1026,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       }
       const next = pathHandleAt(event);
       if (next !== hoveredPath) { setPathState(hoveredPath, 'idle'); hoveredPath = next; setPathState(hoveredPath, 'hover'); }
-      canvas.style.cursor = hoveredPath ? 'grab' : 'crosshair'; return;
+      canvas.style.cursor = hoveredPath ? event.shiftKey ? 'nwse-resize' : 'grab' : 'crosshair'; return;
     }
     if (!lastPointer) return;
     const dx = event.clientX - lastPointer[0], dy = event.clientY - lastPointer[1]; lastPointer = [event.clientX, event.clientY];
@@ -1014,8 +1043,9 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     if (!active || !controls) return;
     if (terrainOpen && event.button === 0) { finishTerrainStroke(); return; }
     if (event.button === 0 && activePath) {
-      setPathState(activePath, hoveredPath === activePath ? 'hover' : 'idle'); activePath = null;
-      model.commit(); changed(); canvas.style.cursor = hoveredPath ? 'grab' : 'crosshair'; return;
+      setPathState(activePath, hoveredPath === activePath ? 'hover' : 'idle'); activePath = pathDrag = null;
+      model.commit(); changed(); canvas.style.cursor = hoveredPath ? 'grab' : 'crosshair';
+      setPathMode(true); return;
     }
     if (event.button !== 0) { right = middle = false; lastPointer = null; return; }
     const start = pointerStart; pointerStart = null;
@@ -1058,7 +1088,16 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()).project(camera);
         handles.push({ axis: object.name, x: (center.x + 1) * canvas.clientWidth / 2, y: (1 - center.y) * canvas.clientHeight / 2 });
       }
+      const fogPathHandles = pathMode ? pathHandles.map(handle => {
+        const screen = handle.position.clone().project(camera);
+        return { ...handle.userData.fogPath, radius: handle.userData.radiusScale, scale: handle.scale.x,
+          x: (screen.x + 1) * canvas.clientWidth / 2, y: (1 - screen.y) * canvas.clientHeight / 2 };
+      }) : [];
+      let fogMaskSum = 0;
+      const fogMask = pathMode ? getLocation().edgeShade?.texture?.image?.data : null;
+      if (fogMask) for (let index = 0; index < fogMask.length; index += 4) fogMaskSum += fogMask[index];
       return { selected: selected?.id ?? null, mode: controls?.mode ?? 'translate', renderMode: renderDebug?.mode ?? 'normal',
+        fogPathHandles, fogMaskSum, fogPaths: active ? registry.fogPaths(getLocation().id) : null,
         dragging: controls?.dragging ?? false, handles };
     },
     update(dt) {

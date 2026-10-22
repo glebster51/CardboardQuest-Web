@@ -3,18 +3,18 @@ import { createGameAudio } from './audio/game-audio.mjs?v=3';
 import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
-import { createGeometryClient } from './render/geometry-client.mjs?v=11';
+import { createGeometryClient } from './render/geometry-client.mjs?v=12';
 import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=3';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=27';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=28';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=148';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=172';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=149';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=173';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=7';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -28,7 +28,7 @@ import { getStoryDialogue } from './game/story-dialogue.mjs?v=3';
 import { createDialoguePanel } from './render/dialogue-panel.mjs?v=1';
 import { createLocationMapView } from './render/location-map-view.mjs?v=3';
 import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=2';
-import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=1';
+import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=2';
 import { buildLocationMapGraph } from './game/location-map-data.mjs';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
@@ -54,7 +54,7 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaign
 import { normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=2';
 import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
   ITEM_MAGNET_STORAGE_KEY, normalizeItemMagnetSettings } from './game/item-magnet.mjs?v=1';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=16';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=17';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,

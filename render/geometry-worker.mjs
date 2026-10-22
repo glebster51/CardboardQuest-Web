@@ -1,12 +1,12 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createTerrainRenderer } from './terrain-renderer.mjs?v=5';
+import { createTerrainRenderer } from './terrain-renderer.mjs?v=6';
 import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=6';
 import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=12';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=12';
 import { makeScenerySprite } from '../scenery-model-v4.mjs?v=8';
 import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=2';
 import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs';
-import { createCampaignLocations } from '../game/story-world.mjs?v=16';
+import { createCampaignLocations } from '../game/story-world.mjs?v=17';
 import { createLocationNetwork } from '../location-network.mjs';
 
 globalThis.document = { createElement: () => new OffscreenCanvas(1, 1) };

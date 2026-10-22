@@ -5,7 +5,7 @@ import { SCENE_OVERRIDES } from '../scene-overrides.mjs?v=129';
 import { hazardAtPoint } from './world-hazards.mjs';
 import { extractDepthMapMaskContours } from '../terrain-shapes.mjs?v=2';
 import { EXIT_FOG_ENTRY_CROSS_LIMIT, EXIT_FOG_ENTRY_MAX, EXIT_FOG_ENTRY_MIN, EXIT_FOG_ENTRY_OFFSET } from '../exit-fog.mjs';
-import { createDefaultFogPaths, validateFogPaths } from '../fog-paths.mjs';
+import { createDefaultFogPaths, validateFogPaths } from '../fog-paths.mjs?v=2';
 
 function findExitCascadeArrival(location, exit) {
   const alongOffsets = [EXIT_FOG_ENTRY_OFFSET];

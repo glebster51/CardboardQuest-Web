@@ -1,4 +1,5 @@
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=6';
+import { fogPathRadiusAt } from '../fog-paths.mjs?v=2';
 import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=10';
 export const LOCATION_FAR_COLOR = 0x242039;
 const originalMaterialHooks = new WeakMap();
@@ -17,7 +18,8 @@ export function fogPathDistanceAt(x, z, paths) {
     const dx = b[0] - a[0], dz = b[1] - a[1];
     const lengthSquared = dx * dx + dz * dz;
     const t = lengthSquared ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / lengthSquared)) : 0;
-    nearest = Math.min(nearest, Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)));
+    const radius = fogPathRadiusAt(path, index - 1) * (1 - t) + fogPathRadiusAt(path, index) * t;
+    nearest = Math.min(nearest, Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) / radius);
   }
   return nearest;
 }
@@ -35,10 +37,11 @@ function fogLoopArea(points) {
 
 /** Closes tiny authored gaps for rendering and marks enclosed trail loops as permanently clear. */
 export function buildFogPathTopology(paths, joinDistance = FOG_PATH_JOIN_DISTANCE) {
-  const nodes = new Map(), adjacency = new Map(), explicitEdges = new Set(), renderPaths = [...paths];
-  const nodeFor = point => {
+  const nodes = new Map(), radii = new Map(), adjacency = new Map(), explicitEdges = new Set(), renderPaths = [...paths];
+  const nodeFor = (point, radius) => {
     const key = fogNodeKey(point);
     if (!nodes.has(key)) { nodes.set(key, point); adjacency.set(key, new Set()); }
+    radii.set(key, Math.max(radii.get(key) ?? 0, radius));
     return key;
   };
   const addEdge = (a, b) => {
@@ -46,7 +49,7 @@ export function buildFogPathTopology(paths, joinDistance = FOG_PATH_JOIN_DISTANC
     adjacency.get(a).add(b); adjacency.get(b).add(a);
   };
   for (const path of paths) for (let index = 1; index < path.points.length; index++) {
-    const a = nodeFor(path.points[index - 1]), b = nodeFor(path.points[index]);
+    const a = nodeFor(path.points[index - 1], fogPathRadiusAt(path, index - 1)), b = nodeFor(path.points[index], fogPathRadiusAt(path, index));
     addEdge(a, b); explicitEdges.add(fogEdgeKey(a, b));
   }
 
@@ -81,7 +84,8 @@ export function buildFogPathTopology(paths, joinDistance = FOG_PATH_JOIN_DISTANC
       if (route.length >= 3 && fogLoopArea(route) >= 2) clearRegions.push(route);
     }
     addEdge(candidate.a, candidate.b);
-    renderPaths.push({ id: `implicit:${fogEdgeKey(candidate.a, candidate.b)}`, points: [nodes.get(candidate.a), nodes.get(candidate.b)] });
+    renderPaths.push({ id: `implicit:${fogEdgeKey(candidate.a, candidate.b)}`, points: [nodes.get(candidate.a), nodes.get(candidate.b)],
+      radii: [radii.get(candidate.a), radii.get(candidate.b)] });
   }
   return { paths: renderPaths, clearRegions };
 }
