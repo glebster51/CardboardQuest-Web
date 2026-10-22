@@ -12,9 +12,9 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=12';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=130';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=141';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=160';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=131';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=142';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=161';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -197,8 +197,10 @@ async function start() {
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
   if (activeCampaignGraph) for (const location of Object.values(locations)) applyCampaignGraphToLocation(location, activeCampaignGraph);
-  let playerOcclusionDither = null;
-  const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setLighting(settings) {
+  let playerOcclusionDither = null, applyUnitPuckColors = () => {};
+  const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setUnitPuckColors(settings) {
+    applyUnitPuckColors(settings);
+  }, setLighting(settings) {
     if (!sunLight) return;
     sunLight.position.set(...settings.direction);
     sunLight.intensity = settings.intensity;
@@ -476,6 +478,8 @@ async function start() {
   const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
     corrugation, paper, sceneStencil, heartMaterials, geometryClient,
     createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });
+  applyUnitPuckColors = createFigure.setPuckColors;
+  applyUnitPuckColors(sceneRegistry.unitPuckColors);
   const scenerySystem = createScenerySystem({ THREE, renderer, scene, locations, corrugation,
     paper, terrainCorrugation, sceneStencil, geometryClient });
   const { create: createScenery, loadTemplate: loadSceneryTemplate, loadStateTemplates,

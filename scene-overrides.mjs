@@ -33,6 +33,10 @@ export const SCENE_OVERRIDES = {
     "baseStrength": 0.42,
     "baseWidth": 0.3
   },
+  "unitPuckColors": {
+    "player": "#d1e8ae",
+    "enemy": "#e9a092"
+  },
   "locations": {
     "home": {
       "arrival:forest": {

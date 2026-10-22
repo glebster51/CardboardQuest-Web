@@ -1,4 +1,4 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=141';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=142';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=2';
@@ -40,6 +40,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       else if (object === 'fog-paths') label = 'Линии тумана';
       else if (object === 'terrain') label = 'Рельеф локации';
       else if (object === 'terrain-style') label = 'Цвета кромок террас';
+      else if (object === 'unit-puck-colors') label = 'Цвет шайб юнитов';
       else if (object === 'campaign-graph') label = 'Граф карты мира';
       else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
         .replace(/^placed:/, 'Добавленный объект · ').replace(/:/g, ' · ');
@@ -364,7 +365,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   function restoreHistory(action) {
     if (!model[action]()) return;
-    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); changed();
+    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); changed();
     requestTerrainRebuild();
   }
   async function openCampaignGraph() {
@@ -415,6 +416,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       const output = input.closest('label').querySelector('output');
       if (output) output.value = Number(input.value).toFixed(2);
     }
+  }
+  function refreshUnitPuckColors() {
+    for (const input of panel.querySelectorAll('[data-unit-puck-color]'))
+      input.value = registry.unitPuckColors[input.dataset.unitPuckColor];
   }
   function focusSelection(all = false) {
     const bounds = all || !selected
@@ -472,6 +477,9 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Угол X <output></output><input data-lighting-angle="x" aria-label="Угол света по X" type="range" min="-90" max="90" step="1"></label>
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
+      </div></details><details class="se-module"><summary>Шайбы под юнитами</summary><div class="se-module-content se-unit-pucks" role="group" aria-label="Цвета шайб игрока и врагов">
+        <label class="se-color">Шайба игрока<input data-unit-puck-color="player" aria-label="Цвет шайбы игрока" type="color"></label>
+        <label class="se-color">Шайбы врагов<input data-unit-puck-color="enemy" aria-label="Цвет шайб врагов" type="color"></label>
       </div></details><details class="se-module"><summary>Кромки террас · глобально</summary><div class="se-module-content se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
         <label>Аддитивная подсветка верхнего края<input data-terrain-style="edgeColor" aria-label="Цвет аддитивной подсветки верхней кромки рельефа" type="color"></label>
         <label>Сила <output></output><input data-terrain-style="edgeStrength" aria-label="Сила подсветки кромки" type="range" min="0" max="1" step=".01"></label>
@@ -592,7 +600,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     });
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
-      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); changed();
+      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); changed();
       requestTerrainRebuild();
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
@@ -605,7 +613,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       model.commit();
       if (!model.reset(location, object)) return;
       registry.sync(); campaignGraphEditor?.sync(); bindings = registry.bindings(getLocation().id);
-      refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); syncFogPathVisuals(); changed();
+      refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); syncFogPathVisuals(); changed();
       if (object === 'terrain') requestTerrainRebuild();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
@@ -707,6 +715,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         registry.changeTerrainStyle(settings); refreshTerrainStyle(); changed();
       });
     }
+    for (const input of panel.querySelectorAll('[data-unit-puck-color]')) {
+      input.addEventListener('pointerdown', () => model.begin());
+      input.addEventListener('change', () => model.commit());
+      input.addEventListener('input', () => {
+        registry.changeUnitPuckColors({ [input.dataset.unitPuckColor]: input.value });
+        refreshUnitPuckColors(); changed();
+      });
+    }
   }
   async function initialize() {
     const { TransformControls } = await import('./vendor/TransformControls.mjs');
@@ -764,7 +780,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (binding.helper) makeHelper(binding);
       }
       makeFogPathVisuals(location);
-      controls.enabled = true; select(null); refreshObjects(); refreshFog(); refreshLighting(); refreshTerrainStyle(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
+      controls.enabled = true; select(null); refreshObjects(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
       focusPoint.copy(camera.position).add(direction.set(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(15));
       if (model.diff().changes.length) void copyDiff(model.text());
     } catch (error) {

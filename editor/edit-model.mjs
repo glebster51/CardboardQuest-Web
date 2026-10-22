@@ -1,5 +1,5 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '156';
+export const SCENE_BUILD = '157';
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=7';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
@@ -25,6 +25,7 @@ export const TERRAIN_STYLE_DEFAULTS = {
   edgeColor: '#fff0c7', edgeStrength: .38, edgeWidth: .16,
   baseColor: '#33271f', baseStrength: .42, baseWidth: .3,
 };
+export const UNIT_PUCK_COLOR_DEFAULTS = { player: '#d1e8ae', enemy: '#e9a092' };
 const clone = value => JSON.parse(JSON.stringify(value));
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const roundSceneValue = value => Math.round(value * 100000) / 100000;
@@ -36,8 +37,8 @@ export function writeTransform(object, value) {
   for (const key of ['position', 'rotation', 'scale']) object[key].set(...value[key]);
   object.updateMatrixWorld(true);
 }
-export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false, globalTerrainStyle = false) {
-  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain && !globalTerrainStyle) return value;
+export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false, globalTerrainStyle = false, unitPuckColors = false) {
+  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain && !globalTerrainStyle && !unitPuckColors) return value;
   if (!value || typeof value !== 'object') throw new Error('Scene value must be an object');
   if (fogPaths) return validateFogPaths(value);
   if (graph) return validateCampaignGraph(value);
@@ -51,6 +52,12 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || !Number.isFinite(value.edgeWidth) || value.edgeWidth < .03 || value.edgeWidth > .5
       || !Number.isFinite(value.baseWidth) || value.baseWidth < .03 || value.baseWidth > .5)
       throw new Error('Invalid global terrain style');
+    return value;
+  }
+  if (unitPuckColors) {
+    if (Object.keys(value).some(key => !Object.hasOwn(UNIT_PUCK_COLOR_DEFAULTS, key))
+      || !/^#[0-9a-f]{6}$/i.test(value.player) || !/^#[0-9a-f]{6}$/i.test(value.enemy))
+      throw new Error('Invalid unit puck colors');
     return value;
   }
   const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
@@ -108,7 +115,7 @@ export function createEditModel() {
     get(location, object) { const entry = records.get(id(location, object)); return entry ? clone(entry.after) : null; },
     begin() { if (!transaction) transaction = new Map(); },
     set(location, object, value) {
-      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain', object === 'terrain-style');
+      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain', object === 'terrain-style', object === 'unit-puck-colors');
       const key = id(location, object), entry = records.get(key);
       if (!entry) throw new Error(`Unregistered scene object: ${object}`);
       if (equal(entry.after, value)) return false;
@@ -160,25 +167,28 @@ export function mergeSceneDiff(overrides, diff) {
     if (typeof object !== 'string' || !/^[a-zA-Z0-9:/._-]+$/.test(object) || /(?:__proto__|constructor|prototype)/.test(object))
       throw new Error('Invalid scene object id');
     const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
-      lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style';
-    if (fog || graph || lighting || globalTerrainStyle ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
+      lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style',
+      unitPuckColors = object === 'unit-puck-colors';
+    if (fog || graph || lighting || globalTerrainStyle || unitPuckColors ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
       || ['constructor', 'prototype'].includes(location)) throw new Error('Invalid scene location');
-    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle);
-    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle);
+    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors);
+    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors);
     if (before === null && after === null) throw new Error('An empty edit has no effect');
     if (before === null && (!object.startsWith('placed:') || !after.asset)) throw new Error('New objects must come from the asset library');
     const current = fog ? { ...FOG_DEFAULTS, ...result.fog } : lighting ? { ...LIGHTING_DEFAULTS, ...result.lighting }
       : globalTerrainStyle ? { ...TERRAIN_STYLE_DEFAULTS, ...result.terrainStyle }
+      : unitPuckColors ? { ...UNIT_PUCK_COLOR_DEFAULTS, ...result.unitPuckColors }
       : graph ? result.graph ?? before : terrain ? result.locations[location]?.terrain ?? { strokes: [] }
         : result.locations[location]?.[object];
     const matches = (value, expected) => fog
       ? Object.keys(expected).every(key => equal(value?.[key], expected[key]))
       : equal(value, expected);
-    if ((fog || lighting || graph || terrain || globalTerrainStyle || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
+    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
       throw new Error(`Scene edit conflict: ${location}/${object}`);
     if (fog) result.fog = { ...current, ...clone(after) };
     else if (lighting) result.lighting = clone(after);
     else if (globalTerrainStyle) result.terrainStyle = clone(after);
+    else if (unitPuckColors) result.unitPuckColors = clone(after);
     else if (graph) result.graph = clone(after);
     else { result.locations[location] ??= {}; result.locations[location][object] = clone(after); }
   }

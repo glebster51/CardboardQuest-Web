@@ -1,11 +1,11 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=141';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=142';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
-export function createSceneRegistry({ THREE, overrides, setFog, setLighting = () => {}, setTerrainStyle = () => {} }) {
+export function createSceneRegistry({ THREE, overrides, setFog, setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {} }) {
   const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
   const fog = { ...FOG_DEFAULTS, ...overrides.fog }; model.register(null, 'fog', fog);
   const lighting = { ...LIGHTING_DEFAULTS, ...overrides.lighting,
@@ -14,6 +14,9 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
   const terrainStyle = { ...TERRAIN_STYLE_DEFAULTS, ...overrides.terrainStyle };
   validateSceneValue(terrainStyle, false, false, false, false, false, true);
   model.register(null, 'terrain-style', terrainStyle);
+  const unitPuckColors = { ...UNIT_PUCK_COLOR_DEFAULTS, ...overrides.unitPuckColors };
+  validateSceneValue(unitPuckColors, false, false, false, false, false, false, true);
+  model.register(null, 'unit-puck-colors', unitPuckColors);
   const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.asset ? { asset: binding.asset, size: binding.size } : {}) });
   function fogPathsMatchLocation(paths, location) {
     try {
@@ -98,7 +101,7 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
     return meshes;
   }
   return {
-    model, fog, lighting, terrainStyle,
+    model, fog, lighting, terrainStyle, unitPuckColors,
     terrainEdits(id) {
       if (model.has(id, 'terrain')) return model.get(id, 'terrain');
       const value = overrides.locations[id]?.terrain ?? { strokes: [] };
@@ -221,6 +224,12 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       Object.assign(terrainStyle, next); setTerrainStyle(terrainStyle);
       return model.set(null, 'terrain-style', { ...terrainStyle });
     },
+    changeUnitPuckColors(settings) {
+      const next = { ...unitPuckColors, ...settings };
+      validateSceneValue(next, false, false, false, false, false, false, true);
+      Object.assign(unitPuckColors, next); setUnitPuckColors(unitPuckColors);
+      return model.set(null, 'unit-puck-colors', { ...unitPuckColors });
+    },
     changeTerrain(location, edits) {
       validateTerrainEdits(edits);
       const changed = model.set(location.id, 'terrain', edits);
@@ -241,6 +250,7 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       Object.assign(fog, model.get(null, 'fog')); setFog(fog);
       Object.assign(lighting, model.get(null, 'lighting')); setLighting(lighting);
       Object.assign(terrainStyle, model.get(null, 'terrain-style')); setTerrainStyle(terrainStyle);
+      Object.assign(unitPuckColors, model.get(null, 'unit-puck-colors')); setUnitPuckColors(unitPuckColors);
       for (const [id, source] of sources) {
         source.location.fogPaths = model.get(id, 'fog-paths');
         source.location.edgeShade?.updatePaths(source.location.fogPaths);

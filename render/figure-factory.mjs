@@ -28,6 +28,12 @@ function yieldFrameWork() {
 export function createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
   corrugation, paper, sceneStencil, heartMaterials, createEnemyMarker, groundUiY, assetBase = 'assets/', geometryClient }) {
   const artCache = new Map();
+  let puckColors = { player: '#d1e8ae', enemy: '#e9a092' };
+  const unitPucks = new Set();
+  function setPuckColors(settings) {
+    puckColors = { ...puckColors, ...settings };
+    for (const { base, team } of unitPucks) for (const material of [base.material].flat()) material.color.set(puckColors[team]);
+  }
 
   async function loadWorkerArt(body, prefix) {
     const states = {};
@@ -143,6 +149,10 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
       new THREE.MeshStandardMaterial({ map: paper, roughness: 1, ...sceneStencil }),
       new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
     ]);
+    const puckTeam = body.team === 'player' ? 'player' : 'enemy';
+    base.userData.unitPuckTeam = puckTeam;
+    unitPucks.add({ base, team: puckTeam });
+    for (const material of [base.material].flat()) material.color.set(puckColors[puckTeam]);
     base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
     group.add(base);
     const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(.98, .34), contactShadowMaterial);
@@ -211,6 +221,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     enableFigurePickLayer(group, body.team);
     return figure;
   };
+  createFigure.setPuckColors = setPuckColors;
   createFigure.releaseUnused = async prefixes => {
     const removed = [];
     for (const [key, pending] of artCache) if (!prefixes.has(key.split(':')[0])) {
