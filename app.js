@@ -12,7 +12,7 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=3';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=137';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=148';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=149';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';

@@ -440,13 +440,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const screenEffects = getScreenEffects();
     panel.innerHTML = `<div class="se-toolbar">
       <header><div><small>РЕДАКТОР СЦЕНЫ · ИГРА НА ПАУЗЕ</small><strong id="se-location"></strong></div>
-        <div class="se-modes" role="group" aria-label="Гизмо">
-          <button data-mode="translate" aria-pressed="true" title="W — перемещение"><kbd>W</kbd> Двигать</button>
-          <button data-mode="rotate" aria-pressed="false" title="E — вращение"><kbd>E</kbd> Вращать</button>
-          <button data-mode="scale" aria-pressed="false" title="R — масштаб"><kbd>R</kbd> Масштаб</button></div>
-        <button id="se-undo" title="Ctrl+Z">↶</button><button id="se-redo" title="Ctrl+Y">↷</button>
         <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
-        <button id="se-close" title="~ / Ё">Вернуться в игру ×</button>
       </header></div><aside class="se-controls" aria-label="Параметры сцены">
       <details class="se-module" open><summary>Туман</summary><div class="se-module-content se-fog">
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
@@ -561,7 +555,6 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       emitScreenEffects();
     });
     ui.objects.addEventListener('change', () => select(bindings.find(binding => binding.id === ui.objects.value)));
-    panel.querySelector('#se-close').addEventListener('click', () => void toggle());
     panel.querySelector('#se-focus').addEventListener('click', () => focusSelection());
     panel.querySelector('#se-overview').addEventListener('click', () => focusSelection(true));
     panel.querySelector('#se-level-graph').addEventListener('click', () => void openCampaignGraph());
@@ -590,8 +583,6 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         ui.status.textContent = 'Рельеф возвращён к опубликованной версии.';
       }
     });
-    panel.querySelector('#se-undo').addEventListener('click', () => restoreHistory('undo'));
-    panel.querySelector('#se-redo').addEventListener('click', () => restoreHistory('redo'));
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); changed();
