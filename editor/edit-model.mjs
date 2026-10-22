@@ -1,6 +1,6 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
 export const SCENE_BUILD = '154';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=4';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=5';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
@@ -40,7 +40,7 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
     return value;
   }
   const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
-    'revealNoiseEnabled', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply',
+    'revealNoiseEnabled', 'revealNoiseType', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply',
     'revealNoiseSpeedX', 'revealNoiseSpeedY', 'revealCheckerSize']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
@@ -52,6 +52,7 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || (value.revealOuterRadius !== undefined && (!Number.isFinite(value.revealOuterRadius) || value.revealOuterRadius < 1 || value.revealOuterRadius > 640))
       || (value.revealNoiseSize !== undefined && (!Number.isFinite(value.revealNoiseSize) || value.revealNoiseSize < 2 || value.revealNoiseSize > 160))
       || (value.revealNoiseEnabled !== undefined && typeof value.revealNoiseEnabled !== 'boolean')
+      || (value.revealNoiseType !== undefined && !['voronoi', 'gaussian'].includes(value.revealNoiseType))
       || (value.revealNoiseShift !== undefined && (!Number.isFinite(value.revealNoiseShift) || value.revealNoiseShift < -1 || value.revealNoiseShift > 1))
       || (value.revealNoiseMultiply !== undefined && (!Number.isFinite(value.revealNoiseMultiply) || value.revealNoiseMultiply < 0 || value.revealNoiseMultiply > 2))
       || (value.revealNoiseSpeedX !== undefined && (!Number.isFinite(value.revealNoiseSpeedX) || value.revealNoiseSpeedX < -2 || value.revealNoiseSpeedX > 2))

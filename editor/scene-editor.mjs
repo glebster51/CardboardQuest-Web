@@ -1,6 +1,7 @@
 import { readTransform } from './edit-model.mjs?v=137';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
+import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=1';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
@@ -20,6 +21,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   const keys = new Set(), focusPoint = new THREE.Vector3(), direction = new THREE.Vector3();
   const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
   const ui = {};
+  let refreshRevealSettings = () => {};
   const addJobs = new Set();
   const objectLabels = new Map(), locationLabels = new Map();
   const sceneKey = (location, object) => JSON.stringify([location, object]);
@@ -389,16 +391,9 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (input.type === 'checkbox') input.checked = Boolean(value);
       else input.value = value;
       const output = input.closest('label').querySelector('output');
-      if (output) output.value = input.dataset.fog === 'revealCheckerSize' || input.dataset.fog === 'revealNoiseSize'
-        ? `${Number(input.value).toFixed(1)} px`
-        : input.dataset.fog === 'revealNoiseShift' || input.dataset.fog === 'revealNoiseMultiply'
-          ? Number(input.value).toFixed(2)
-          : input.dataset.fog.startsWith('revealNoiseSpeed')
-            ? `${Number(input.value).toFixed(2)} яч/с`
-        : input.dataset.fog.startsWith('reveal')
-        ? `${Number(input.value).toFixed(0)} px`
-        : Number(input.value).toFixed(2);
+      if (output) output.value = Number(input.value).toFixed(2);
     }
+    refreshRevealSettings();
   }
   function refreshLighting() {
     for (const input of panel.querySelectorAll('[data-lighting]')) {
@@ -456,17 +451,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Тонирование <output></output><input data-fog="tint" aria-label="Тонирование тумана" type="range" min="0" max="1" step=".01"></label>
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
-        <label>Внутренний радиус просвета <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета игрока" type="range" min="0" max="480" step="1"></label>
-        <label>Внешний радиус просвета <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус просвета игрока" type="range" min="1" max="640" step="1"></label>
-        <label><input data-fog="revealNoiseEnabled" aria-label="Включить шум просвета" type="checkbox"> Voronoi-шум</label>
-        <label>Масштаб шума <output></output><input data-fog="revealNoiseSize" aria-label="Размер ячеек Voronoi-шума" type="range" min="2" max="160" step="1"></label>
-        <label>Сдвиг шума <output></output><input data-fog="revealNoiseShift" aria-label="Сдвиг Voronoi-шума" type="range" min="-1" max="1" step=".01"></label>
-        <label>Умножение шума <output></output><input data-fog="revealNoiseMultiply" aria-label="Множитель Voronoi-шума до формулы просвета" type="range" min="0" max="2" step=".01"></label>
-        <label>Скорость шума X <output></output><input data-fog="revealNoiseSpeedX" aria-label="Скорость прокрутки шума по X" type="range" min="-2" max="2" step=".01"></label>
-        <label>Скорость шума Y <output></output><input data-fog="revealNoiseSpeedY" aria-label="Скорость прокрутки шума по Y" type="range" min="-2" max="2" step=".01"></label>
-        <label>Размер шахматки <output></output><input data-fog="revealCheckerSize" aria-label="Размер пиксельной шахматки просвета" type="range" min="1" max="16" step="0.5"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
-      </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
+      </div></details>${createPlayerRevealSettingsMarkup()}<details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
         <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>
         <label><input type="checkbox" data-screen-effect="tiltShift" ${screenEffects.tiltShift ? 'checked' : ''}> Tilt-shift</label>
         <label>Радиус SSAO <output>${screenEffects.ssaoKernelRadius}</output><input data-effect-setting="ssaoKernelRadius" aria-label="Радиус SSAO" type="range" min="0" max="16" step=".25" value="${screenEffects.ssaoKernelRadius}"></label>
@@ -536,6 +522,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <button role="tab" data-library-category="characters" aria-selected="false">Персонажи</button>
       </nav><div id="se-assets" role="tabpanel"></div></section>`;
     document.body.append(panel);
+    refreshRevealSettings = bindPlayerRevealSettings({ panel, registry, model, changed });
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
     for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);

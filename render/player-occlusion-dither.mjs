@@ -1,5 +1,6 @@
 export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 14, revealOuterRadius: 76,
-  revealNoiseEnabled: true, revealNoiseSize: 8, revealNoiseShift: 0, revealNoiseMultiply: .35, revealCheckerSize: 3 });
+  revealNoiseEnabled: true, revealNoiseType: 'voronoi', revealNoiseSize: 8, revealNoiseShift: 0,
+  revealNoiseMultiply: .35, revealNoiseSpeedX: .08, revealNoiseSpeedY: .04, revealCheckerSize: 3 });
 
 /** Adds the screen-space dither discard to one opaque scenery shader. */
 export function applyPlayerOcclusionDitherShader(shader, uniforms) {
@@ -56,13 +57,25 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
 export function createPlayerOcclusionDither(THREE, renderer,
   getRenderPixelRatio = () => renderer.getPixelRatio()) {
   let noiseTexture = null;
+  let loadNoiseTexture = null;
+  const noiseTextures = new Map();
   if (THREE.TextureLoader) {
-    noiseTexture = new THREE.TextureLoader().load(new URL('../assets/player-reveal-voronoi-256.png?v=1', import.meta.url).href);
-    noiseTexture.wrapS = noiseTexture.wrapT = THREE.RepeatWrapping;
-    noiseTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    noiseTexture.magFilter = THREE.LinearFilter;
-    noiseTexture.generateMipmaps = true;
-    noiseTexture.colorSpace = THREE.NoColorSpace;
+    const loader = new THREE.TextureLoader();
+    const getNoiseTexture = type => {
+      const existing = noiseTextures.get(type);
+      if (existing) return existing;
+      const name = type === 'gaussian' ? 'player-reveal-gaussian-256.png?v=1' : 'player-reveal-voronoi-256.png?v=1';
+      const texture = loader.load(new URL(`../assets/${name}`, import.meta.url).href);
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = true;
+      texture.colorSpace = THREE.NoColorSpace;
+      noiseTextures.set(type, texture);
+      return texture;
+    };
+    noiseTexture = getNoiseTexture(PLAYER_REVEAL_DEFAULTS.revealNoiseType);
+    loadNoiseTexture = getNoiseTexture;
   }
   const uniforms = {
     cqRevealEnabled: { value: 0 },
@@ -87,6 +100,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
   let outerRadius = PLAYER_REVEAL_DEFAULTS.revealOuterRadius;
   let checkerSize = PLAYER_REVEAL_DEFAULTS.revealCheckerSize;
   let noiseEnabled = PLAYER_REVEAL_DEFAULTS.revealNoiseEnabled;
+  let noiseType = PLAYER_REVEAL_DEFAULTS.revealNoiseType;
   let noiseSize = PLAYER_REVEAL_DEFAULTS.revealNoiseSize;
   let noiseShift = PLAYER_REVEAL_DEFAULTS.revealNoiseShift;
   let noiseMultiply = PLAYER_REVEAL_DEFAULTS.revealNoiseMultiply;
@@ -113,12 +127,14 @@ export function createPlayerOcclusionDither(THREE, renderer,
     outerRadius = settings.revealOuterRadius ?? outerRadius;
     checkerSize = settings.revealCheckerSize ?? checkerSize;
     noiseEnabled = settings.revealNoiseEnabled ?? noiseEnabled;
+    noiseType = settings.revealNoiseType ?? noiseType;
     noiseSize = settings.revealNoiseSize ?? noiseSize;
     noiseShift = settings.revealNoiseShift ?? noiseShift;
     noiseMultiply = settings.revealNoiseMultiply ?? noiseMultiply;
     noiseSpeedX = settings.revealNoiseSpeedX ?? noiseSpeedX;
     noiseSpeedY = settings.revealNoiseSpeedY ?? noiseSpeedY;
     uniforms.cqRevealNoiseEnabled.value = noiseEnabled ? 1 : 0;
+    if (loadNoiseTexture) uniforms.cqRevealNoiseMap.value = loadNoiseTexture(noiseType);
     uniforms.cqRevealNoiseShift.value = noiseShift;
     uniforms.cqRevealNoiseMultiply.value = noiseMultiply;
     uniforms.cqRevealNoiseSpeed.value.set(noiseSpeedX, noiseSpeedY);
