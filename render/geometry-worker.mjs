@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createTerrainRenderer } from './terrain-renderer.mjs?v=2';
+import { createTerrainRenderer } from './terrain-renderer.mjs?v=3';
 import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=5';
 import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=10';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=10';
@@ -30,7 +30,7 @@ self.onmessage = async ({ data: { id, kind, payload } }) => {
       createTerrainRenderer({ THREE, locations: { [location.id]: location }, createTerrainHeightMap,
         createTerrainHeightMapFromDepthMap, extractTerrainContours, paper: shared.paper,
         playfieldCardboard: shared.grain, roughCardboard: shared.grain,
-        terrainCorrugation: shared.terrainCorrugation, sceneStencil: { stencilWrite: true, stencilRef: 0,
+        terrainCorrugation: shared.terrainCorrugation, fogSettings: payload.fog, sceneStencil: { stencilWrite: true, stencilRef: 0,
           stencilFunc: THREE.AlwaysStencilFunc, stencilFail: THREE.KeepStencilOp,
           stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp } });
       const { sample, ...heightMap } = location.terrainHeightMap;

@@ -1,6 +1,8 @@
 import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs';
 import { exitRoadContinuation } from '../game/location-art.mjs';
 import { smoothClosedContour } from '../terrain-shapes.mjs?v=2';
+import { terrainLevelCenter, terrainSideTriangleMask } from '../terrain-side-culling.mjs?v=2';
+import { buildFogPathTopology } from './location-edge-shade.mjs?v=25';
 
 function terrainShape(THREE, outerPoints, holes = []) {
   const shape = new THREE.Shape();
@@ -57,6 +59,39 @@ function shapesFromContours(THREE, contours) {
     }
     return shape;
   });
+}
+
+function cullFogHiddenOutwardWalls(THREE, geometry, levelCenter, fogTopology, fogSettings) {
+  const expanded = geometry.index ? geometry.toNonIndexed() : geometry;
+  const positions = expanded.getAttribute('position').array;
+  const keep = terrainSideTriangleMask(positions, expanded.groups, levelCenter, fogTopology, fogSettings);
+  if (keep.every(Boolean)) {
+    if (expanded !== geometry) expanded.dispose();
+    return geometry;
+  }
+  const filtered = new THREE.BufferGeometry();
+  for (const [name, attribute] of Object.entries(expanded.attributes)) {
+    const values = []; let outputVertexCount = 0;
+    for (const group of expanded.groups) {
+      const groupStart = outputVertexCount;
+      const start = group.start, end = Math.min(positions.length / 3, start + group.count);
+      for (let vertex = start; vertex + 2 < end; vertex += 3) {
+        if (!keep[vertex / 3]) continue;
+        for (let corner = 0; corner < 3; corner++) {
+          const offset = (vertex + corner) * attribute.itemSize;
+          for (let component = 0; component < attribute.itemSize; component++) values.push(attribute.array[offset + component]);
+        }
+        outputVertexCount += 3;
+      }
+      if (name === 'position' && outputVertexCount > groupStart)
+        filtered.addGroup(groupStart, outputVertexCount - groupStart, group.materialIndex);
+    }
+    filtered.setAttribute(name, new THREE.BufferAttribute(new Float32Array(values), attribute.itemSize, attribute.normalized));
+  }
+  filtered.computeBoundingBox(); filtered.computeBoundingSphere();
+  if (expanded !== geometry) expanded.dispose();
+  geometry.dispose();
+  return filtered;
 }
 
 /** A solid footprint beneath the noisy terrace islands, so low valleys cannot show through. */
@@ -144,8 +179,11 @@ function addHazardBasins(THREE, location, paper, corrugation) {
 }
 
 export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap, createTerrainHeightMapFromDepthMap = createTerrainHeightMap, extractTerrainContours,
-  paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6 }) {
+  paper, playfieldCardboard = paper, roughCardboard = paper, terrainCorrugation, sceneStencil, maxHeight = 3.6,
+  fogSettings }) {
   for (const location of Object.values(locations)) {
+    const levelCenter = terrainLevelCenter(location.walkablePoints);
+    const fogTopology = buildFogPathTopology(location.fogPaths?.paths ?? []);
     const seed = location.heightSeed ?? (location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731);
     const bounds = location.walkablePoints.reduce((result, point) => ({
       minX: Math.min(result.minX, point.x), maxX: Math.max(result.maxX, point.x),
@@ -167,11 +205,13 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
     if (backingOutline.length >= 3) {
       const shape = terrainShape(THREE, backingOutline, [location.walkablePoints, ...(heightMap.negativeContours ?? [])]);
       const depth = .3;
-      const backing = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 }), [
+      let backingGeometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 });
+      backingGeometry.rotateX(-Math.PI / 2);
+      backingGeometry = cullFogHiddenOutwardWalls(THREE, backingGeometry, levelCenter, fogTopology, fogSettings);
+      const backing = new THREE.Mesh(backingGeometry, [
         makeRoughCardboardMaterial(THREE, roughCardboard, palette.tops[0], sceneStencil),
         makeRoughCardboardMaterial(THREE, terrainCorrugation, palette.side, sceneStencil),
       ]);
-      backing.rotation.x = -Math.PI / 2;
       backing.position.y = -depth - .015;
       backing.receiveShadow = true;
       backing.name = `terrain-top-backing-${location.id}`;
@@ -206,10 +246,11 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
           });
         },
       };
-      const geometry = new THREE.ExtrudeGeometry(layer.shapes, {
+      let geometry = new THREE.ExtrudeGeometry(layer.shapes, {
         depth: layer.depth, bevelEnabled: false, steps: 1, UVGenerator: uvGenerator,
       });
       geometry.rotateX(-Math.PI / 2);
+      geometry = cullFogHiddenOutwardWalls(THREE, geometry, levelCenter, fogTopology, fogSettings);
       const topMaterial = layer.top === 0
         ? makePlayfieldCardboardMaterial(THREE, playfieldCardboard, layer.topColor, sceneStencil)
         : makeRoughCardboardMaterial(THREE, roughCardboard, layer.topColor, sceneStencil);

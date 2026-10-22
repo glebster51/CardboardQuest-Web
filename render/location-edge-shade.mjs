@@ -10,7 +10,7 @@ function distanceToSegment(x, z, a, b) {
   return Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t));
 }
 
-function pathDistanceAt(x, z, paths) {
+export function fogPathDistanceAt(x, z, paths) {
   let nearest = Infinity;
   for (const path of paths) for (let index = 1; index < path.points.length; index++) {
     const a = path.points[index - 1], b = path.points[index];
@@ -86,7 +86,7 @@ export function buildFogPathTopology(paths, joinDistance = FOG_PATH_JOIN_DISTANC
   return { paths: renderPaths, clearRegions };
 }
 
-function isInsideFogLoop(x, z, regions) {
+export function isInsideFogLoop(x, z, regions) {
   for (const points of regions) {
     let regionInside = false;
     for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -100,7 +100,7 @@ function isInsideFogLoop(x, z, regions) {
 
 export function locationFogShadeAt(x, z, topology, settings = FOG_DEFAULTS) {
   return isInsideFogLoop(x, z, topology.clearRegions)
-    ? 0 : shadeAtDistance(pathDistanceAt(x, z, topology.paths), settings);
+    ? 0 : shadeAtDistance(fogPathDistanceAt(x, z, topology.paths), settings);
 }
 
 function isInsidePolygon(x, z, points) {

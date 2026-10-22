@@ -8,7 +8,8 @@ const editable = target => target instanceof HTMLElement && (target.matches('inp
 
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
 export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset, rebuildTerrain,
-  getCampaignGraphData, onCampaignGraphChange, getScreenEffects = () => ({ ssao: true, tiltShift: true }), onScreenEffectsChange = () => {} }) {
+  getCampaignGraphData, onCampaignGraphChange, getScreenEffects = () => ({ ssao: true, tiltShift: true }), onScreenEffectsChange = () => {},
+  onFogSettingsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
@@ -681,7 +682,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           if (input.dataset.fog === 'revealInnerRadius') settings.revealOuterRadius = settings.revealInnerRadius + 1;
           else settings.revealInnerRadius = Math.max(0, settings.revealOuterRadius - 1);
         }
-        registry.changeFog(settings); refreshFog(); changed();
+        registry.changeFog(settings); onFogSettingsChange(settings, input.dataset.fog); refreshFog(); changed();
       });
     }
     for (const input of panel.querySelectorAll('[data-lighting]')) {

@@ -8,13 +8,13 @@ import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=24';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=25';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=12';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=132';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=143';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=163';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=164';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -1042,7 +1042,9 @@ async function start() {
       id, scale: LOCATION_SCALE, layoutReady: !rebuildLayout,
       heightSeed: location.heightSeed, walkablePoints: location.walkablePoints,
       exits: location.exits, dropZones: location.dropZones, hazards: location.hazards,
-      art: location.art, terrainStyle: location.terrainStyle, terrainEdits: sceneRegistry.terrainEdits(id) });
+      fogPaths: location.fogPaths,
+      art: location.art, terrainStyle: location.terrainStyle, terrainEdits: sceneRegistry.terrainEdits(id),
+      fog: { start: sceneRegistry.fog.start, end: sceneRegistry.fog.end } });
     if (terrain.layout) Object.assign(location, terrain.layout);
     if (activeCampaignGraph) { applyCampaignGraphToLocation(location, activeCampaignGraph); sceneRegistry.graphChanged(location); }
     applyTerrainEdgeStyle(terrain.group, THREE, sceneRegistry.terrainStyle);
@@ -1148,12 +1150,26 @@ async function start() {
     reportLoadStage(`Локация ${id}: готова`, 'ready');
     return location;
   }
+  let terrainFogRebuildTimer = 0, terrainFogRebuildChain = Promise.resolve();
+  function scheduleTerrainFogRebuild() {
+    clearTimeout(terrainFogRebuildTimer);
+    terrainFogRebuildTimer = setTimeout(() => {
+      terrainFogRebuildChain = terrainFogRebuildChain.catch(() => {}).then(async () => {
+        for (const location of Object.values(locations)) if (location.runtimeReady) {
+          try { await rebuildLocationTerrain(location, sceneRegistry.terrainEdits(location.id)); }
+          catch (error) { console.warn(`Не удалось обновить отсечение террейна для ${location.id}`, error); }
+        }
+      });
+    }, 180);
+  }
   async function rebuildLocationTerrain(location, edits) {
     if (!location?.runtimeReady || !location.sceneGroup) return;
     const result = await geometryClient.run('terrain', {
       id: location.id, scale: LOCATION_SCALE, layoutReady: true, heightSeed: location.heightSeed,
       walkablePoints: location.walkablePoints, exits: location.exits, dropZones: location.dropZones,
+      fogPaths: location.fogPaths,
       hazards: location.hazards, art: location.art, terrainStyle: location.terrainStyle, terrainEdits: edits,
+      fog: { start: sceneRegistry.fog.start, end: sceneRegistry.fog.end },
     });
     const isTerrain = object => /^(terrain|playfield)-top-/.test(object.name);
     const removed = location.sceneGroup.children.filter(isTerrain);
@@ -1866,6 +1882,7 @@ async function start() {
   reportLoadStage('Подключение редактора сцены');
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
     rebuildTerrain: rebuildLocationTerrain,
+    onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end') scheduleTerrainFogRebuild(); },
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
     getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
     getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
