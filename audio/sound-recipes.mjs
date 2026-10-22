@@ -23,6 +23,7 @@ export const SOUND_RECIPES = Object.freeze({
     ...chime([523.25, 659.25, 783.99, 1046.5], .09, .13).map(note => ({ ...note, at: note.at + .18 }))],
   aim: [noise(0, .09, 600, 1600, .035), tone(0, .11, 165, 215, .045, 'triangle')],
   ready: chime([880, 1174.66], .07, .1),
+  readyPeace: chime([392, 523.25], .09, .045).map(note => ({ ...note, filterFrequency: 1050 })),
   dash: [noise(0, .25, 2500, 400, .19), tone(0, .12, 130, 55, .12, 'triangle')],
   enemyDash: [noise(0, .2, 1300, 350, .095)],
   projectile: [noise(0, .16, 3000, 900, .07), tone(0, .07, 390, 180, .045, 'triangle')],

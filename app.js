@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createGameAudio } from './audio/game-audio.mjs';
+import { createGameAudio } from './audio/game-audio.mjs?v=3';
 import { createAudioControls } from './audio/audio-controls.mjs';
-import { audioMood, audioAmbience } from './audio/audio-rules.mjs';
+import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=4';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
@@ -1890,7 +1890,10 @@ async function start() {
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
       const rechargeInterval = body === heroBody ? PLAYER_CHARGE_RECHARGE_INTERVAL : undefined;
       const restored = advanceChargeRecharge(body, dt, rechargeInterval);
-      if (body === heroBody && restored > 0) audio.play('ready');
+      if (body === heroBody && restored > 0) {
+        const mood = audioMood(activeLocation, heroBody.health, canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL));
+        audio.play(chargeReadyCue(mood));
+      }
       if (body.team !== 'enemy') continue;
       if (victorySequenceActive) continue;
       const figure = figures.find(item => item.body === body);

@@ -15,6 +15,9 @@ export function audioMood(location, health, encounterCleared = false) {
   if (!encounterCleared && location?.kind === 'camp' && ((location.pendingSpawns ?? 0) > 0 || location.reinforcementQueue?.length)) return 'battle';
   return /ruin|quarry|vault|bell|cave|crypt|mine|pass|shrine/.test(location?.id ?? '') ? 'mystery' : 'peace';
 }
+export function chargeReadyCue(mood) {
+  return mood === 'battle' || mood === 'boss' ? 'ready' : 'readyPeace';
+}
 export function audioAmbience(location) {
   if (/brook|river|bridge|marsh|water|spring/.test(location?.id ?? '')) return 'water';
   if (/vault|crypt|cave|mine/.test(location?.id ?? '')) return 'cave';

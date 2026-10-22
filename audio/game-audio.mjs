@@ -1,6 +1,6 @@
 import { AUDIO_SETTINGS_KEY, normalizeAudioSettings } from './audio-rules.mjs';
 import { MUSIC_TRACKS } from './music-tracks.mjs';
-import { SOUND_RECIPES } from './sound-recipes.mjs';
+import { SOUND_RECIPES } from './sound-recipes.mjs?v=2';
 
 /** Lazy audio: no context, music requests or decoded music before a user gesture. */
 export function createGameAudio({ windowRef = window, documentRef = document, storage = windowRef.localStorage,
@@ -101,7 +101,7 @@ export function createGameAudio({ windowRef = window, documentRef = document, st
       const source = note.type === 'noise' ? context.createBufferSource() : context.createOscillator();
       const filter = context.createBiquadFilter(), gain = context.createGain(), panner = context.createStereoPanner();
       filter.type = note.filter ?? 'lowpass'; filter.Q.value = note.type === 'noise' ? .7 : .4;
-      filter.frequency.setValueAtTime(note.type === 'noise' ? note.frequency : 3200, start);
+      filter.frequency.setValueAtTime(note.type === 'noise' ? note.frequency : note.filterFrequency ?? 3200, start);
       if (note.type === 'noise') {
         source.buffer = noiseBuffer;
         filter.frequency.exponentialRampToValueAtTime(Math.max(30, note.endFrequency), end);
