@@ -2,6 +2,7 @@ import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs'
 import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=6';
 import { heartHealthLevels } from '../heart-health.mjs';
 import { enableFigurePickLayer } from '../game/pick-layers.mjs';
+import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
@@ -12,6 +13,7 @@ function cloneSpriteModel(model) {
   const flashMaterial = model.flashMaterial.clone(), backFlashMaterial = model.backFlashMaterial.clone();
   if (frontFlashMesh) frontFlashMesh.material = flashMaterial;
   if (backFlashMesh) backFlashMesh.material = backFlashMaterial;
+  bindSsaoSpriteAlphaCutouts(group);
   return { ...model, group, flashMaterial, backFlashMaterial };
 }
 
@@ -144,6 +146,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
     group.add(base);
     const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(.98, .34), contactShadowMaterial);
+    markSsaoSpriteAlphaCutout(contactShadow, contactShadowMaterial.map, .04);
     contactShadow.rotation.x = -Math.PI / 2; contactShadow.position.set(0, .218, .02); contactShadow.renderOrder = 5;
     group.add(contactShadow);
     const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
@@ -168,6 +171,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     const levels = heartHealthLevels(body.health, body.maxHealth);
     const heartIcons = levels.map((level, index) => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(.23, .23), heartMaterials[level]);
+      markSsaoSpriteAlphaCutout(mesh, heartMaterials[level].map, heartMaterials[level].alphaTest || .04);
       mesh.renderOrder = 100;
       mesh.position.set((index - (levels.length - 1) / 2) * .245, 0, .01);
       healthHUD.add(mesh);

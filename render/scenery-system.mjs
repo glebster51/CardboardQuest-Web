@@ -3,6 +3,7 @@ import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layou
 import { WALKABLE_POINTS } from '../physics.mjs';
 import { nearestPointOnPath } from '../terrain-shapes.mjs';
 import { sceneResources } from './scene-resources.mjs';
+import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=1';
 
 /** Own scenery asset templates and construct location props from them. */
 export function createScenerySystem({ THREE, renderer, scene, locations, corrugation, paper,
@@ -78,6 +79,7 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
   async function create(path, x, z, size, parent = scene, allowFlat = false, options = {}) {
     const template = await loadTemplate(path);
     const art = template.clone(true);
+    bindSsaoSpriteAlphaCutouts(art);
     const layout = sceneryTokenLayout(size, options.base ? options.fixedRadius ?? 0 : 0);
     art.scale.set(layout.scale, layout.scale, layout.depthScale);
     art.position.y = layout.artY;

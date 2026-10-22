@@ -10,6 +10,7 @@ import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=23';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=3';
+import { bindSsaoSpriteAlphaCutouts, installSsaoSpriteAlphaCutout, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=137';
 import { installSceneEditor } from './editor/scene-editor.mjs?v=150';
@@ -131,6 +132,7 @@ async function start() {
       composer.addPass(new renderModule.RenderPass(scene, camera));
       try {
         const ssao = new ssaoModule.SSAOPass(scene, camera, innerWidth, innerHeight, 12);
+        installSsaoSpriteAlphaCutout(ssao.normalMaterial);
         ssao.kernelRadius = screenEffects.ssaoKernelRadius;
         ssao.minDistance = screenEffects.ssaoMinDistance;
         ssao.maxDistance = screenEffects.ssaoMaxDistance;
@@ -892,6 +894,7 @@ async function start() {
     group.name = item.id;
     const model = lootSpriteModels.get(item.itemId) ?? lootSpriteModels.get('scrap');
     const icon = model.group.clone(true), iconHeight = .54 * 3, iconScale = iconHeight / 2.05;
+    bindSsaoSpriteAlphaCutouts(icon);
     icon.scale.set(iconScale, iconScale, 1); icon.position.y = .11 + iconHeight / 2; group.add(icon);
     const facePair = { prop: group, front: icon.getObjectByName('scenery-front'), back: icon.getObjectByName('scenery-back') };
     sceneryFacePairs.push(facePair);
@@ -910,11 +913,13 @@ async function start() {
   function createStoryPickupVisual(location, pickup) {
     const group = new THREE.Group(); group.name = pickup.id;
     const icon = new THREE.Mesh(storyPickupIconGeometry, storyPickupIconMaterial);
+    markSsaoSpriteAlphaCutout(icon, storyPickupIconMaterial.map, storyPickupIconMaterial.alphaTest);
     icon.position.y = .34; icon.renderOrder = 6; group.add(icon);
     const glow = new THREE.Mesh(new THREE.CircleGeometry(.34, 28),
       new THREE.MeshBasicMaterial({ color: 0xffd879, transparent: true, opacity: .075, depthWrite: false, toneMapped: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
     const beam = new THREE.Mesh(lootBeamGeometry, lootBeamMaterial);
+    markSsaoSpriteAlphaCutout(beam, lootBeamTexture, .025);
     beam.scale.set(1.02, 1.7, 1); beam.position.set(0, 1.08, -.025); beam.renderOrder = 5; group.add(beam);
     group.position.set(pickup.x, 0, pickup.z); location.sceneGroup.add(group);
     const visual = { group, beam, glow, spin: 0 };
@@ -946,6 +951,7 @@ async function start() {
     const artHolder = new THREE.Group(); artHolder.position.y = opened ? 0 : .21; group.add(artHolder);
     const stateArt = chestTemplates.map((template, index) => {
       const art = template.clone(true);
+      bindSsaoSpriteAlphaCutouts(art);
       const spriteHeight = 1.72, scale = spriteHeight / 2.05;
       art.scale.set(scale, scale, 1); art.position.y = spriteHeight / 2;
       art.visible = index === (opened ? 1 : 0); artHolder.add(art);
