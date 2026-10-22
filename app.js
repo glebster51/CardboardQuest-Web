@@ -52,6 +52,8 @@ import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaign
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
 import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
+import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
+  ITEM_MAGNET_STORAGE_KEY, normalizeItemMagnetSettings } from './game/item-magnet.mjs?v=1';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=16';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
@@ -114,6 +116,13 @@ async function start() {
   let screenEffects = DEFAULT_SCREEN_EFFECTS;
   try { screenEffects = normalizeScreenEffects(JSON.parse(localStorage.getItem(SCREEN_EFFECT_SETTINGS_KEY) || 'null')); }
   catch { screenEffects = normalizeScreenEffects(null); }
+  let itemMagnetSettings = ITEM_MAGNET_DEFAULTS;
+  try { itemMagnetSettings = normalizeItemMagnetSettings(JSON.parse(localStorage.getItem(ITEM_MAGNET_STORAGE_KEY) || 'null')); }
+  catch { itemMagnetSettings = normalizeItemMagnetSettings(null); }
+  const setItemMagnetSettings = settings => {
+    itemMagnetSettings = normalizeItemMagnetSettings(settings);
+    try { localStorage.setItem(ITEM_MAGNET_STORAGE_KEY, JSON.stringify(itemMagnetSettings)); } catch { /* Current settings still apply for this session. */ }
+  };
   const setSsaoSize = () => {
     if (!ssaoPass) return;
     const scale = Math.min(.5, 720 / Math.max(1, innerWidth), 540 / Math.max(1, innerHeight));
@@ -824,6 +833,18 @@ async function start() {
   const storyPickupVisuals = new Map();
   const lootItemIds = ['berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard'];
   const lootSpriteModels = new Map();
+  const lootIconCanvases = new Map(), itemIconFlights = [];
+  const itemFlightCanvas = document.querySelector('#item-flight-canvas');
+  const itemFlightContext = itemFlightCanvas.getContext('2d');
+  let itemFlightCanvasHasPixels = false;
+  function resizeItemFlightCanvas() {
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    itemFlightCanvas.width = Math.round(innerWidth * ratio);
+    itemFlightCanvas.height = Math.round(innerHeight * ratio);
+    itemFlightCanvas.style.width = `${innerWidth}px`; itemFlightCanvas.style.height = `${innerHeight}px`;
+    itemFlightContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  resizeItemFlightCanvas();
   let lootAssetsPromise = null;
   function ensureLootSprites() {
     if (lootAssetsPromise) return lootAssetsPromise;
@@ -837,6 +858,7 @@ async function start() {
         canvas.getContext('2d', { willReadFrequently: true }).drawImage(lootAtlas.image,
           (index % 4) * lootCellWidth, Math.floor(index / 4) * lootCellHeight, lootCellWidth, lootCellHeight,
           0, 0, lootCellWidth, lootCellHeight);
+        lootIconCanvases.set(id, canvas);
         lootSpriteModels.set(id, await createScenerySpriteModel(canvas));
       }
       lootAtlas.dispose();
@@ -1577,7 +1599,7 @@ async function start() {
           visual.spawn.z + (item.z - visual.spawn.z) * eased,
         );
         if (t >= 1) { visual.group.position.y = 0; visual.spawn = null; }
-      } else {
+      } else if (!visual.magnet) {
         visual.group.position.set(item.x, 0, item.z);
       }
       const cameraDx = camera.position.x - visual.group.position.x, cameraDz = camera.position.z - visual.group.position.z;
@@ -1595,20 +1617,37 @@ async function start() {
         glint.material.rotation = elapsed * (i % 2 ? -.42 : .52) + i;
         glint.scale.setScalar(.07 + flash * .19);
       }
-      if (heroBody.health <= 0 || Math.hypot(heroBody.x - item.x, heroBody.z - item.z) > PUCK_RADIUS + .35) continue;
-      const pickup = takeWorldLoot(activeLocation.loot, item.id);
-      if (!pickup) continue;
-      activeLocation.sceneGroup.remove(visual.group);
-      const facePairIndex = sceneryFacePairs.indexOf(visual.facePair);
-      if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
-      worldItemVisuals.delete(item.id);
-      for (const glint of visual.glints) glint.material.dispose();
-      addItems(campaignState, { [pickup.itemId]: 1 });
-      audio.play('pickup');
-      renderInventory();
-      burst(item.x, item.z, .48);
-      vibrate(16);
-      persistCampaign();
+      if (visual.spawn) continue;
+      if (!visual.magnet && heroBody.health > 0
+        && Math.hypot(heroBody.x - item.x, heroBody.z - item.z) <= itemMagnetSettings.radius) {
+        visual.magnet = { from: { x: visual.group.position.x, y: visual.group.position.y, z: visual.group.position.z }, age: 0,
+          duration: itemMagnetSettings.worldDuration, arc: itemMagnetSettings.worldArc };
+      }
+      if (visual.magnet) {
+        visual.magnet.age += dt;
+        const progress = Math.min(1, visual.magnet.age / visual.magnet.duration);
+        const position = itemMagnetWorldPosition(visual.magnet, progress, { x: heroBody.x, y: .92, z: heroBody.z });
+        visual.group.position.set(position.x, position.y, position.z);
+        visual.group.scale.setScalar(position.scale);
+        if (progress >= 1) {
+          const pickup = takeWorldLoot(activeLocation.loot, item.id);
+          if (!pickup) continue;
+          const playerScreen = new THREE.Vector3(heroBody.x, .2, heroBody.z).project(camera);
+          const backpackRect = document.querySelector('#inventory-toggle').getBoundingClientRect();
+          const from = { x: (playerScreen.x + 1) * innerWidth / 2, y: (1 - playerScreen.y) * innerHeight / 2 };
+          const to = { x: backpackRect.left + backpackRect.width / 2, y: backpackRect.top + backpackRect.height / 2 };
+          const icon = lootIconCanvases.get(pickup.itemId) ?? lootIconCanvases.get('scrap');
+          if (icon) itemIconFlights.push({ icon, flight: createItemIconFlight(from, to,
+            { duration: itemMagnetSettings.iconDuration, arc: itemMagnetSettings.iconArc }) });
+          activeLocation.sceneGroup.remove(visual.group);
+          const facePairIndex = sceneryFacePairs.indexOf(visual.facePair);
+          if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
+          worldItemVisuals.delete(item.id);
+          for (const glint of visual.glints) glint.material.dispose();
+          addItems(campaignState, { [pickup.itemId]: 1 });
+          audio.play('pickup'); renderInventory(); burst(heroBody.x, heroBody.z, .48); vibrate(16); persistCampaign();
+        }
+      }
     }
     for (const pickup of activeLocation.storyPickups ?? []) {
       if (campaignState.flags[pickup.flag]) continue;
@@ -1630,6 +1669,37 @@ async function start() {
       showStoryCard({ title: activeLocation.title, text: 'Ты подобрал вещь, которую дед потерял у ручья.',
         lines: getStoryDialogue(campaignState, activeLocation.id, 'pickup') });
       break;
+    }
+  }
+  function updateItemIconFlights(dt) {
+    if (!itemIconFlights.length) {
+      if (itemFlightCanvasHasPixels) itemFlightContext.clearRect(0, 0, innerWidth, innerHeight);
+      itemFlightCanvasHasPixels = false;
+      return;
+    }
+    itemFlightCanvasHasPixels = true;
+    itemFlightContext.clearRect(0, 0, innerWidth, innerHeight);
+    const targetButton = document.querySelector('#inventory-toggle');
+    const rect = targetButton.getBoundingClientRect();
+    for (let index = itemIconFlights.length - 1; index >= 0; index--) {
+      const entry = itemIconFlights[index], flight = entry.flight;
+      flight.age += dt;
+      const progress = Math.min(1, flight.age / flight.duration);
+      flight.to = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      const point = itemIconFlightPosition(flight, progress);
+      const size = 34 * point.scale;
+      itemFlightContext.save(); itemFlightContext.globalAlpha = point.alpha;
+      itemFlightContext.translate(point.x, point.y); itemFlightContext.rotate(point.rotation);
+      itemFlightContext.shadowColor = '#ffd477'; itemFlightContext.shadowBlur = 12;
+      itemFlightContext.drawImage(entry.icon, -size / 2, -size / 2, size, size);
+      itemFlightContext.restore();
+      if (progress >= 1) {
+        itemIconFlights.splice(index, 1);
+        targetButton.animate([
+          { transform: 'scale(1,1)' }, { transform: 'scale(1.18,.82)', offset: .3 },
+          { transform: 'scale(.92,1.12)', offset: .58 }, { transform: 'scale(1.04,.97)', offset: .78 }, { transform: 'scale(1,1)' },
+        ], { duration: 280, easing: 'cubic-bezier(.2,.75,.25,1)' });
+      }
     }
   }
   function updateCacheAnimation(dt) {
@@ -1951,7 +2021,7 @@ async function start() {
       setSsaoSize();
     }
   }
-  addEventListener('resize', resize); resize();
+  addEventListener('resize', resize); addEventListener('resize', resizeItemFlightCanvas); resize();
   reportLoadStage(`Стриминг: подготовка текущей локации ${activeLocation.id}`);
   await locationStreaming.retain(activeLocation.id, false);
   reportLoadStage(`Стриминг: подготовка текущей локации ${activeLocation.id}`, 'ready');
@@ -1973,6 +2043,7 @@ async function start() {
     onFogPathsChange() { scheduleTerrainFogRebuild(); },
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
     getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
+    getItemMagnetSettings: () => ({ ...itemMagnetSettings }), onItemMagnetSettingsChange: setItemMagnetSettings,
     getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
     onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
   reportLoadStage('Подключение редактора сцены', 'ready');
@@ -2098,6 +2169,7 @@ async function start() {
       nextAmbience: audioAmbience(activeLocation),
       paused: sceneEditor.active || simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
+    updateItemIconFlights(frameDt);
     if (sceneEditor.graphOpen) return;
     if (sceneEditor.active) {
       sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;

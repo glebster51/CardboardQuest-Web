@@ -2,6 +2,7 @@ import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform }
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=5';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
+import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=1';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
@@ -9,7 +10,8 @@ const editable = target => target instanceof HTMLElement && (target.matches('inp
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
 export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset, rebuildTerrain,
   getCampaignGraphData, onCampaignGraphChange, getScreenEffects = () => ({ ssao: true, tiltShift: true }), onScreenEffectsChange = () => {},
-  onFogSettingsChange = () => {}, onFogPathsChange = () => {} }) {
+  getItemMagnetSettings = () => ({ radius: 4, worldDuration: .48, worldArc: 3.4, iconDuration: .7, iconArc: 220 }),
+  onItemMagnetSettingsChange = () => {}, onFogSettingsChange = () => {}, onFogPathsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
@@ -472,7 +474,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
-      </div></details>${createPlayerRevealSettingsMarkup()}<details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
+      </div></details>${createPlayerRevealSettingsMarkup()}${createItemMagnetSettingsMarkup(getItemMagnetSettings())}<details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
         <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>
         <label><input type="checkbox" data-screen-effect="tiltShift" ${screenEffects.tiltShift ? 'checked' : ''}> Tilt-shift</label>
         <label>Радиус SSAO <output>${screenEffects.ssaoKernelRadius}</output><input data-effect-setting="ssaoKernelRadius" aria-label="Радиус SSAO" type="range" min="0" max="16" step=".25" value="${screenEffects.ssaoKernelRadius}"></label>
@@ -545,6 +547,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       </nav><div id="se-assets" role="tabpanel"></div></section>`;
     document.body.append(panel);
     refreshRevealSettings = bindPlayerRevealSettings({ panel, registry, model, changed });
+    bindItemMagnetSettings({ panel, getSettings: getItemMagnetSettings, onChange: onItemMagnetSettingsChange });
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
     for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);

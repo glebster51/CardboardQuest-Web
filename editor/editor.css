@@ -25,6 +25,9 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor .se-fog label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px;cursor:pointer}
 #scene-editor .se-fog input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--se-accent);cursor:pointer}
 #scene-editor .se-player-reveal{display:grid;gap:7px}
+#scene-editor .se-item-magnet{display:grid;gap:7px}
+#scene-editor .se-item-magnet label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
+#scene-editor .se-item-magnet small{font-size:10px;color:#b9ac97}
 #scene-editor .se-player-reveal label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
 #scene-editor .se-player-reveal label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px;cursor:pointer}
 #scene-editor .se-player-reveal input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--se-accent);cursor:pointer}
