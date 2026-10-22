@@ -37,7 +37,8 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
 }
 
 /** Shares a camera-space reveal mask across opaque scenery materials. */
-export function createPlayerOcclusionDither(THREE, renderer) {
+export function createPlayerOcclusionDither(THREE, renderer,
+  getRenderPixelRatio = () => renderer.getPixelRatio()) {
   const uniforms = {
     cqRevealEnabled: { value: 0 },
     cqRevealScreen: { value: new THREE.Vector2() },
@@ -50,19 +51,35 @@ export function createPlayerOcclusionDither(THREE, renderer) {
   const viewport = new THREE.Vector2();
   let innerRadius = PLAYER_REVEAL_DEFAULTS.revealInnerRadius;
   let outerRadius = PLAYER_REVEAL_DEFAULTS.revealOuterRadius;
+  let appliedPixelRatio = null;
+
+  function syncPixelRatio() {
+    const devicePixelRatio = renderer.getPixelRatio();
+    const renderPixelRatio = getRenderPixelRatio();
+    const pixelRatio = Number.isFinite(renderPixelRatio) && renderPixelRatio > 0
+      ? renderPixelRatio : devicePixelRatio;
+    if (pixelRatio === appliedPixelRatio) return pixelRatio;
+    appliedPixelRatio = pixelRatio;
+    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio;
+    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio;
+    return pixelRatio;
+  }
 
   function updateSettings(settings = {}) {
     innerRadius = settings.revealInnerRadius ?? innerRadius;
     outerRadius = settings.revealOuterRadius ?? outerRadius;
-    uniforms.cqRevealInnerRadius.value = innerRadius * renderer.getPixelRatio();
-    uniforms.cqRevealOuterRadius.value = outerRadius * renderer.getPixelRatio();
+    appliedPixelRatio = null;
+    syncPixelRatio();
   }
 
   function update(camera, playerPosition, enabled = true) {
+    const renderPixelRatio = syncPixelRatio();
     camera.updateMatrixWorld();
     screen.copy(playerPosition).project(camera);
     viewPosition.copy(playerPosition).applyMatrix4(camera.matrixWorldInverse);
     renderer.getDrawingBufferSize(viewport);
+    const renderScale = renderPixelRatio / renderer.getPixelRatio();
+    viewport.set(viewport.x * renderScale, viewport.y * renderScale);
     const visible = enabled && viewPosition.z < 0 && screen.z >= -1 && screen.z <= 1
       && Math.abs(screen.x) <= 1 && Math.abs(screen.y) <= 1;
     uniforms.cqRevealEnabled.value = visible ? 1 : 0;

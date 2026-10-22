@@ -9,7 +9,7 @@ import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mj
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=24';
-import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=4';
+import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=5';
 import { createHexTiltShiftShader } from './render/hex-tilt-shift.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
@@ -355,7 +355,8 @@ async function start() {
   });
   const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
-  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer);
+  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer,
+    () => tiltShiftComposer ? tiltShiftPixelRatio : renderer.getPixelRatio());
   playerOcclusionDither.updateSettings(sceneRegistry.fog);
   const target = new THREE.Vector3(0, .65, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };

@@ -1,5 +1,5 @@
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=3';
-import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=4';
+import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=5';
 export const LOCATION_FAR_COLOR = 0x242039;
 const originalMaterialHooks = new WeakMap();
 
