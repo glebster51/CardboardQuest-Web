@@ -7,7 +7,7 @@ export const DEFAULT_SCREEN_EFFECTS = Object.freeze({
   ssaoMinDistance: .008,
   ssaoMaxDistance: .12,
   tiltShiftFocus: .48,
-  tiltShiftBlur: 7,
+  tiltShiftBlur: 12,
 });
 
 export function normalizeScreenEffects(value) {

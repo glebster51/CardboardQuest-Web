@@ -4,13 +4,13 @@ import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=6';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=2';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=3';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=24';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=5';
-import { createHexTiltShiftShader } from './render/hex-tilt-shift.mjs?v=1';
+import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=137';
@@ -127,7 +127,7 @@ async function start() {
       const target = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat,
         type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false });
       const composer = new composerModule.EffectComposer(renderer, target);
-      tiltShiftPixelRatio = Math.min(renderer.getPixelRatio(), 1);
+      tiltShiftPixelRatio = tiltShiftRenderPixelRatio(renderer.getPixelRatio(), matchMedia('(pointer: coarse)').matches);
       composer.setPixelRatio(tiltShiftPixelRatio);
       composer.addPass(new renderModule.RenderPass(scene, camera));
       try {
@@ -146,6 +146,7 @@ async function start() {
       const tilt = new shaderPassModule.ShaderPass(createHexTiltShiftShader(THREE));
       tilt.uniforms.focus.value = screenEffects.tiltShiftFocus;
       tilt.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
+      tilt.uniforms.pixelRatio.value = tiltShiftPixelRatio;
       tilt.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
       tilt.enabled = screenEffects.tiltShift;
       composer.addPass(tilt);

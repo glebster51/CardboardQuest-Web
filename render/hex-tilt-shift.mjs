@@ -3,6 +3,10 @@ export const HEX_BOKEH_DIRECTIONS = Object.freeze([
   [-1, 0], [-0.5, -Math.sqrt(3) / 2], [0.5, -Math.sqrt(3) / 2],
 ]);
 
+export function tiltShiftRenderPixelRatio(rendererPixelRatio, isCoarsePointer = false) {
+  return Math.min(rendererPixelRatio, isCoarsePointer ? 1.5 : 2);
+}
+
 const vertexShader = /* glsl */`
   varying vec2 vUv;
   void main() {
@@ -15,6 +19,7 @@ const fragmentShader = /* glsl */`
   uniform sampler2D tDiffuse;
   uniform float focus;
   uniform float blurPixels;
+  uniform float pixelRatio;
   uniform vec2 resolution;
   varying vec2 vUv;
 
@@ -32,11 +37,16 @@ const fragmentShader = /* glsl */`
   }
 
   void main() {
-    float radiusPixels = blurPixels * abs(vUv.y - focus);
-    vec4 center = texture2D(tDiffuse, vUv);
-    vec4 innerHex = sampleHexRing(radiusPixels * 0.5);
-    vec4 outerHex = sampleHexRing(radiusPixels);
-    gl_FragColor = center * 0.2 + innerHex * 0.35 + outerHex * 0.45;
+    vec4 sharp = texture2D(tDiffuse, vUv);
+    float distanceFromFocus = abs(vUv.y - focus);
+    float blurAmount = smoothstep(0.035, 0.24, distanceFromFocus);
+    if (blurAmount < 0.002 || blurPixels < 0.1) {
+      gl_FragColor = sharp;
+      return;
+    }
+    float radiusPixels = blurPixels * pixelRatio * blurAmount;
+    vec4 hexBokeh = sampleHexRing(radiusPixels);
+    gl_FragColor = mix(sharp, hexBokeh, blurAmount);
   }
 `;
 
@@ -45,7 +55,8 @@ export function createHexTiltShiftShader(THREE) {
     uniforms: {
       tDiffuse: { value: null },
       focus: { value: 0.48 },
-      blurPixels: { value: 7 },
+      blurPixels: { value: 12 },
+      pixelRatio: { value: 1 },
       resolution: { value: new THREE.Vector2(1, 1) },
     },
     vertexShader,
