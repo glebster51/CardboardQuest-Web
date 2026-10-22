@@ -134,7 +134,9 @@ export function applyLocationEdgeShade(root, patchMaterial) {
       if (parent.name === 'scenery-front' || parent.name === 'scenery-back') return true;
     return false;
   };
+  const revealSources = [];
   root.traverse(object => {
+    if (object.userData?.cqRevealOverlay) return;
     if (!object.isMesh) return;
     const scenerySprite = isScenerySprite(object);
     const fogSurface = Boolean(object.userData?.locationFogSurface);
@@ -152,7 +154,30 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     });
     if (Array.isArray(object.material)) object.material = patchedMaterials;
     else object.material = patchedMaterials[0];
+    if (reveal && object.parent?.add && typeof object.clone === 'function'
+      && !object.userData?.cqRevealOverlayProxy) revealSources.push(object);
   });
+  for (const source of revealSources) {
+    const proxy = source.clone(false);
+    proxy.name = `${source.name || 'reveal-object'}-reveal-overlay`;
+    proxy.userData = { ...source.userData, cqRevealOverlay: true, cqRevealOverlayProxy: true };
+    proxy.material = [source.material].flat().map(material => {
+      const overlay = material.clone();
+      overlay.transparent = true;
+      overlay.opacity = 1;
+      overlay.depthWrite = false;
+      overlay.depthTest = true;
+      overlay.needsUpdate = true;
+      return overlay;
+    });
+    if (!Array.isArray(source.material)) proxy.material = proxy.material[0];
+    proxy.layers.set(31);
+    proxy.castShadow = false;
+    proxy.receiveShadow = false;
+    proxy._cqRevealOverlaySource = source;
+    source._cqRevealOverlayProxy = proxy;
+    source.parent.add(proxy);
+  }
 }
 
 export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, revealUniforms = {}, yieldWork = async () => {} }) {
@@ -214,6 +239,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
             uniform float cqRevealTime;
             uniform float cqRevealInnerRadius;
             uniform float cqRevealOuterRadius;
+            uniform float cqRevealOverlayPass;
             varying float vCQRevealDepth;` : ''}
           ${reveal ? `float cqRevealHash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -260,6 +286,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           vec2 cqPathFogUv = (vCQLocationWorld.xz - cqPathFogBounds.xy) / cqPathFogBounds.zw;
           float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r;`)
         .replace('#include <opaque_fragment>', `${reveal ? `
+          float cqRevealCut = 0.0;
           float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
           float cqRevealBeforePlayer = step(vCQRevealDepth + 0.025, cqRevealPlayerDepth);
           if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
@@ -270,8 +297,12 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
             float cqRevealNoiseValue = cqRevealFine * 0.72 + cqRevealBroad * 0.28;
             float cqRevealEdge = clamp(cqRevealFade + (cqRevealNoiseValue - 0.5) * 0.3
               * 4.0 * cqRevealFade * (1.0 - cqRevealFade), 0.0, 1.0);
-            if (cqRevealEdge > cqRevealNoiseValue) discard;
+            if (cqRevealEdge > cqRevealNoiseValue) cqRevealCut = 1.0;
           }` : ''}
+          ${reveal ? `if (cqRevealOverlayPass > 0.5) {
+            if (cqRevealCut < 0.5) discard;
+            diffuseColor.a *= 0.4;
+          } else if (cqRevealCut > 0.5) discard;` : ''}
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
           vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
@@ -281,7 +312,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           #include <opaque_fragment>`);
     };
     if (reveal) { material.transparent = false; material.depthWrite = true; }
-    material.customProgramCacheKey = () => `cq-location-path-fog-v11-screen-voronoi-clip-${reveal}`;
+    material.customProgramCacheKey = () => `cq-location-path-fog-v12-screen-voronoi-reveal-overlay-${reveal}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
