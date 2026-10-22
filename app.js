@@ -3,7 +3,7 @@ import { createGameAudio } from './audio/game-audio.mjs?v=3';
 import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
-import { createGeometryClient } from './render/geometry-client.mjs?v=10';
+import { createGeometryClient } from './render/geometry-client.mjs?v=11';
 import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=3';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';

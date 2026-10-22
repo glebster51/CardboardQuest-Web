@@ -1,6 +1,6 @@
 import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs';
 import { exitRoadContinuation } from '../game/location-art.mjs';
-import { smoothClosedContour } from '../terrain-shapes.mjs?v=2';
+import { coarsenClosedTerrainContour, smoothClosedContour } from '../terrain-shapes.mjs?v=3';
 import { terrainLevelCenter, terrainSideTriangleMask } from '../terrain-side-culling.mjs?v=3';
 import { buildFogPathTopology } from './location-edge-shade.mjs?v=27';
 
@@ -24,7 +24,7 @@ function terrainShape(THREE, outerPoints, holes = []) {
 
 function shapesFromContours(THREE, contours) {
   const records = contours.map(contour => {
-    const points = smoothClosedContour(contour, 3);
+    const points = coarsenClosedTerrainContour(contour, 3);
     let area = 0;
     for (let i = 0; i < points.length; i++) {
       const a = points[i], b = points[(i + 1) % points.length];

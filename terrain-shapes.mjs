@@ -70,6 +70,19 @@ export function smoothClosedContour(points, iterations = 4) {
   return result;
 }
 
+/** Drop redundant heightmap samples before building cardboard terrace meshes. */
+export function coarsenClosedTerrainContour(points, factor = 3) {
+  if (!Array.isArray(points)) throw new TypeError('Terrain contour points must be an array');
+  if (!Number.isFinite(factor) || factor < 1 || factor > 16) throw new RangeError('Invalid terrain contour reduction factor');
+  const count = points.length;
+  const target = Math.min(count, Math.max(3, Math.round(count / factor)));
+  if (count <= target || count < 6) return points.map(point => ({ x: point.x, z: point.z }));
+  return Array.from({ length: target }, (_, index) => {
+    const point = points[Math.floor(index * count / target)];
+    return { x: point.x, z: point.z };
+  });
+}
+
 export function extractTerrainContours(map, threshold) {
   const segments = [];
   const { columns, rows, values, minX, minZ, cellSize } = map;
