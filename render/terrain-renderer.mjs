@@ -165,7 +165,7 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
     const palette = TERRAIN_PALETTES[location.terrainStyle ?? location.id] ?? TERRAIN_PALETTES.forest;
     const backingOutline = createTerrainBackingOutline(extractTerrainContours(heightMap, .001));
     if (backingOutline.length >= 3) {
-      const shape = terrainShape(THREE, backingOutline, [location.walkablePoints]);
+      const shape = terrainShape(THREE, backingOutline, [location.walkablePoints, ...(heightMap.negativeContours ?? [])]);
       const depth = .3;
       const backing = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 }), [
         makeRoughCardboardMaterial(THREE, roughCardboard, palette.tops[0], sceneStencil),

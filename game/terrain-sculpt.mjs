@@ -18,7 +18,7 @@ export function validateTerrainEdits(value) {
   for (const stroke of value.strokes) {
     if (!stroke || !MODES.has(stroke.mode) || !Number.isFinite(stroke.radius) || stroke.radius < .5 || stroke.radius > 24
       || !Number.isFinite(stroke.strength) || stroke.strength < .01 || stroke.strength > 2
-      || !Number.isFinite(stroke.targetHeight) || stroke.targetHeight < 0 || stroke.targetHeight > 8
+      || !Number.isFinite(stroke.targetHeight) || stroke.targetHeight < -8 || stroke.targetHeight > 8
       || !Array.isArray(stroke.points) || !stroke.points.length || stroke.points.length > 5000)
       throw new RangeError('Invalid terrain sculpt stroke');
     totalPoints += stroke.points.length;
@@ -38,13 +38,14 @@ export function terrainTargetHeightAt(map, x, z, walkablePoints = []) {
 export function applyTerrainSculptDab(map, stroke, x, z, walkablePoints = []) {
   const { columns, rows, values, minX, minZ } = map;
   const maxHeight = map.sculptMaxHeight ?? map.maxHeight;
+  const minHeight = map.sculptMinHeight ?? 0;
   const cellX = map.cellSizeX ?? map.cellSize, cellZ = map.cellSizeZ ?? map.cellSize;
   const radius = stroke.radius, radiusSq = radius * radius;
   const minColumn = Math.max(0, Math.floor((x - radius - minX) / cellX));
   const maxColumn = Math.min(columns - 1, Math.ceil((x + radius - minX) / cellX));
   const minRow = Math.max(0, Math.floor((z - radius - minZ) / cellZ));
   const maxRow = Math.min(rows - 1, Math.ceil((z + radius - minZ) / cellZ));
-  const target = Math.max(0, Math.min(maxHeight, stroke.targetHeight));
+  const target = Math.max(minHeight, Math.min(maxHeight, stroke.targetHeight));
   let changed = false;
   for (let row = minRow; row <= maxRow; row++) for (let column = minColumn; column <= maxColumn; column++) {
     const worldX = minX + column * cellX, worldZ = minZ + row * cellZ;
@@ -62,7 +63,7 @@ export function applyTerrainSculptDab(map, stroke, x, z, walkablePoints = []) {
       const delta = stroke.strength * spacing / radius;
       after += (stroke.mode === 'raise' ? 1 : -1) * delta * weight;
     }
-    values[index] = Math.max(0, Math.min(maxHeight, after));
+    values[index] = Math.max(minHeight, Math.min(maxHeight, after));
     changed ||= Math.abs(values[index] - before) > 1e-6;
   }
   return changed;

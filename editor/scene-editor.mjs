@@ -499,7 +499,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           <span>Уровень выбора: <b id="se-terrain-level">не выбран</b></span>
           <button id="se-terrain-reset">Сбросить рельеф локации</button>
         </div>
-        <small class="se-terrain-help">Щёлкни по рельефу и веди мышь. Для выравнивания по игровой земле начни мазок на ней — это уровень 0 м. Края кисти мягкие. ПКМ + WASD — летать камерой. Игровая площадка и физика остаются ровными.</small>
+        <small class="se-terrain-help">Щёлкни по рельефу и веди мышь. Для выравнивания по игровой земле начни мазок на ней — это уровень 0 м. «Углублять» может уйти до −8 м, «Наращивать гору» — до 8 м; новые ярусы строятся автоматически. Края кисти мягкие. ПКМ + WASD — летать камерой. Игровая площадка и физика остаются ровными.</small>
       </section>
       <aside class="se-inspector"><div class="se-caption">ОБЪЕКТЫ СЦЕНЫ</div>
         <select id="se-objects" aria-label="Объект сцены"></select><strong id="se-selected"></strong>

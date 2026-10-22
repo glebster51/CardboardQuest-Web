@@ -4,6 +4,7 @@ import { pointInPolygon } from '../game/world-hazards.mjs';
 export function restoreTerrainSampler(map, { rounded = true, walkablePoints = [], depthMap = false } = {}) {
   const { columns, rows, values, minX, minZ, step, maxHeight } = map;
   const sculptMaxHeight = map.sculptMaxHeight ?? maxHeight;
+  const sculptMinHeight = map.sculptMinHeight ?? 0;
   const cellX = map.cellSizeX ?? map.cellSize, cellZ = map.cellSizeZ ?? map.cellSize;
   map.sample = (x, z) => {
     if (depthMap && pointInPolygon(x, z, walkablePoints)) return 0;
@@ -13,6 +14,7 @@ export function restoreTerrainSampler(map, { rounded = true, walkablePoints = []
     const a = values[z0 * columns + x0] * (1 - tx) + values[z0 * columns + x0 + 1] * tx;
     const b = values[(z0 + 1) * columns + x0] * (1 - tx) + values[(z0 + 1) * columns + x0 + 1] * tx;
     const height = a * (1 - tz) + b * tz;
+    if (height < -1e-4) return Math.max(sculptMinHeight, Math.round(height / step) * step);
     return rounded ? Math.min(sculptMaxHeight, Math.round(height / step) * step)
       : height <= 1e-4 ? 0 : Math.min(sculptMaxHeight, step + Math.floor((height + 1e-6) / step) * step);
   };

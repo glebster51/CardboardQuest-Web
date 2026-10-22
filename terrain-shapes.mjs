@@ -152,6 +152,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
   const cellSize = options.cellSize ?? .75, step = options.step ?? .28;
   const maxHeight = options.maxHeight ?? 3.92;
   const sculptMaxHeight = Math.max(maxHeight, options.sculptMaxHeight ?? TERRAIN_SCULPT_MAX_HEIGHT);
+  const sculptMinHeight = Math.min(0, options.sculptMinHeight ?? -TERRAIN_SCULPT_MAX_HEIGHT);
   const authoredRelief = Number.isFinite(options.edgeHeight);
   const columns = Math.ceil((maxX - minX) / cellSize) + 1, rows = Math.ceil((maxZ - minZ) / cellSize) + 1;
   const values = new Float32Array(columns * rows);
@@ -224,7 +225,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
     values[z * columns + x] = rawHeight(minX + x * cellSize, minZ + z * cellSize);
   }
   const map = {
-    minX, minZ, columns, rows, cellSize, step, maxHeight, sculptMaxHeight, values,
+    minX, minZ, columns, rows, cellSize, step, maxHeight, sculptMaxHeight, sculptMinHeight, values,
     sample(x, z) {
       const gx = Math.max(0, Math.min(columns - 1.001, (x - minX) / cellSize));
       const gz = Math.max(0, Math.min(rows - 1.001, (z - minZ) / cellSize));
@@ -232,6 +233,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
       const a = values[z0 * columns + x0] * (1 - tx) + values[z0 * columns + x0 + 1] * tx;
       const b = values[(z0 + 1) * columns + x0] * (1 - tx) + values[(z0 + 1) * columns + x0 + 1] * tx;
       const height = a * (1 - tz) + b * tz;
+      if (height < -1e-4) return Math.max(sculptMinHeight, Math.round(height / step) * step);
       if (authoredRelief) return Math.min(sculptMaxHeight, Math.round(height / step) * step);
       return height <= 1e-4 ? 0 : Math.min(sculptMaxHeight, step + Math.floor((height + 1e-6) / step) * step);
     },
@@ -239,6 +241,8 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
   applyTerrainSculptStrokes(map, options.sculptEdits ?? { strokes: [] }, walkablePoints);
   const sampledMax = values.reduce((maximum, height) => Math.max(maximum, height), maxHeight);
   const renderMaxHeight = Math.min(sculptMaxHeight, sampledMax);
+  const sampledMin = values.reduce((minimum, height) => Math.min(minimum, height), 0);
+  const negativeDepth = Math.min(-sculptMinHeight, -sampledMin);
   const layerCount = authoredRelief ? Math.ceil(renderMaxHeight / step)
     : Math.max(0, Math.ceil(renderMaxHeight / step - 1e-9) - 1);
   map.layers = Array.from({ length: layerCount }, (_, index) => {
@@ -246,6 +250,15 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
     return { threshold, height: authoredRelief ? Math.min(renderMaxHeight, (index + 1) * step) : threshold + step,
       contours: extractTerrainContours(map, threshold) };
   });
+  const inverted = negativeDepth > 1e-4 ? { ...map, values: Float32Array.from(values, value => -value) } : null;
+  const negativeLayerCount = inverted ? Math.max(1, Math.ceil(negativeDepth / step - 1e-9)) : 0;
+  const negativeLayers = Array.from({ length: negativeLayerCount }, (_, index) => {
+    const threshold = (index + .5) * step;
+    return { threshold: -threshold, height: -(index + 1) * step,
+      contours: extractTerrainContours(inverted, threshold) };
+  });
+  map.negativeContours = negativeLayers[0]?.contours ?? [];
+  map.layers.push(...negativeLayers);
   return map;
 }
 
@@ -295,18 +308,31 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
     const a = values[z0 * mapColumns + x0] * (1 - tx) + values[z0 * mapColumns + x0 + 1] * tx;
     const b = values[(z0 + 1) * mapColumns + x0] * (1 - tx) + values[(z0 + 1) * mapColumns + x0 + 1] * tx;
     const height = a * (1 - tz) + b * tz;
+    if (height < -step * .5) return Math.max(sculptMinHeight, Math.round(height / step) * step);
     return height < step * .5 ? 0 : Math.min(sculptMaxHeight, Math.round(height / step) * step);
   };
   const sculptMaxHeight = Math.max(maxHeight, options.sculptMaxHeight ?? TERRAIN_SCULPT_MAX_HEIGHT);
+  const sculptMinHeight = Math.min(0, options.sculptMinHeight ?? -TERRAIN_SCULPT_MAX_HEIGHT);
   const map = { minX, minZ, columns: mapColumns, rows: mapRows, cellSize, cellSizeX, cellSizeZ,
-    step, maxHeight, sculptMaxHeight, values, sample };
+    step, maxHeight, sculptMaxHeight, sculptMinHeight, values, sample };
   applyTerrainSculptStrokes(map, options.sculptEdits ?? { strokes: [] }, walkablePoints);
   const sampledMax = values.reduce((maximum, height) => Math.max(maximum, height), maxHeight);
   const renderMaxHeight = Math.min(sculptMaxHeight, sampledMax);
+  const sampledMin = values.reduce((minimum, height) => Math.min(minimum, height), 0);
+  const negativeDepth = Math.min(-sculptMinHeight, -sampledMin);
   map.layers = Array.from({ length: Math.max(1, Math.ceil(renderMaxHeight / step - 1e-9)) }, (_, index) => {
     const threshold = (index + .5) * step;
     return { threshold, height: Math.min(renderMaxHeight, (index + 1) * step), contours: extractTerrainContours(map, threshold) };
   });
+  const inverted = negativeDepth > 1e-4 ? { ...map, values: Float32Array.from(values, value => -value) } : null;
+  const negativeLayerCount = inverted ? Math.max(1, Math.ceil(negativeDepth / step - 1e-9)) : 0;
+  const negativeLayers = Array.from({ length: negativeLayerCount }, (_, index) => {
+    const threshold = (index + .5) * step;
+    return { threshold: -threshold, height: -(index + 1) * step,
+      contours: extractTerrainContours(inverted, threshold) };
+  });
+  map.negativeContours = negativeLayers[0]?.contours ?? [];
+  map.layers.push(...negativeLayers);
   return map;
 }
 
