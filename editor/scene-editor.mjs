@@ -1,5 +1,5 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=143';
-import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=145';
+import { ASSET_CATALOG } from './asset-catalog.mjs?v=5';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=2';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
@@ -75,6 +75,12 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       ui.objects.add(new Option(binding.label, binding.id));
     if (selected && model.get(selected.location, selected.id) === null) select(null);
     ui.objects.value = selected?.id ?? '';
+  }
+  function refreshBindings() {
+    if (!active || !ui.objects) return;
+    const location = getLocation();
+    bindings = registry.bindings(location.id); rememberBindings(location);
+    refreshObjects();
   }
   function deleteSelection() {
     if (!selected || selected.deletable === false) return;
@@ -943,6 +949,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   return {
     get active() { return active; },
     get graphOpen() { return graphOpen; },
+    refreshBindings,
     inspect() {
       const handles = [];
       const group = controls?.getHelper().children.find(object => object.gizmo)?.gizmo[controls.mode];

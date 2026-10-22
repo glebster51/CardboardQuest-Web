@@ -13,9 +13,9 @@ import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mj
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=132';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=143';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=165';
-import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=145';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=167';
+import { catalogAsset } from './editor/asset-catalog.mjs?v=5';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=1';
@@ -1012,9 +1012,65 @@ async function start() {
       opening: null, lootVisuals: [], pendingStory: null });
   }
   let groundResources = null;
+  function decorateInspectionMarker(marker) {
+    marker.userData.disablePlayerReveal = true;
+    const art = marker.children[0];
+    if (art) { art.scale.x *= 1.5; art.scale.y *= 1.5; art.position.y += 1.12; }
+    const dark = new THREE.MeshBasicMaterial({ color: 0x3c241c, ...sceneStencil });
+    const cream = new THREE.MeshBasicMaterial({ color: 0xffe9b0, ...sceneStencil });
+    const dotOuter = new THREE.Mesh(new THREE.CylinderGeometry(.145, .145, .055, 20), dark);
+    dotOuter.position.y = .03;
+    const dotCenter = new THREE.Mesh(new THREE.CylinderGeometry(.105, .105, .058, 20), cream);
+    dotCenter.position.y = .034;
+    marker.add(dotOuter, dotCenter);
+    const groundArms = 4, armLength = .24, armCenterY = .065;
+    const outerArms = new THREE.InstancedMesh(new THREE.CylinderGeometry(.052, .052, armLength, 8), dark, groundArms);
+    const innerArms = new THREE.InstancedMesh(new THREE.CylinderGeometry(.031, .031, armLength, 8), cream, groundArms);
+    const armTransform = new THREE.Object3D();
+    const armPlacements = [
+      { x: -.225, z: 0, rotateX: 0, rotateZ: Math.PI / 2 },
+      { x: .225, z: 0, rotateX: 0, rotateZ: Math.PI / 2 },
+      { x: 0, z: -.225, rotateX: Math.PI / 2, rotateZ: 0 },
+      { x: 0, z: .225, rotateX: Math.PI / 2, rotateZ: 0 },
+    ];
+    for (let index = 0; index < groundArms; index++) {
+      const arm = armPlacements[index];
+      armTransform.position.set(arm.x, armCenterY, arm.z);
+      armTransform.rotation.set(arm.rotateX, 0, arm.rotateZ);
+      armTransform.updateMatrix();
+      outerArms.setMatrixAt(index, armTransform.matrix);
+      innerArms.setMatrixAt(index, armTransform.matrix);
+    }
+    outerArms.instanceMatrix.needsUpdate = true;
+    innerArms.instanceMatrix.needsUpdate = true;
+    marker.add(outerArms, innerArms);
+    const dashCount = 7, dashHeight = .075, dashPitch = .15;
+    // Outline and fill keep the doubled dash width readable at phone scale.
+    const outerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.062, .062, dashHeight, 8), dark, dashCount);
+    const innerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.037, .037, dashHeight, 8), cream, dashCount);
+    const dashTransform = new THREE.Object3D();
+    for (let index = 0; index < dashCount; index++) {
+      dashTransform.position.set(0, .18 + index * dashPitch, 0);
+      dashTransform.updateMatrix();
+      outerDashes.setMatrixAt(index, dashTransform.matrix);
+      innerDashes.setMatrixAt(index, dashTransform.matrix);
+    }
+    outerDashes.instanceMatrix.needsUpdate = true;
+    innerDashes.instanceMatrix.needsUpdate = true;
+    marker.add(outerDashes, innerDashes);
+    return marker;
+  }
   async function createEditorAsset(location, id, value) {
     const item = catalogAsset(value.asset);
     if (!item) throw new Error(`Unknown scene asset: ${value.asset}`);
+    if (item.id === 'inspect') {
+      const marker = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
+        { elevation: value.position[1], yaw: value.rotation[1], sceneEditId: id, sceneEditLabel: item.label });
+      if (!marker) return null;
+      marker.position.fromArray(value.position); marker.rotation.set(...value.rotation); marker.scale.fromArray(value.scale);
+      marker.userData.sceneEditAsset = value.asset; marker.userData.sceneEditSize = value.size;
+      decorateInspectionMarker(marker); location.edgeShade?.applyTo(marker); return marker;
+    }
     const prop = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
       { elevation: value.position[1], yaw: value.rotation[1], fixedRadius: Math.min(.7, value.size * .19),
         sceneEditId: id, sceneEditLabel: item.label });
@@ -1157,7 +1213,7 @@ async function start() {
     try {
       const groundY = location.terrainHeightMap?.sample(0, 0) ?? 0;
       const marker = await createScenery('assets/poi-inspection-bark.webp', 0, 0, .72, parent, true,
-        { elevation: groundY, yaw: 0 });
+        { elevation: groundY, yaw: 0, sceneEditId: `inspection-marker:${location.id}`, sceneEditLabel: 'Знак точки интереса' });
       if (!marker || location.sceneGroup !== parent) {
         if (marker) {
           parent.remove(marker);
@@ -1167,52 +1223,13 @@ async function start() {
         return;
       }
       marker.name = `inspection-marker:${location.id}`;
-      marker.userData.disablePlayerReveal = true;
-      const art = marker.children[0];
-      if (art) art.position.y += 1.12;
-      const dark = new THREE.MeshBasicMaterial({ color: 0x3c241c, ...sceneStencil });
-      const cream = new THREE.MeshBasicMaterial({ color: 0xffe9b0, ...sceneStencil });
-      const dotOuter = new THREE.Mesh(new THREE.CylinderGeometry(.145, .145, .055, 20), dark);
-      dotOuter.position.y = .03;
-      const dotCenter = new THREE.Mesh(new THREE.CylinderGeometry(.105, .105, .058, 20), cream);
-      dotCenter.position.y = .034;
-      marker.add(dotOuter, dotCenter);
-      const groundArms = 4, armLength = .24, armCenterY = .065;
-      const outerArms = new THREE.InstancedMesh(new THREE.CylinderGeometry(.052, .052, armLength, 8), dark, groundArms);
-      const innerArms = new THREE.InstancedMesh(new THREE.CylinderGeometry(.031, .031, armLength, 8), cream, groundArms);
-      const armTransform = new THREE.Object3D();
-      const armPlacements = [
-        { x: -.225, z: 0, rotateX: 0, rotateZ: Math.PI / 2 },
-        { x: .225, z: 0, rotateX: 0, rotateZ: Math.PI / 2 },
-        { x: 0, z: -.225, rotateX: Math.PI / 2, rotateZ: 0 },
-        { x: 0, z: .225, rotateX: Math.PI / 2, rotateZ: 0 },
-      ];
-      for (let index = 0; index < groundArms; index++) {
-        const arm = armPlacements[index];
-        armTransform.position.set(arm.x, armCenterY, arm.z);
-        armTransform.rotation.set(arm.rotateX, 0, arm.rotateZ);
-        armTransform.updateMatrix();
-        outerArms.setMatrixAt(index, armTransform.matrix);
-        innerArms.setMatrixAt(index, armTransform.matrix);
-      }
-      outerArms.instanceMatrix.needsUpdate = true;
-      innerArms.instanceMatrix.needsUpdate = true;
-      marker.add(outerArms, innerArms);
-      const dashCount = 7, dashHeight = .075, dashPitch = .15;
-      // Outline and fill keep the doubled dash width readable at phone scale.
-      const outerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.062, .062, dashHeight, 8), dark, dashCount);
-      const innerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.037, .037, dashHeight, 8), cream, dashCount);
-      const dashTransform = new THREE.Object3D();
-      for (let index = 0; index < dashCount; index++) {
-        dashTransform.position.set(0, .18 + index * dashPitch, 0);
-        dashTransform.updateMatrix();
-        outerDashes.setMatrixAt(index, dashTransform.matrix);
-        innerDashes.setMatrixAt(index, dashTransform.matrix);
-      }
-      outerDashes.instanceMatrix.needsUpdate = true;
-      innerDashes.instanceMatrix.needsUpdate = true;
-      marker.add(outerDashes, innerDashes);
+      marker.userData.sceneEditAsset = 'assets/poi-inspection-bark.webp';
+      marker.userData.sceneEditSize = .72;
+      decorateInspectionMarker(marker);
       location.edgeShade?.applyTo(marker);
+      sceneRegistry.bindEntity(location, marker.userData.sceneEditId, marker.userData.sceneEditLabel, marker,
+        { category: 'interactive', asset: marker.userData.sceneEditAsset, size: marker.userData.sceneEditSize });
+      sceneEditor?.refreshBindings();
       for (const resource of sceneResources([marker])) if (resource.isTexture) renderer.initTexture(resource);
       location.inspectionMarker = marker;
     } catch (error) {
@@ -2310,9 +2327,11 @@ async function start() {
       || activeLocation.enemies.some(enemy => enemy.health > 0);
     interactButton.textContent = 'Осмотреть';
     if (activeLocation.inspectionMarker) {
-      activeLocation.inspectionMarker.visible = !activeLocation.secret && !campaignState.collected[activeLocation.id];
+      activeLocation.inspectionMarker.visible = !activeLocation.inspectionMarker.userData.sceneEditDeleted
+        && !activeLocation.secret && !campaignState.collected[activeLocation.id];
       if (activeLocation.terrainHeightMap)
-        activeLocation.inspectionMarker.position.y = activeLocation.terrainHeightMap.sample(0, 0);
+        activeLocation.inspectionMarker.position.y = activeLocation.terrainHeightMap.sample(
+          activeLocation.inspectionMarker.position.x, activeLocation.inspectionMarker.position.z);
     }
     if (aimingBody) {
       playerMarker.material.color.copy(state.charges > 0 ? selectedColor : unavailableAimColor);
