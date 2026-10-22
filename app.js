@@ -13,7 +13,7 @@ import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mj
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=137';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=138';
 import { installSceneEditor } from './editor/scene-editor.mjs?v=158';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';

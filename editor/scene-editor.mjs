@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs?v=137';
+import { readTransform } from './edit-model.mjs?v=138';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=1';
