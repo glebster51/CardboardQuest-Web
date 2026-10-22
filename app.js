@@ -8,7 +8,8 @@ import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=20';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=21';
+import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
 import { installSceneEditor } from './editor/scene-editor.mjs?v=143';
@@ -191,6 +192,7 @@ async function start() {
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
   if (activeCampaignGraph) for (const location of Object.values(locations)) applyCampaignGraphToLocation(location, activeCampaignGraph);
+  let playerOcclusionDither = null;
   const sceneRegistry = createSceneRegistry({ THREE, overrides: SCENE_OVERRIDES, setLighting(settings) {
     if (!sunLight) return;
     sunLight.position.set(...settings.direction);
@@ -201,6 +203,7 @@ async function start() {
       applyTerrainEdgeStyle(location.sceneGroup, THREE, settings);
   }, setFog(settings) {
     scene.background.set(settings.color); renderer.setClearColor(settings.color);
+    playerOcclusionDither?.updateSettings(settings);
     for (const location of Object.values(locations)) {
       location.edgeShade?.update(settings);
       location.exitVisuals?.shadowMaterial.color.set(settings.color);
@@ -348,6 +351,8 @@ async function start() {
   });
   const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
+  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer);
+  playerOcclusionDither.updateSettings(sceneRegistry.fog);
   const target = new THREE.Vector3(0, .65, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
   let cameraManualOverride = 0;
@@ -476,6 +481,12 @@ async function start() {
   orbit.theta = Math.PI;
   target.set(heroBody.x, .65, heroBody.z);
   heroFigure.locationId = 'home'; figures.push(heroFigure);
+  const revealTarget = new THREE.Vector3();
+  function updatePlayerReveal() {
+    revealTarget.set(heroFigure.group.position.x, 1.05, heroFigure.group.position.z);
+    playerOcclusionDither.update(camera, revealTarget,
+      heroBody.health > 0 && heroFigure.group.visible && heroFigure.locationId === activeLocation.id);
+  }
   const enemyBody = (id, locationId, x, z, options = {}) => {
     const stored = campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
     return {
@@ -984,6 +995,7 @@ async function start() {
     terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
     terrain.group.userData.walkablePoints = location.walkablePoints;
     location.edgeShade = await createLocationEdgeShade({ THREE, location, settings: sceneRegistry.fog,
+      revealUniforms: playerOcclusionDither.uniforms,
       yieldWork: checkpoint });
     location.edgeShade?.update(sceneRegistry.fog);
     if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
@@ -1864,11 +1876,11 @@ async function start() {
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
     if (sceneEditor.graphOpen) return;
     if (sceneEditor.active) {
-      sceneEditor.update(frameDt); updateEditorPresentation(); renderScene(); return;
+      sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;
     }
     updateCacheAnimation(dt);
     if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen()) {
-      updateCamera(); renderScene(); return;
+      updateCamera(); updatePlayerReveal(); renderScene(); return;
     }
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
@@ -1941,7 +1953,7 @@ async function start() {
     }
     for (const enemy of activeLocation.enemies)
       clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
-    if (dialogue.isOpen()) { updateCamera(); renderScene(); return; }
+    if (dialogue.isOpen()) { updateCamera(); updatePlayerReveal(); renderScene(); return; }
     updateWorldLoot(dt);
     showCacheStoryAfterLootLands();
     updateProjectiles(dt);
@@ -2100,6 +2112,7 @@ async function start() {
     playerMarker.overlap.material.opacity = playerMarker.material.opacity * .52;
     playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
     updateCamera(dt, true);
+    updatePlayerReveal();
     for (const { prop, front, back } of sceneryFacePairs) {
       const dx = camera.position.x - prop.position.x, dz = camera.position.z - prop.position.z;
       const cameraOnFront = dx * Math.sin(prop.rotation.y) + dz * Math.cos(prop.rotation.y) >= 0;
