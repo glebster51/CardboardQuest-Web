@@ -1,5 +1,5 @@
 #scene-editor[hidden]{display:none!important}
-body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editing #interact,body.scene-editing #story-dialogue,body.scene-editing #inventory-panel,body.scene-editing #audio-panel,body.scene-editing #world-map{visibility:hidden!important;pointer-events:none!important}
+body.scene-editing #hud-tools,body.scene-editing #scene-editor-toggle,body.scene-editing #location-info,body.scene-editing #interact,body.scene-editing #story-dialogue,body.scene-editing #inventory-panel,body.scene-editing #audio-panel,body.scene-editing #world-map{visibility:hidden!important;pointer-events:none!important}
 #scene-editor{position:fixed;inset:12px;z-index:2000;pointer-events:none;color:#f0e7d6;font:13px/1.4 system-ui,sans-serif;--se-accent:#f1bd6d}
 #scene-editor *{box-sizing:border-box}
 #scene-editor .se-toolbar,#scene-editor .se-controls,#scene-editor .se-inspector{pointer-events:auto;background:#20232bf5;border:1px solid #62616a;border-radius:12px;box-shadow:0 8px 32px #0005;backdrop-filter:blur(12px)}
@@ -125,7 +125,7 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 
 /* The campaign graph is a pure 2D editor; the Three.js scene is hidden and its loop is paused. */
 body.campaign-graph-open #scene,body.campaign-graph-open #hud-tools,body.campaign-graph-open #location-info,
-body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor{visibility:hidden!important;pointer-events:none!important}
+body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor,body.campaign-graph-open #scene-editor-toggle{visibility:hidden!important;pointer-events:none!important}
 #campaign-graph-editor[hidden]{display:none!important}
 #campaign-graph-editor{position:fixed;inset:0;z-index:5000;display:grid;grid-template-rows:auto minmax(0,1fr);background:radial-gradient(ellipse at 50% 20%,#343046 0,#211f34 60%,#191726 100%);color:#f4e8ce;font:14px/1.4 system-ui,sans-serif}
 #campaign-graph-editor *{box-sizing:border-box}
