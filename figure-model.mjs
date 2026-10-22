@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { traceSpriteContours } from './sprite-geometry.mjs?v=9';
+import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=10';
 import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=1';
 import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 
@@ -29,15 +29,11 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
     for (const hole of contours) if (hole.depth === contour.depth + 1 && contains(hole.points[0], contour.points)) shape.holes.push(pathFrom(hole, true));
     return shape;
   });
-  const maskCanvas = document.createElement('canvas'); maskCanvas.width = width; maskCanvas.height = height;
-  const context = maskCanvas.getContext('2d'); context.fillStyle = '#fff'; context.beginPath();
-  for (const contour of contours) {
-    const first = contour.points[0]; context.moveTo((first.x / worldWidth + .5) * width, (.5 - first.y / worldHeight) * height);
-    for (let i = 1; i < contour.points.length; i++) { const point = contour.points[i]; context.lineTo((point.x / worldWidth + .5) * width, (.5 - point.y / worldHeight) * height); }
-    context.closePath();
-  }
-  context.fill('evenodd');
-  return { shapes, rasterMask: context.getImageData(0, 0, width, height).data };
+  // The inset contour is only for the cardboard side profile. Keep the print
+  // at its original alpha silhouette so it slightly overhangs and hides the
+  // recessed cardboard edge instead of being clipped down with the mesh.
+  const rasterMask = createSpriteCapMask(alpha, width, height);
+  return { shapes, rasterMask };
 }
 
 export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {

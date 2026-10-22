@@ -12,6 +12,15 @@ export function flipSpriteRgbaX(rgba, width, height) {
   return flipped;
 }
 
+export function createSpriteCapMask(alpha, width, height, threshold = 128) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || alpha.length !== width * height) {
+    throw new RangeError('Sprite alpha mask must match its dimensions');
+  }
+  const mask = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < alpha.length; i++) if (alpha[i] >= threshold) mask[i * 4 + 3] = 255;
+  return mask;
+}
+
 function signedArea(points) {
   let sum = 0;
   for (let i = 0; i < points.length; i++) {

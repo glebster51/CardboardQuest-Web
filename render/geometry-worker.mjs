@@ -1,8 +1,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { createTerrainRenderer } from './terrain-renderer.mjs?v=2';
 import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=5';
-import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=9';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=9';
+import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=10';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=10';
 import { makeScenerySprite } from '../scenery-model-v4.mjs?v=6';
 import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=2';
 import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs';
