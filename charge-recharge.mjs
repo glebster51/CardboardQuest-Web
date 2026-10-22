@@ -1,6 +1,13 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const PLAYER_CHARGE_RECHARGE_INTERVAL = 1;
+export const PLAYER_COMBAT_CHARGE_RECHARGE_INTERVAL = 3;
+export const PLAYER_PEACEFUL_CHARGE_RECHARGE_INTERVAL = 1;
+
+export function playerChargeRechargeInterval(enemies = []) {
+  return enemies.some(enemy => enemy.health > 0 && !enemy.fell && enemy.combatAwake)
+    ? PLAYER_COMBAT_CHARGE_RECHARGE_INTERVAL
+    : PLAYER_PEACEFUL_CHARGE_RECHARGE_INTERVAL;
+}
 
 export function spendCharge(unit) {
   if (!unit || unit.charges <= 0) return false;

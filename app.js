@@ -38,7 +38,7 @@ import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=25';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
-import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, PLAYER_CHARGE_RECHARGE_INTERVAL } from './charge-recharge.mjs?v=5';
+import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, playerChargeRechargeInterval } from './charge-recharge.mjs?v=6';
 import { heartHealthLevels, ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=2';
 import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
@@ -1924,10 +1924,11 @@ async function start() {
     const aimingBody = inputController.getAimingBody();
     if (aimingBody && !previousAim) audio.play('aim');
     previousAim = Boolean(aimingBody);
+    const playerRechargeInterval = playerChargeRechargeInterval(activeLocation.enemies);
     for (const body of bodies) {
       if (body.fixed) continue;
       body.hitCooldown = Math.max(0, (body.hitCooldown || 0) - dt);
-      const rechargeInterval = body === heroBody ? PLAYER_CHARGE_RECHARGE_INTERVAL : undefined;
+      const rechargeInterval = body === heroBody ? playerRechargeInterval : undefined;
       const restored = advanceChargeRecharge(body, dt, rechargeInterval);
       if (body === heroBody && restored > 0) {
         const mood = audioMood(activeLocation, heroBody.health, canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL));
@@ -2034,7 +2035,7 @@ async function start() {
         icon.level = level;
       });
       const rechargeProgress = chargeRechargeProgress(body,
-        body === heroBody ? PLAYER_CHARGE_RECHARGE_INTERVAL : undefined);
+        body === heroBody ? playerChargeRechargeInterval(activeLocation.enemies) : undefined);
       figure.chargePips.forEach(({ group, base, fill }, index) => {
         const amount = index < body.charges ? 1 : index === body.charges ? rechargeProgress : 0;
         group.visible = body.team === 'player';
