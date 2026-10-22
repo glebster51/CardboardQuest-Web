@@ -1,4 +1,4 @@
-const EDGE_SHADER_KEY = 'cardboardquest-terrain-edge-tints-v1';
+const EDGE_SHADER_KEY = 'cardboardquest-terrain-edge-blend-modes-v2';
 
 /** Add two inexpensive color bands to the existing terrace wall shader. */
 export function applyTerrainEdgeStyle(root, THREE, settings) {
@@ -41,8 +41,9 @@ uniform float cqTerrainLayerDepth;`)
             .replace('#include <roughnessmap_fragment>', `float cqLayerHeight = clamp(vCqTerrainLayerHeight / cqTerrainLayerDepth, 0.0, 1.0);
 float cqTopEdgeBand = smoothstep(1.0 - cqTerrainEdgeWidth, 1.0 - cqTerrainEdgeWidth * 0.45, cqLayerHeight);
 float cqBaseShadeBand = 1.0 - smoothstep(cqTerrainBaseWidth * 0.55, cqTerrainBaseWidth, cqLayerHeight);
-diffuseColor.rgb = mix(diffuseColor.rgb, cqTerrainBaseColor, cqBaseShadeBand * cqTerrainBaseStrength);
-diffuseColor.rgb = mix(diffuseColor.rgb, cqTerrainEdgeColor, cqTopEdgeBand * cqTerrainEdgeStrength);
+float cqBaseMultiply = cqBaseShadeBand * cqTerrainBaseStrength;
+diffuseColor.rgb *= mix(vec3(1.0), cqTerrainBaseColor, cqBaseMultiply);
+diffuseColor.rgb += cqTerrainEdgeColor * (cqTopEdgeBand * cqTerrainEdgeStrength);
 #include <roughnessmap_fragment>`);
         };
         material.customProgramCacheKey = () => EDGE_SHADER_KEY;

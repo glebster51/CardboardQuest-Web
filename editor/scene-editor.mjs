@@ -468,10 +468,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
       </div></details><details class="se-module"><summary>Кромки террас · глобально</summary><div class="se-module-content se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
-        <label>Подсветка верхнего края<input data-terrain-style="edgeColor" aria-label="Цвет подсветки верхней кромки рельефа" type="color"></label>
+        <label>Аддитивная подсветка верхнего края<input data-terrain-style="edgeColor" aria-label="Цвет аддитивной подсветки верхней кромки рельефа" type="color"></label>
         <label>Сила <output></output><input data-terrain-style="edgeStrength" aria-label="Сила подсветки кромки" type="range" min="0" max="1" step=".01"></label>
         <label>Ширина <output></output><input data-terrain-style="edgeWidth" aria-label="Ширина полосы подсветки" type="range" min=".03" max=".5" step=".01"></label>
-        <label>Тёмное основание<input data-terrain-style="baseColor" aria-label="Цвет затенения основания рельефа" type="color"></label>
+        <label>Мультипликативное затемнение низа<input data-terrain-style="baseColor" aria-label="Цвет мультипликативного затенения нижней кромки рельефа" type="color"></label>
         <label>AO-сила <output></output><input data-terrain-style="baseStrength" aria-label="Сила затемнения основания слоя" type="range" min="0" max="1" step=".01"></label>
         <label>AO-ширина <output></output><input data-terrain-style="baseWidth" aria-label="Ширина затемнённой полосы у основания" type="range" min=".03" max=".5" step=".01"></label>
       </div></details><details class="se-module"><summary>Диагностика рендера</summary><div class="se-module-content se-render-mode" role="group" aria-label="Диагностический режим рендера">
