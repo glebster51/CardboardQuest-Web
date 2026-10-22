@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { makeScenerySprite } from './scenery-model-v4.mjs?v=6';
+import { makeScenerySprite } from './scenery-model-v4.mjs?v=7';
 import { CARDBOARD_EXTRUSION_DEPTH, PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from './scenery-layout.mjs?v=2';
 
 const assets = [

@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=10';
-import { flipSpriteRgbaX } from './sprite-geometry.mjs?v=10';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=11';
+import { flipSpriteRgbaX } from './sprite-geometry.mjs?v=11';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;

@@ -157,7 +157,7 @@ function resampleClosed(points, spacing) {
     return Math.hypot(next.x - point.x, next.y - point.y);
   });
   const perimeter = lengths.reduce((sum, length) => sum + length, 0);
-  const count = clamp(Math.round(perimeter / spacing), 12, 224);
+  const count = clamp(Math.round(perimeter / spacing), 12, 128);
   const result = [];
   let segment = 0, traversed = 0;
   for (let i = 0; i < count; i++) {
@@ -177,7 +177,7 @@ function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
     return Math.hypot(next.x - point.x, next.y - point.y);
   });
   const perimeter = lengths.reduce((sum, length) => sum + length, 0);
-  const count = clamp(Math.round(perimeter / spacing), 12, 224);
+  const count = clamp(Math.round(perimeter / spacing), 12, 128);
   const anchors = [...new Set(pinnedIndices)].sort((a, b) => a - b);
   if (anchors.length >= count) return resampleClosed(points, spacing);
   const arcs = anchors.map((start, anchorIndex) => {
@@ -217,6 +217,56 @@ function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
   };
   return arcs.flatMap((arc, i) => Array.from({ length: shares[i].intervals }, (_unused, step) =>
     sampleArc(arc, arc.length * step / shares[i].intervals)));
+}
+
+/** Coarsens only the bottom strip, clipping convex corners inward and keeping notches pinned. */
+export function simplifySpriteExtrusionBase(points, worldPerPixel, heightFraction = .15) {
+  if (!Array.isArray(points) || points.length < 8 || !(worldPerPixel > 0)) return points;
+  const minY = Math.min(...points.map(point => point.y)), maxY = Math.max(...points.map(point => point.y));
+  const lowerEdge = minY + Math.max(0, Math.min(1, heightFraction)) * (maxY - minY);
+  const orientation = Math.sign(signedArea(points)) || 1;
+  const maxDeviation = worldPerPixel * 1.5;
+  let result = points;
+
+  // Each pass removes at most every other eligible point. The turn and chord
+  // limits avoid flattening corners; convex-only cuts can only move inward.
+  for (let pass = 0; pass < 5 && result.length > 12; pass++) {
+    const removable = new Uint8Array(result.length);
+    let eligible = 0;
+    for (let i = 0; i < result.length; i++) {
+      const previous = result[(i + result.length - 1) % result.length];
+      const current = result[i];
+      const next = result[(i + 1) % result.length];
+      if (current.y > lowerEdge) continue;
+      const ax = current.x - previous.x, ay = current.y - previous.y;
+      const bx = next.x - current.x, by = next.y - current.y;
+      const cross = ax * by - ay * bx;
+      if (cross * orientation <= 1e-10) continue;
+      const turn = Math.atan2(cross * orientation, ax * bx + ay * by);
+      if (turn > .46) continue;
+      const chordX = next.x - previous.x, chordY = next.y - previous.y;
+      const chordLengthSq = chordX * chordX + chordY * chordY;
+      const t = chordLengthSq ? clamp(((current.x - previous.x) * chordX + (current.y - previous.y) * chordY) / chordLengthSq, 0, 1) : 0;
+      if (Math.hypot(current.x - previous.x - chordX * t, current.y - previous.y - chordY * t) > maxDeviation) continue;
+      removable[i] = 1;
+      eligible++;
+    }
+    if (!eligible) break;
+    const keep = new Uint8Array(result.length).fill(1);
+    let removed = 0, previousRemoved = false;
+    for (let i = 0; i < result.length; i++) {
+      if (!removable[i] || previousRemoved || (i === result.length - 1 && !keep[0]) || result.length - removed <= 12) {
+        previousRemoved = false;
+        continue;
+      }
+      keep[i] = 0;
+      previousRemoved = true;
+      removed++;
+    }
+    if (removed < 2) break;
+    result = result.filter((_point, index) => keep[index]);
+  }
+  return result;
 }
 
 function traceLoops(mask, width, height) {
@@ -326,13 +376,16 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
   });
   // Sample the faithful, simplified polyline evenly. Do not spline across the
   // alpha boundary. Concavities remain pinned through resampling.
-  const spacing = pixelSize * 1.25;
+  // Double the source contour spacing to cut the cardboard wall vertex count
+  // roughly in half while preserving explicitly pinned silhouette features.
+  const spacing = pixelSize * 2.5;
   let sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing, contour.features));
   const total = sampled.reduce((sum, loop) => sum + loop.length, 0);
-  if (total > 256) {
-    const factor = total / 256;
+  if (total > 128) {
+    const factor = total / 128;
     sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing * factor, contour.features));
   }
+  sampled = sampled.map(points => simplifySpriteExtrusionBase(points, pixelSize));
   const sorted = sampled.map(points => ({ points, area: Math.abs(signedArea(points)) }))
     .sort((a, b) => b.area - a.area);
   const contains = (p, polygon) => {

@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=10';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=10';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=11';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=11';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const allSubjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }, { id: 'ogre', label: 'Огр' },
