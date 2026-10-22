@@ -142,7 +142,8 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     const fogSurface = Boolean(object.userData?.locationFogSurface);
     const terrainSurface = /^(playfield|terrain)-top-/.test(object.name);
     if (!terrainSurface && !scenerySprite && !fogSurface) return;
-    const reveal = scenerySprite || /^terrain-top-/.test(object.name);
+    // Keep environment materials on the normal opaque path while reveal clipping is disabled.
+    const reveal = false;
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
       if ((reveal && (material?.isMeshStandardMaterial || material?.isMeshBasicMaterial)
@@ -291,7 +292,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     };
     if (reveal) { material.transparent = false; material.depthWrite = true; }
     const previousCacheKey = originalHooks.customProgramCacheKey;
-    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v14-screen-voronoi-reveal-opaque-${reveal}`;
+    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v15-screen-voronoi-reveal-disabled-${reveal}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
