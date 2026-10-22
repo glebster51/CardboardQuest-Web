@@ -19,6 +19,10 @@ const fragmentShader = /* glsl */`
   uniform sampler2D tDiffuse;
   uniform float focus;
   uniform float blurPixels;
+  uniform float upperGradientShift;
+  uniform float lowerGradientShift;
+  uniform float gradientMultiplier;
+  uniform bool showGradient;
   uniform float pixelRatio;
   uniform vec2 resolution;
   varying vec2 vUv;
@@ -38,8 +42,15 @@ const fragmentShader = /* glsl */`
 
   void main() {
     vec4 sharp = texture2D(tDiffuse, vUv);
-    float distanceFromFocus = abs(vUv.y - focus);
-    float blurAmount = smoothstep(0.035, 0.24, distanceFromFocus);
+    float signedDistanceFromFocus = vUv.y - focus;
+    float distanceFromFocus = signedDistanceFromFocus >= 0.0
+      ? max(0.0, signedDistanceFromFocus - upperGradientShift)
+      : max(0.0, -signedDistanceFromFocus - lowerGradientShift);
+    float blurAmount = clamp(smoothstep(0.035, 0.24, distanceFromFocus) * gradientMultiplier, 0.0, 1.0);
+    if (showGradient) {
+      gl_FragColor = vec4(vec3(blurAmount), 1.0);
+      return;
+    }
     if (blurAmount < 0.002 || blurPixels < 0.1) {
       gl_FragColor = sharp;
       return;
@@ -56,6 +67,10 @@ export function createHexTiltShiftShader(THREE) {
       tDiffuse: { value: null },
       focus: { value: 0.48 },
       blurPixels: { value: 12 },
+      upperGradientShift: { value: 0 },
+      lowerGradientShift: { value: 0 },
+      gradientMultiplier: { value: 1 },
+      showGradient: { value: false },
       pixelRatio: { value: 1 },
       resolution: { value: new THREE.Vector2(1, 1) },
     },

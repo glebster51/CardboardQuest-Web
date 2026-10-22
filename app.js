@@ -4,13 +4,13 @@ import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=12';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=3';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=4';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=28';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
-import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
+import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=3';
 import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=2';
 import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
@@ -202,15 +202,19 @@ async function start() {
       const tilt = new shaderPassModule.ShaderPass(createHexTiltShiftShader(THREE));
       tilt.uniforms.focus.value = screenEffects.tiltShiftFocus;
       tilt.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
+      tilt.uniforms.upperGradientShift.value = screenEffects.tiltShiftUpperGradientShift;
+      tilt.uniforms.lowerGradientShift.value = screenEffects.tiltShiftLowerGradientShift;
+      tilt.uniforms.gradientMultiplier.value = screenEffects.tiltShiftGradientMultiplier;
+      tilt.uniforms.showGradient.value = screenEffects.tiltShiftShowGradient;
       tilt.uniforms.pixelRatio.value = tiltShiftPixelRatio;
       tilt.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
-      tilt.enabled = screenEffects.tiltShift;
+      tilt.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
       composer.addPass(tilt);
       composer.addPass(new outputModule.OutputPass());
       composer.setSize(innerWidth, innerHeight);
       setSsaoSize();
       tiltShiftComposer = composer; tiltShiftPass = tilt;
-      tiltShiftPass.enabled = screenEffects.tiltShift;
+      tiltShiftPass.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
       if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
     } catch (error) {
       console.warn('Постобработка недоступна; используется обычный рендер', error);
@@ -221,7 +225,7 @@ async function start() {
     screenEffects = normalizeScreenEffects(value);
     try { localStorage.setItem(SCREEN_EFFECT_SETTINGS_KEY, JSON.stringify(screenEffects)); }
     catch { /* The current session still honors the selected effects. */ }
-    if (tiltShiftPass) tiltShiftPass.enabled = screenEffects.tiltShift;
+    if (tiltShiftPass) tiltShiftPass.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
     if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
     if (ssaoPass) {
       ssaoPass.kernelRadius = screenEffects.ssaoKernelRadius;
@@ -231,8 +235,12 @@ async function start() {
     if (tiltShiftPass) {
       tiltShiftPass.uniforms.focus.value = screenEffects.tiltShiftFocus;
       tiltShiftPass.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
+      tiltShiftPass.uniforms.upperGradientShift.value = screenEffects.tiltShiftUpperGradientShift;
+      tiltShiftPass.uniforms.lowerGradientShift.value = screenEffects.tiltShiftLowerGradientShift;
+      tiltShiftPass.uniforms.gradientMultiplier.value = screenEffects.tiltShiftGradientMultiplier;
+      tiltShiftPass.uniforms.showGradient.value = screenEffects.tiltShiftShowGradient;
     }
-    if (screenEffects.ssao || screenEffects.tiltShift) void enableTiltShift();
+    if (screenEffects.ssao || screenEffects.tiltShift || screenEffects.tiltShiftShowGradient) void enableTiltShift();
   }
 
   const scene = new THREE.Scene();

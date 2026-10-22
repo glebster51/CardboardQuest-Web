@@ -587,6 +587,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Дальность SSAO <output>${screenEffects.ssaoMaxDistance.toFixed(2)}</output><input data-effect-setting="ssaoMaxDistance" aria-label="Максимальная дистанция SSAO" type="range" min=".01" max=".5" step=".01" value="${screenEffects.ssaoMaxDistance}"></label>
         <label>Фокус Tilt-shift <output>${screenEffects.tiltShiftFocus.toFixed(2)}</output><input data-effect-setting="tiltShiftFocus" aria-label="Положение полосы фокуса Tilt-shift" type="range" min="0" max="1" step=".01" value="${screenEffects.tiltShiftFocus}"></label>
         <label>Размытие Tilt-shift, px <output>${screenEffects.tiltShiftBlur.toFixed(1)}</output><input data-effect-setting="tiltShiftBlur" aria-label="Сила размытия Tilt-shift" type="range" min="0" max="24" step=".5" value="${screenEffects.tiltShiftBlur}"></label>
+        <label>Сдвиг градиента сверху <output>${screenEffects.tiltShiftUpperGradientShift.toFixed(2)}</output><input data-effect-setting="tiltShiftUpperGradientShift" aria-label="Сдвиг верхней части экранного градиента Tilt-shift" type="range" min="-.25" max=".25" step=".01" value="${screenEffects.tiltShiftUpperGradientShift}"></label>
+        <label>Сдвиг градиента снизу <output>${screenEffects.tiltShiftLowerGradientShift.toFixed(2)}</output><input data-effect-setting="tiltShiftLowerGradientShift" aria-label="Сдвиг нижней части экранного градиента Tilt-shift" type="range" min="-.25" max=".25" step=".01" value="${screenEffects.tiltShiftLowerGradientShift}"></label>
+        <label>Умножение градиента <output>${screenEffects.tiltShiftGradientMultiplier.toFixed(2)}</output><input data-effect-setting="tiltShiftGradientMultiplier" aria-label="Умножение экранного градиента Tilt-shift" type="range" min="0" max="4" step=".05" value="${screenEffects.tiltShiftGradientMultiplier}"></label>
+        <label><input type="checkbox" data-screen-effect="tiltShiftShowGradient" ${screenEffects.tiltShiftShowGradient ? 'checked' : ''}> Показать градиент Tilt-shift</label>
         <small>Настройки сохраняются в этом браузере.</small>
       </div></details><details class="se-module"><summary>Освещение</summary><div class="se-module-content se-lighting" role="group" aria-label="Настройки освещения">
         <label>Угол Y <output></output><input data-lighting-angle="y" aria-label="Угол света по Y" type="range" min="-180" max="180" step="1"></label>
@@ -691,7 +695,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     });
     for (const input of panel.querySelectorAll('[data-screen-effect]')) input.addEventListener('change', emitScreenEffects);
     for (const input of panel.querySelectorAll('[data-effect-setting]')) input.addEventListener('input', () => {
-      input.previousElementSibling.value = Number(input.value).toFixed(input.step === '.001' ? 3 : 2);
+      input.previousElementSibling.value = Number(input.value).toFixed(input.step === '.001' ? 3 : (input.step === '.5' ? 1 : 2));
       emitScreenEffects();
     });
     ui.objects.addEventListener('change', () => select(bindings.find(binding => binding.id === ui.objects.value)));

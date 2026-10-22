@@ -8,6 +8,10 @@ export const DEFAULT_SCREEN_EFFECTS = Object.freeze({
   ssaoMaxDistance: .12,
   tiltShiftFocus: .48,
   tiltShiftBlur: 12,
+  tiltShiftUpperGradientShift: 0,
+  tiltShiftLowerGradientShift: 0,
+  tiltShiftGradientMultiplier: 1,
+  tiltShiftShowGradient: false,
 });
 
 export function normalizeScreenEffects(value) {
@@ -23,5 +27,9 @@ export function normalizeScreenEffects(value) {
     ssaoMaxDistance: number('ssaoMaxDistance', .01, .5),
     tiltShiftFocus: number('tiltShiftFocus', 0, 1),
     tiltShiftBlur: number('tiltShiftBlur', 0, 24),
+    tiltShiftUpperGradientShift: number('tiltShiftUpperGradientShift', -.25, .25),
+    tiltShiftLowerGradientShift: number('tiltShiftLowerGradientShift', -.25, .25),
+    tiltShiftGradientMultiplier: number('tiltShiftGradientMultiplier', 0, 4),
+    tiltShiftShowGradient: value?.tiltShiftShowGradient === true,
   };
 }
