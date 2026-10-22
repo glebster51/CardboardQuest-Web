@@ -19,14 +19,15 @@ export function terrainLevelCenter(points) {
 }
 
 export function terrainFogCullDistance(fog = FOG_DEFAULTS) {
-  const start = Number.isFinite(fog?.start) ? fog.start : FOG_DEFAULTS.start;
   const end = Number.isFinite(fog?.end) ? fog.end : FOG_DEFAULTS.end;
-  return start + Math.max(.1, end - start) * .25;
+  // Keep the cardboard wall through the whole fog gradient. The shader reaches
+  // full fog at `end`, so only geometry beyond that point can be discarded.
+  return end;
 }
 
 export function shouldCullTerrainSideFace(faceCenter, faceNormal, levelCenter, fogTopology, fog = FOG_DEFAULTS) {
   if (!fogTopology?.paths?.length || isInsideFogLoop(faceCenter.x, faceCenter.z, fogTopology.clearRegions)) return false;
-  if (fogPathDistanceAt(faceCenter.x, faceCenter.z, fogTopology.paths) <= terrainFogCullDistance(fog)) return false;
+  if (fogPathDistanceAt(faceCenter.x, faceCenter.z, fogTopology.paths) < terrainFogCullDistance(fog)) return false;
   const towardCenterX = levelCenter.x - faceCenter.x, towardCenterZ = levelCenter.z - faceCenter.z;
   return faceNormal.x * towardCenterX + faceNormal.z * towardCenterZ < 0;
 }
