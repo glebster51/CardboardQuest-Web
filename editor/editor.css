@@ -118,7 +118,18 @@ body.scene-editing #hud-tools,body.scene-editing #scene-editor-toggle,body.scene
 #scene-editor #se-assets .se-library-reference small{font-size:8px;line-height:1.25;color:#b9ac97}
 #scene-editor #se-assets .se-library-empty{grid-column:1/-1;padding:8px;color:#b9ac97;font-size:11px}
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
+#scene-editor #se-assets .se-item-preview{display:block;width:65px;height:58px;background-repeat:no-repeat;background-size:400% 200%;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}
+#scene-editor #se-prefab-editor{margin:0 0 9px;padding:9px 11px;border:1px solid #d8ae70;border-radius:9px;background:#29271ff2;box-shadow:0 4px 16px #0004}
+#scene-editor #se-prefab-editor[hidden]{display:none!important}
+#scene-editor #se-prefab-editor header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+#scene-editor #se-prefab-editor header>div{display:grid;gap:2px}
+#scene-editor #se-prefab-editor header small{font-size:8px;letter-spacing:1px;color:#d8b67f}
+#scene-editor #se-prefab-editor header strong{font-size:12px}
+#scene-editor #se-prefab-editor label{display:grid;grid-template-columns:1fr auto;gap:2px;font-size:10px}
+#scene-editor #se-prefab-editor output{color:#f5c879;font-variant-numeric:tabular-nums}
+#scene-editor #se-prefab-editor input{grid-column:1/-1;width:100%;accent-color:#e8b765}
+#scene-editor #se-prefab-editor>small{display:block;margin-top:5px;color:#c9c0ad;font-size:9px}
 @media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-controls{width:275px}#scene-editor .se-inspector{width:275px}#scene-editor .se-library{width:min(520px,calc(100% - 570px))}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor button{padding:6px!important}}
 @media(max-width:850px){#scene-editor .se-inspector,#scene-editor .se-library{display:none!important}}
 #scene-editor #se-close{color:#24252b;background:#d9ad6f;border-color:#eac991;font-weight:700}

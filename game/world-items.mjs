@@ -2,6 +2,16 @@ export const WORLD_ITEM_IDS = Object.freeze([
   'berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard',
 ]);
 
+export function rollEditorChestLoot(random = Math.random) {
+  const rewardCount = 2 + Math.floor(Math.max(0, Math.min(.999999, random())) * 3);
+  const rewards = {};
+  for (let index = 0; index < rewardCount; index++) {
+    const itemId = WORLD_ITEM_IDS[Math.floor(Math.max(0, Math.min(.999999, random())) * WORLD_ITEM_IDS.length)];
+    rewards[itemId] = (rewards[itemId] ?? 0) + 1;
+  }
+  return rewards;
+}
+
 export function rollEnemyLoot(random = Math.random) {
   const roll = random();
   return roll < .65 ? { berries: 1 } : roll < .93 ? { hardtack: 1 } : { jerky: 1 };

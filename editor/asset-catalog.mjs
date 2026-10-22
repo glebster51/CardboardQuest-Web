@@ -23,6 +23,9 @@ const scenery = [
 
 const sprite = (id, label, category, file, size, group) => ({ id, label, category, asset: `assets/${file}.png`, size, group });
 const reference = (id, label, category, preview, hint) => ({ id, label, category, preview: `assets/${preview}.png`, hint, kind: 'reference' });
+const worldItem = (itemId, label, frame) => ({ id: `world-item-${itemId}`, itemId, label, category: 'interactive',
+  asset: `assets/loot-atlas.png#${itemId}`, preview: 'assets/loot-atlas.png', frame, size: .54,
+  group: 'Предмет', kind: 'world-item', hint: 'Подбирается магнитом и отправляется в рюкзак.' });
 
 // This is the game's global palette. Entries describe reusable game resources,
 // never the contents currently spawned in a particular location.
@@ -32,9 +35,17 @@ export const ASSET_CATALOG = [
   reference('entry', 'Точка входа', 'technical', 'hero-idle', 'Точка задаётся в свойствах локации или редакторе карты.'),
   { id: 'fog-paths', label: 'Линии тумана', category: 'technical', icon: '〰', hint: 'Включает редактирование троп тумана.', kind: 'tool' },
   { id: 'level-graph', label: 'Граф карты уровней', category: 'technical', icon: '⌘', hint: 'Открывает глобальный граф связей между локациями.', kind: 'tool' },
-  reference('chest', 'Сундук', 'interactive', 'chest-states', 'Интерактивный объект игры; включает состояния закрыт и открыт.'),
+  { id: 'chest', label: 'Сундук', category: 'interactive', asset: 'assets/chest-states.png', size: 1.72,
+    group: 'Интерактивный объект', kind: 'chest', hint: 'Открывается от удара и выбрасывает случайные предметы.' },
   { id: 'inspect', label: 'Осмотреть', category: 'interactive', asset: 'assets/poi-inspection-bark.webp', size: .72,
     group: 'Интерактивный объект', hint: 'Картонный знак точки интереса; можно перетащить на сцену.', kind: 'inspection' },
+  worldItem('berries', 'Лесные ягоды', 0),
+  worldItem('hardtack', 'Дорожный сухарь', 1),
+  worldItem('jerky', 'Вяленое мясо', 2),
+  worldItem('bandage', 'Перевязь', 3),
+  worldItem('scrap', 'Медный обломок', 4),
+  worldItem('nuts', 'Лесные орехи', 5),
+  worldItem('bladeShard', 'Острый осколок', 6),
   sprite('goblin', 'Гоблин', 'enemies', 'goblin-idle', 1.8, 'Враг'),
   sprite('slinger', 'Гоблин-пращник', 'enemies', 'slinger-idle', 1.8, 'Враг'),
   sprite('boar', 'Кабан', 'enemies', 'boar-idle', 2.1, 'Враг'),
@@ -45,3 +56,4 @@ export const ASSET_CATALOG = [
 ];
 
 export const catalogAsset = asset => ASSET_CATALOG.find(item => item.asset === asset);
+export const catalogPrefab = prefabId => ASSET_CATALOG.find(item => item.id === prefabId && item.asset && item.kind !== 'reference');

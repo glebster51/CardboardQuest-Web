@@ -1,7 +1,7 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '160';
+export const SCENE_BUILD = '218';
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=8';
-import { catalogAsset } from './asset-catalog.mjs?v=5';
+import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
@@ -37,8 +37,8 @@ export function writeTransform(object, value) {
   for (const key of ['position', 'rotation', 'scale']) object[key].set(...value[key]);
   object.updateMatrixWorld(true);
 }
-export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false, globalTerrainStyle = false, unitPuckColors = false) {
-  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain && !globalTerrainStyle && !unitPuckColors) return value;
+export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false, globalTerrainStyle = false, unitPuckColors = false, prefabId = null) {
+  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain && !globalTerrainStyle && !unitPuckColors && !prefabId) return value;
   if (!value || typeof value !== 'object') throw new Error('Scene value must be an object');
   if (fogPaths) return validateFogPaths(value);
   if (graph) return validateCampaignGraph(value);
@@ -60,10 +60,16 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       throw new Error('Invalid unit puck colors');
     return value;
   }
+  if (prefabId) {
+    if (!catalogPrefab(prefabId) || Object.keys(value).some(key => key !== 'size')
+      || !Number.isFinite(value.size) || value.size < .1 || value.size > 30)
+      throw new Error('Invalid prefab settings');
+    return value;
+  }
   const allowed = fog ? ['enabled', 'revealEnabled', 'start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
     'revealNoiseEnabled', 'revealNoiseType', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply',
     'revealNoiseSpeedX', 'revealNoiseSpeedY', 'revealCheckerSize', 'revealDepthFadeAdd', 'revealDepthFadeMultiply']
-    : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
+    : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size', 'prefabId'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
     if ((value.enabled !== undefined && typeof value.enabled !== 'boolean')
@@ -96,7 +102,8 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
         || value[key].some(number => Math.abs(number) > 10000)
         || (key === 'scale' && value[key].some(number => number < .001))) throw new Error(`Invalid transform ${key}`);
     }
-    if ('asset' in value && (!catalogAsset(value.asset) || !Number.isFinite(value.size) || value.size < .1 || value.size > 30))
+    if ('asset' in value && (!catalogAsset(value.asset) || ('size' in value && (!Number.isFinite(value.size) || value.size < .1 || value.size > 30))
+      || ('prefabId' in value && (!catalogPrefab(value.prefabId) || catalogPrefab(value.prefabId).asset !== value.asset))))
       throw new Error('Invalid library asset');
   }
   return value;
@@ -117,7 +124,7 @@ export function createEditModel() {
     get(location, object) { const entry = records.get(id(location, object)); return entry ? clone(entry.after) : null; },
     begin() { if (!transaction) transaction = new Map(); },
     set(location, object, value) {
-      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain', object === 'terrain-style', object === 'unit-puck-colors');
+      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain', object === 'terrain-style', object === 'unit-puck-colors', object.startsWith('prefab:') ? object.slice(7) : null);
       const key = id(location, object), entry = records.get(key);
       if (!entry) throw new Error(`Unregistered scene object: ${object}`);
       if (equal(entry.after, value)) return false;
@@ -168,29 +175,32 @@ export function mergeSceneDiff(overrides, diff) {
     const { location, object, before, after } = change;
     if (typeof object !== 'string' || !/^[a-zA-Z0-9:/._-]+$/.test(object) || /(?:__proto__|constructor|prototype)/.test(object))
       throw new Error('Invalid scene object id');
+    const prefabId = object.startsWith('prefab:') ? object.slice(7) : null;
     const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
       lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style',
       unitPuckColors = object === 'unit-puck-colors';
-    if (fog || graph || lighting || globalTerrainStyle || unitPuckColors ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
+    if (fog || graph || lighting || globalTerrainStyle || unitPuckColors || prefabId ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
       || ['constructor', 'prototype'].includes(location)) throw new Error('Invalid scene location');
-    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors);
-    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors);
+    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
+    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
     if (before === null && after === null) throw new Error('An empty edit has no effect');
     if (before === null && (!object.startsWith('placed:') || !after.asset)) throw new Error('New objects must come from the asset library');
     const current = fog ? { ...FOG_DEFAULTS, ...result.fog } : lighting ? { ...LIGHTING_DEFAULTS, ...result.lighting }
       : globalTerrainStyle ? { ...TERRAIN_STYLE_DEFAULTS, ...result.terrainStyle }
       : unitPuckColors ? { ...UNIT_PUCK_COLOR_DEFAULTS, ...result.unitPuckColors }
+        : prefabId ? result.prefabs?.[prefabId] ?? { size: catalogPrefab(prefabId)?.size }
       : graph ? result.graph ?? before : terrain ? result.locations[location]?.terrain ?? { strokes: [] }
         : result.locations[location]?.[object];
     const matches = (value, expected) => fog
       ? Object.keys(expected).every(key => equal(value?.[key], expected[key]))
       : equal(value, expected);
-    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
+    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || prefabId || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
       throw new Error(`Scene edit conflict: ${location}/${object}`);
     if (fog) result.fog = { ...current, ...clone(after) };
     else if (lighting) result.lighting = clone(after);
     else if (globalTerrainStyle) result.terrainStyle = clone(after);
     else if (unitPuckColors) result.unitPuckColors = clone(after);
+    else if (prefabId) { result.prefabs ??= {}; result.prefabs[prefabId] = clone(after); }
     else if (graph) result.graph = clone(after);
     else { result.locations[location] ??= {}; result.locations[location][object] = clone(after); }
   }

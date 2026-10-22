@@ -1,5 +1,5 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=146';
-import { catalogAsset } from './asset-catalog.mjs?v=5';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=148';
+import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
@@ -17,7 +17,14 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
   const unitPuckColors = { ...UNIT_PUCK_COLOR_DEFAULTS, ...overrides.unitPuckColors };
   validateSceneValue(unitPuckColors, false, false, false, false, false, false, true);
   model.register(null, 'unit-puck-colors', unitPuckColors);
-  const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.asset ? { asset: binding.asset, size: binding.size } : {}) });
+  const prefabs = new Map();
+  for (const item of ASSET_CATALOG.filter(entry => entry.asset && entry.kind !== 'reference')) {
+    const settings = { size: overrides.prefabs?.[item.id]?.size ?? item.size };
+    validateSceneValue(settings, false, false, false, false, false, false, false, item.id);
+    prefabs.set(item.id, settings); model.register(null, `prefab:${item.id}`, settings);
+  }
+  const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.asset
+    ? { scale: readTransform(binding.object).scale.map(value => value / binding.prefabScale), asset: binding.asset, prefabId: binding.prefabId } : {}) });
   function fogPathsMatchLocation(paths, location) {
     try {
       const expected = createDefaultFogPaths(location).paths;
@@ -34,14 +41,27 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
     binding.object.visible = !deleted && binding.visible;
     if (binding.body) binding.body.active = !deleted && binding.bodyActive;
     binding.onDelete?.(deleted);
-    if (!deleted) { writeTransform(binding.object, value); binding.sync?.(); }
+    if (!deleted) {
+      const transform = binding.prefabId ? { ...value, scale: value.scale.map(scale => scale * binding.prefabScale) } : value;
+      writeTransform(binding.object, transform); binding.sync?.();
+    }
   }
   function bind(location, bindings, id, label, object, options = {}, born = false) {
     const binding = { id, label, object, location: location.id, visible: object.visible,
       bodyActive: options.body?.active !== false, ...options };
+    if (binding.asset) {
+      const prefab = catalogAsset(binding.asset);
+      binding.prefabId = object.userData.sceneEditPrefabId ?? prefab?.id;
+      const definition = catalogPrefab(binding.prefabId);
+      binding.prefabScale = definition ? prefabs.get(binding.prefabId).size / definition.size : 1;
+    } else binding.prefabScale = 1;
     let original = snapshot(binding);
     const saved = overrides.locations[location.id];
-    if (saved && Object.hasOwn(saved, id)) { validateSceneValue(saved[id]); original = saved[id]; }
+    if (saved && Object.hasOwn(saved, id)) {
+      const value = { ...saved[id] };
+      if (value.asset) { value.prefabId = value.prefabId ?? catalogAsset(value.asset)?.id; delete value.size; }
+      validateSceneValue(value); original = value;
+    }
     const current = model.register(location.id, id, born ? null : original);
     bindings.push(binding); apply(binding, current); return binding;
   }
@@ -51,6 +71,7 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
     const category = object.userData.sceneEditCategory ?? catalogAsset(inferredAsset)?.category ?? 'ordinary';
     return bind(location, bindings, object.userData.sceneEditId, object.userData.sceneEditLabel, object, {
       body, asset: object.userData.sceneEditAsset, size: object.userData.sceneEditSize,
+      prefabId: object.userData.sceneEditPrefabId ?? catalogAsset(object.userData.sceneEditAsset)?.id,
       category,
       sync() {
         if (body) { body.x = object.position.x; body.z = object.position.z; body.radius = radius * Math.max(object.scale.x, object.scale.z); }
@@ -163,12 +184,19 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       const placed = { ...overrides.locations[location.id] };
       for (const change of model.diff().changes) if (change.location === location.id && change.object.startsWith('placed:')) placed[change.object] = change.after;
       for (const { location: id, object, value } of placedTemplates.values()) if (id === location.id && !placed[object]) placed[object] = value;
-      for (const [id, value] of Object.entries(placed)) if (id.startsWith('placed:') && value) await createAsset(location, id, value);
+      for (const [id, saved] of Object.entries(placed)) if (id.startsWith('placed:') && saved) {
+        const value = { ...saved };
+        const prefabId = value.prefabId ?? catalogAsset(value.asset)?.id;
+        value.prefabId = prefabId; delete value.size;
+        value.size = catalogPrefab(prefabId)?.size;
+        await createAsset(location, id, value);
+      }
     },
     add(location, object) {
-      const value = { ...readTransform(object), asset: object.userData.sceneEditAsset, size: object.userData.sceneEditSize };
-      placedTemplates.set(JSON.stringify([location.id, object.userData.sceneEditId]), { location: location.id, object: object.userData.sceneEditId, value });
+      const prefabId = object.userData.sceneEditPrefabId ?? catalogAsset(object.userData.sceneEditAsset)?.id;
       const binding = propBinding(location, resident.get(location.id), object, true);
+      const value = { ...snapshot(binding), asset: object.userData.sceneEditAsset, prefabId };
+      placedTemplates.set(JSON.stringify([location.id, object.userData.sceneEditId]), { location: location.id, object: object.userData.sceneEditId, value });
       model.set(location.id, binding.id, value); apply(binding, value); return binding;
     },
     bindEntity(location, id, label, object, options = {}) {
@@ -230,6 +258,39 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       Object.assign(unitPuckColors, next); setUnitPuckColors(unitPuckColors);
       return model.set(null, 'unit-puck-colors', { ...unitPuckColors });
     },
+    prefab(id) { return model.get(null, `prefab:${id}`) ?? null; },
+    prefabInstanceCount(id) {
+      const keys = new Set();
+      for (const [location, bindings] of resident) for (const binding of bindings)
+        if (binding.prefabId === id) keys.add(JSON.stringify([location, binding.id]));
+      for (const [location, entries] of Object.entries(overrides.locations ?? {})) for (const [object, value] of Object.entries(entries))
+        if (object.startsWith('placed:') && (value.prefabId ?? catalogAsset(value.asset)?.id) === id)
+          keys.add(JSON.stringify([location, object]));
+      for (const { location, object, value } of placedTemplates.values())
+        if ((value.prefabId ?? catalogAsset(value.asset)?.id) === id) keys.add(JSON.stringify([location, object]));
+      for (const change of model.diff().changes) if (change.object.startsWith('placed:')) {
+        if (change.after === null) keys.delete(JSON.stringify([change.location, change.object]));
+        else if ((change.after.prefabId ?? catalogAsset(change.after.asset)?.id) === id)
+          keys.add(JSON.stringify([change.location, change.object]));
+      }
+      return keys.size;
+    },
+    changePrefab(id, settings) {
+      const current = model.get(null, `prefab:${id}`);
+      if (!current) throw new Error(`Unknown prefab: ${id}`);
+      const next = { ...current, ...settings };
+      validateSceneValue(next, false, false, false, false, false, false, false, id);
+      const changed = model.set(null, `prefab:${id}`, next);
+      if (!changed) return false;
+      prefabs.set(id, next);
+      const definition = catalogPrefab(id), factor = next.size / definition.size;
+      for (const bindings of resident.values()) for (const binding of bindings) if (binding.prefabId === id) {
+        binding.prefabScale = factor;
+        const value = model.get(binding.location, binding.id);
+        if (value) apply(binding, value);
+      }
+      return true;
+    },
     changeTerrain(location, edits) {
       validateTerrainEdits(edits);
       const changed = model.set(location.id, 'terrain', edits);
@@ -251,12 +312,19 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       Object.assign(lighting, model.get(null, 'lighting')); setLighting(lighting);
       Object.assign(terrainStyle, model.get(null, 'terrain-style')); setTerrainStyle(terrainStyle);
       Object.assign(unitPuckColors, model.get(null, 'unit-puck-colors')); setUnitPuckColors(unitPuckColors);
+      for (const item of ASSET_CATALOG) if (item.asset && item.kind !== 'reference') {
+        const settings = model.get(null, `prefab:${item.id}`);
+        if (settings) prefabs.set(item.id, settings);
+      }
       for (const [id, source] of sources) {
         source.location.fogPaths = model.get(id, 'fog-paths');
         source.location.edgeShade?.updatePaths(source.location.fogPaths);
         if (model.has(id, 'terrain')) source.location.terrainEdits = model.get(id, 'terrain');
       }
-      for (const bindings of resident.values()) for (const binding of bindings) apply(binding, model.get(binding.location, binding.id));
+      for (const bindings of resident.values()) for (const binding of bindings) {
+        if (binding.prefabId) binding.prefabScale = prefabs.get(binding.prefabId).size / catalogPrefab(binding.prefabId).size;
+        apply(binding, model.get(binding.location, binding.id));
+      }
     },
   };
 }

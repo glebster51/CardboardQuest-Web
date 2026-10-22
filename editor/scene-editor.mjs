@@ -1,5 +1,5 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=146';
-import { ASSET_CATALOG } from './asset-catalog.mjs?v=5';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=148';
+import { ASSET_CATALOG } from './asset-catalog.mjs?v=7';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
 import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=2';
@@ -45,6 +45,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       else if (object === 'terrain-style') label = 'Цвета кромок террас';
       else if (object === 'unit-puck-colors') label = 'Цвет шайб юнитов';
       else if (object === 'campaign-graph') label = 'Граф карты мира';
+      else if (object.startsWith('prefab:')) label = `Префаб · ${ASSET_CATALOG.find(item => item.id === object.slice(7))?.label ?? object.slice(7)}`;
       else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
         .replace(/^placed:/, 'Добавленный объект · ').replace(/:/g, ' · ');
     }
@@ -535,7 +536,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <output id="se-status" aria-live="polite">Изменения автоматически попадут в буфер</output>
         <details><summary>Показать текст диффа</summary><textarea id="se-diff" aria-label="Суммарный дифф сцены" readonly spellcheck="false"></textarea>
         <button id="se-download">Скачать дифф</button></details>
-      </aside><section class="se-library" aria-label="Библиотека игровых ассетов"><header><strong>Библиотека игровых ассетов</strong><small>Общий каталог игры · карточки с изображением можно перетащить на сцену</small>
+      </aside><section class="se-library" aria-label="Библиотека игровых ассетов"><header><strong>Библиотека игровых ассетов</strong><small>Щелчок — разместить · двойной — редактировать общую заготовку · перетащи для размещения</small>
       <input id="se-search" type="search" placeholder="Найти…" aria-label="Поиск в библиотеке"></header>
       <nav id="se-library-tabs" role="tablist" aria-label="Категории библиотеки">
         <button role="tab" data-library-category="ordinary" aria-selected="true">Обычные</button>
@@ -544,7 +545,11 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <button role="tab" data-library-category="interactive" aria-selected="false">Интерактивные</button>
         <button role="tab" data-library-category="enemies" aria-selected="false">Враги</button>
         <button role="tab" data-library-category="characters" aria-selected="false">Персонажи</button>
-      </nav><div id="se-assets" role="tabpanel"></div></section>`;
+      </nav><section id="se-prefab-editor" aria-label="Редактирование префаба" hidden>
+        <header><div><small>ОБЩАЯ ЗАГОТОВКА · ВСЕ ЛОКАЦИИ</small><strong id="se-prefab-title"></strong></div><button id="se-prefab-close" type="button" aria-label="Закрыть редактор префаба">×</button></header>
+        <label>Общий размер <output id="se-prefab-size-value"></output><input id="se-prefab-size" type="range" min="0.1" max="12" step="0.01" aria-label="Общий размер префаба"></label>
+        <small id="se-prefab-count"></small>
+      </section><div id="se-assets" role="tabpanel"></div></section>`;
     document.body.append(panel);
     refreshRevealSettings = bindPlayerRevealSettings({ panel, registry, model, changed });
     bindItemMagnetSettings({ panel, getSettings: getItemMagnetSettings, onChange: onItemMagnetSettingsChange });
@@ -634,7 +639,30 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (object === 'fog-paths') onFogPathsChange(getLocation());
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
-    let activeLibraryCategory = 'ordinary';
+  let activeLibraryCategory = 'ordinary', prefabEditorItem = null, pendingCardClick = 0;
+    const prefabPanel = panel.querySelector('#se-prefab-editor'), prefabSize = panel.querySelector('#se-prefab-size');
+    const openPrefabEditor = item => {
+      prefabEditorItem = item;
+      const current = registry.prefab(item.id);
+      if (!current) return;
+      panel.querySelector('#se-prefab-title').textContent = item.label;
+      prefabSize.min = String(Math.max(.1, item.size * .25)); prefabSize.max = String(Math.min(30, item.size * 3));
+      prefabSize.value = String(current.size);
+      panel.querySelector('#se-prefab-size-value').value = `${current.size.toFixed(2)} м`;
+      panel.querySelector('#se-prefab-count').textContent = `${registry.prefabInstanceCount(item.id)} экземпляров связаны с этой заготовкой. Позиция, поворот и локальный масштаб остаются индивидуальными.`;
+      prefabPanel.hidden = false;
+    };
+    panel.querySelector('#se-prefab-close').addEventListener('click', () => { prefabPanel.hidden = true; prefabEditorItem = null; });
+    prefabSize.addEventListener('pointerdown', () => model.begin());
+    prefabSize.addEventListener('change', () => model.commit());
+    prefabSize.addEventListener('input', () => {
+      if (!prefabEditorItem) return;
+      const size = Number(prefabSize.value);
+      registry.changePrefab(prefabEditorItem.id, { size });
+      panel.querySelector('#se-prefab-size-value').value = `${size.toFixed(2)} м`;
+      panel.querySelector('#se-prefab-count').textContent = `${registry.prefabInstanceCount(prefabEditorItem.id)} экземпляров связаны с этой заготовкой. Позиция, поворот и локальный масштаб остаются индивидуальными.`;
+      ui.status.textContent = `Обновлен префаб «${prefabEditorItem.label}» во всех локациях.`; changed();
+    });
     const renderAssets = () => {
       const list = panel.querySelector('#se-assets'), query = panel.querySelector('#se-search').value.toLocaleLowerCase();
       list.replaceChildren();
@@ -642,11 +670,16 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         && `${item.label} ${item.group ?? ''} ${item.id} ${item.hint ?? ''}`.toLocaleLowerCase().includes(query));
       for (const item of assets) {
         const placeable = Boolean(item.asset) && item.kind !== 'reference';
-        const button = document.createElement('button'); button.type = 'button'; button.draggable = placeable;
+      const button = document.createElement('button'); button.type = 'button'; button.draggable = placeable;
         button.className = placeable ? '' : 'se-library-reference';
         button.dataset.asset = item.id; button.title = `${item.label}${item.group ? ` · ${item.group}` : ''}`;
-        const imagePath = item.asset ?? item.preview;
-        if (imagePath) {
+        const imagePath = item.preview ?? item.asset;
+        if (item.kind === 'world-item') {
+          const image = document.createElement('span'); image.className = 'se-item-preview';
+          image.style.backgroundImage = `url("${new URL(`../${imagePath}`, import.meta.url).href}")`;
+          image.style.backgroundPosition = `${(item.frame % 4) / 3 * 100}% ${Math.floor(item.frame / 4) * 100}%`;
+          button.append(image);
+        } else if (imagePath) {
           const image = new Image(); image.src = new URL(`../${imagePath}`, import.meta.url).href; image.loading = 'lazy'; image.alt = ''; image.draggable = false;
           button.append(image);
         } else {
@@ -655,7 +688,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         const label = document.createElement('span'); label.textContent = item.label; button.append(label);
         if (item.hint) { const hint = document.createElement('small'); hint.textContent = item.hint; button.append(hint); }
         if (placeable) {
-          button.addEventListener('click', () => void addAsset(item));
+          button.addEventListener('click', event => {
+            if (event.detail > 1) {
+              clearTimeout(pendingCardClick); pendingCardClick = 0; openPrefabEditor(item); return;
+            }
+            clearTimeout(pendingCardClick);
+            pendingCardClick = setTimeout(() => { pendingCardClick = 0; void addAsset(item); }, 450);
+          });
+          button.addEventListener('dblclick', event => { event.preventDefault(); clearTimeout(pendingCardClick); pendingCardClick = 0; openPrefabEditor(item); });
           button.addEventListener('dragstart', event => {
             event.dataTransfer.setData('application/x-cardboardquest-asset', item.id); event.dataTransfer.effectAllowed = 'copy';
           });

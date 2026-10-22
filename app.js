@@ -12,10 +12,10 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=133';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=146';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=169';
-import { catalogAsset } from './editor/asset-catalog.mjs?v=5';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=148';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=171';
+import { catalogAsset } from './editor/asset-catalog.mjs?v=7';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
 import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=1';
@@ -51,7 +51,7 @@ import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, crea
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
-import { normalizeWorldLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=1';
+import { normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=2';
 import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
   ITEM_MAGNET_STORAGE_KEY, normalizeItemMagnetSettings } from './game/item-magnet.mjs?v=1';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=16';
@@ -265,6 +265,8 @@ async function start() {
     location.combatTriggered = stored.combatTriggered ?? location.combatTriggered;
     location.lastExitPositions = stored.lastExitPositions ?? location.lastExitPositions;
     location.loot = normalizeWorldLoot(stored.loot);
+    location.openedPlacedChests = Array.isArray(stored.openedPlacedChests) ? [...stored.openedPlacedChests] : [];
+    location.collectedPlacedItems = Array.isArray(stored.collectedPlacedItems) ? [...stored.collectedPlacedItems] : [];
   }
   heroBody.maxHealth = 20 + campaignState.maxHealthBonus;
   const playerStart = resolveCampaignPlayerStart(locations[campaignState.currentLocationId], {
@@ -786,6 +788,8 @@ async function start() {
       reinforcementQueue: (location.reinforcementQueue ?? []).map(due => Math.max(0, due - elapsed)), bossSpawned: location.bossSpawned,
       initialized: location.initialized, combatTriggered: location.combatTriggered,
       lastExitPositions: location.lastExitPositions,
+      openedPlacedChests: [...(location.openedPlacedChests ?? [])],
+      collectedPlacedItems: [...(location.collectedPlacedItems ?? [])],
       loot: location.loot.map(({ id, itemId, x, z }) => ({ id, itemId, x, z })),
     };
   }
@@ -1030,8 +1034,46 @@ async function start() {
       return art;
     });
     group.position.set(body.x, 0, body.z); location.sceneGroup.add(group);
-    chestVisuals.set(location.id, { body, group, puck, artHolder, stateArt,
+    chestVisuals.set(body.id, { body, group, puck, artHolder, stateArt,
       opening: null, lootVisuals: [], pendingStory: null });
+  }
+  async function createPlacedChest(location, id, value, item) {
+    const chestTemplates = await loadStateTemplates('assets/chest-states.png', 2);
+    const opened = (location.openedPlacedChests ??= []).includes(id);
+    const body = { id, kind: 'editor-chest', team: 'neutral', locationId: location.id,
+      x: value.position[0], z: value.position[2], vx: 0, vz: 0, radius: 1.12, fixed: true, opened };
+    if (!opened) location.obstacles.push(body);
+    const group = new THREE.Group(); group.name = id;
+    Object.assign(group.userData, { sceneEditId: id, sceneEditLabel: item.label, sceneEditCategory: 'interactive',
+      sceneEditAsset: value.asset, sceneEditSize: value.size, sceneEditBody: body,
+      sceneEditSync() { body.x = group.position.x; body.z = group.position.z; },
+      sceneEditDelete(deleted) {
+        body.active = !deleted && !body.opened;
+        location.obstacles = location.obstacles.filter(obstacle => obstacle !== body);
+        if (body.active) location.obstacles.push(body);
+      } });
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.22, 48), ambientShadowMaterial);
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = .008; group.add(shadow);
+    const puck = new THREE.Mesh(new THREE.CylinderGeometry(body.radius, body.radius, .2, 64), [
+      new THREE.MeshStandardMaterial({ map: corrugation, roughness: 1, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ map: paper, roughness: .96, ...sceneStencil }),
+      new THREE.MeshStandardMaterial({ color: 0x97713e, ...sceneStencil }),
+    ]);
+    puck.position.y = .1; puck.visible = !opened; puck.scale.setScalar(opened ? 0 : 1);
+    puck.castShadow = true; puck.receiveShadow = true; group.add(puck);
+    const artHolder = new THREE.Group(); artHolder.position.y = opened ? 0 : .21; group.add(artHolder);
+    const stateArt = chestTemplates.map((template, index) => {
+      const art = template.clone(true); bindSsaoSpriteAlphaCutouts(art);
+      const spriteHeight = 1.72, scale = spriteHeight / 2.05;
+      art.scale.set(scale, scale, 1); art.position.y = spriteHeight / 2;
+      art.visible = index === (opened ? 1 : 0); artHolder.add(art);
+      sceneryFacePairs.push({ prop: group, front: art.getObjectByName('scenery-front'), back: art.getObjectByName('scenery-back') });
+      return art;
+    });
+    group.position.fromArray(value.position); group.rotation.set(...value.rotation); group.scale.fromArray(value.scale);
+    location.sceneGroup.add(group);
+    chestVisuals.set(id, { body, group, puck, artHolder, stateArt, opening: null, lootVisuals: [], pendingStory: null });
+    return group;
   }
   let groundResources = null;
   function decorateInspectionMarker(marker) {
@@ -1082,9 +1124,38 @@ async function start() {
     marker.add(outerDashes, innerDashes);
     return marker;
   }
+  async function createEditorWorldItem(location, id, value, item) {
+    if ((location.collectedPlacedItems ?? []).includes(id)) return null;
+    await ensureLootSprites();
+    let pickup = location.loot.find(loot => loot.id === id);
+    if (!pickup) {
+      pickup = { id, itemId: item.itemId, x: value.position[0], z: value.position[2] };
+      location.loot.push(pickup);
+    }
+    pickup.x = value.position[0]; pickup.z = value.position[2];
+    let visual = worldItemVisuals.get(id);
+    if (!visual) visual = createLootVisual(location, pickup);
+    const group = visual.group;
+    Object.assign(group.userData, { sceneEditId: id, sceneEditLabel: item.label, sceneEditCategory: 'interactive',
+      sceneEditAsset: value.asset, sceneEditSize: value.size,
+      sceneEditSync() { pickup.x = group.position.x; pickup.z = group.position.z; },
+      sceneEditDelete(deleted) {
+        if (deleted) {
+          location.loot = location.loot.filter(loot => loot.id !== id);
+          worldItemVisuals.delete(id);
+        } else {
+          if (!location.loot.some(loot => loot.id === id)) location.loot.push(pickup);
+          worldItemVisuals.set(id, visual);
+        }
+      } });
+    group.position.fromArray(value.position); group.rotation.set(...value.rotation); group.scale.fromArray(value.scale);
+    return group;
+  }
   async function createEditorAsset(location, id, value) {
     const item = catalogAsset(value.asset);
     if (!item) throw new Error(`Unknown scene asset: ${value.asset}`);
+    if (item.kind === 'chest') return createPlacedChest(location, id, value, item);
+    if (item.kind === 'world-item') return createEditorWorldItem(location, id, value, item);
     if (item.id === 'inspect') {
       const marker = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
         { elevation: value.position[1], yaw: value.rotation[1], sceneEditId: id, sceneEditLabel: item.label });
@@ -1316,7 +1387,8 @@ async function start() {
       if (belongs(visual.group)) cache.delete(key);
     for (let index = storyActors.actors.length - 1; index >= 0; index--)
       if (storyActors.actors[index].spec.location === id) storyActors.actors.splice(index, 1);
-    chestVisuals.delete(id); delete locationGroups[id];
+    for (const [key, visual] of chestVisuals) if (visual.body.locationId === id) chestVisuals.delete(key);
+    delete locationGroups[id];
     delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails;
     delete location.inspectionMarker;
     delete location.edgeShade;
@@ -1564,13 +1636,18 @@ async function start() {
   }
   function openCache(body) {
     if (!body || body.opened || body.opening || body.locationId !== activeLocation.id) return false;
-    const result = openCampaignCache(campaignState, body.locationId);
+    const editorChest = body.kind === 'editor-chest';
+    const result = editorChest ? { rewards: rollEditorChestLoot() } : openCampaignCache(campaignState, body.locationId);
     if (!result) return false;
     body.opening = true;
-    const visual = chestVisuals.get(activeLocation.id);
+    if (editorChest) {
+      const opened = activeLocation.openedPlacedChests ??= [];
+      if (!opened.includes(body.id)) opened.push(body.id);
+    }
+    const visual = chestVisuals.get(body.id);
     if (visual) {
       visual.opening = createCacheOpening();
-      visual.pendingStory = { ...result, lines: getStoryDialogue(campaignState, activeLocation.id) };
+      visual.pendingStory = editorChest ? null : { ...result, lines: getStoryDialogue(campaignState, activeLocation.id) };
       const drops = spawnWorldLoot(activeLocation, body.id, body.x, body.z, result.rewards, true);
       visual.lootVisuals = drops.map(item => worldItemVisuals.get(item.id)).filter(Boolean);
     } else {
@@ -1586,6 +1663,7 @@ async function start() {
   }
   function updateWorldLoot(dt) {
     for (const item of [...activeLocation.loot]) {
+      if (activeLocation.collectedPlacedItems?.includes(item.id)) continue;
       let visual = worldItemVisuals.get(item.id);
       if (!visual) visual = createLootVisual(activeLocation, item);
       if (visual.spillLocked) continue;
@@ -1632,6 +1710,11 @@ async function start() {
         if (progress >= 1) {
           const pickup = takeWorldLoot(activeLocation.loot, item.id);
           if (!pickup) continue;
+          const placedItem = catalogAsset(visual.group.userData.sceneEditAsset);
+          if (placedItem?.kind === 'world-item') {
+            const collected = activeLocation.collectedPlacedItems ??= [];
+            if (!collected.includes(item.id)) collected.push(item.id);
+          }
           const playerScreen = new THREE.Vector3(heroBody.x, .2, heroBody.z).project(camera);
           const backpackRect = document.querySelector('#inventory-toggle').getBoundingClientRect();
           const from = { x: (playerScreen.x + 1) * innerWidth / 2, y: (1 - playerScreen.y) * innerHeight / 2 };
@@ -1703,45 +1786,52 @@ async function start() {
     }
   }
   function updateCacheAnimation(dt) {
-    const visual = chestVisuals.get(activeLocation.id);
-    if (!visual?.opening) return;
-    const motion = advanceCacheOpening(visual.opening, dt);
-    visual.artHolder.position.y = motion.holderY + motion.lift;
-    visual.artHolder.scale.set(motion.scaleX, motion.scaleY, 1);
-    visual.puck.scale.setScalar(motion.puckScale);
-    if (motion.landed) {
-      burst(visual.body.x, visual.body.z, .72);
-      vibrate(28);
-    }
-    if (motion.opened) {
-      visual.body.opened = true; visual.body.opening = false;
-      activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== visual.body);
-      visual.puck.visible = false;
-      visual.stateArt[0].visible = false;
-      visual.stateArt[1].visible = true;
-      audio.play('chest');
-      rebuildBodies();
-    }
-    if (motion.spilled) for (const loot of visual.lootVisuals) {
-      loot.spillLocked = false; loot.group.visible = true;
-      loot.spawn = { x: visual.body.x, z: visual.body.z, age: 0, duration: CACHE_LOOT_SPAWN_DURATION };
-    }
-    if (motion.complete) {
-      visual.opening = null;
-      visual.artHolder.position.y = 0;
-      visual.artHolder.scale.set(1, 1, 1);
-      visual.puck.visible = false; visual.puck.scale.setScalar(0);
-      visual.stateArt[0].visible = false;
-      visual.stateArt[1].visible = true;
+    for (const visual of chestVisuals.values()) {
+      if (visual.body.locationId !== activeLocation.id || !visual.opening) continue;
+      const motion = advanceCacheOpening(visual.opening, dt);
+      visual.artHolder.position.y = motion.holderY + motion.lift;
+      visual.artHolder.scale.set(motion.scaleX, motion.scaleY, 1);
+      visual.puck.scale.setScalar(motion.puckScale);
+      if (motion.landed) {
+        burst(visual.body.x, visual.body.z, .72);
+        vibrate(28);
+      }
+      if (motion.opened) {
+        visual.body.opened = true; visual.body.opening = false;
+        activeLocation.obstacles = activeLocation.obstacles.filter(obstacle => obstacle !== visual.body);
+        if (visual.body.kind === 'editor-chest') {
+          const opened = activeLocation.openedPlacedChests ??= [];
+          if (!opened.includes(visual.body.id)) opened.push(visual.body.id);
+          persistCampaign();
+        }
+        visual.puck.visible = false;
+        visual.stateArt[0].visible = false;
+        visual.stateArt[1].visible = true;
+        audio.play('chest');
+        rebuildBodies();
+      }
+      if (motion.spilled) for (const loot of visual.lootVisuals) {
+        loot.spillLocked = false; loot.group.visible = true;
+        loot.spawn = { x: visual.body.x, z: visual.body.z, age: 0, duration: CACHE_LOOT_SPAWN_DURATION };
+      }
+      if (motion.complete) {
+        visual.opening = null;
+        visual.artHolder.position.y = 0;
+        visual.artHolder.scale.set(1, 1, 1);
+        visual.puck.visible = false; visual.puck.scale.setScalar(0);
+        visual.stateArt[0].visible = false;
+        visual.stateArt[1].visible = true;
+      }
     }
   }
   function showCacheStoryAfterLootLands() {
-    const visual = chestVisuals.get(activeLocation.id);
-    if (!visual?.pendingStory || visual.opening
-      || visual.lootVisuals.some(item => item.group.parent && item.spawn)) return false;
-    const story = visual.pendingStory; visual.pendingStory = null;
-    showStoryCard(story);
-    return true;
+    for (const visual of chestVisuals.values()) {
+      if (visual.body.locationId !== activeLocation.id || !visual.pendingStory || visual.opening
+        || visual.lootVisuals.some(item => item.group.parent && item.spawn)) continue;
+      const story = visual.pendingStory; visual.pendingStory = null;
+      showStoryCard(story); return true;
+    }
+    return false;
   }
   function damage(target, damageQuarters, speed) {
     if (target.hitCooldown > 0 || target.health <= 0) return false;
@@ -1815,7 +1905,7 @@ async function start() {
       let playerDealtDamage = false, playerTookDamage = false;
       const attackHit = (attacker, target) => {
         if (attacker.fixed) return;
-        if (target.kind === 'cache-chest') {
+        if (target.kind === 'cache-chest' || target.kind === 'editor-chest') {
           if (attacker.team === 'player' && attacker.health > 0) openCache(target);
           return;
         }
@@ -2133,20 +2223,20 @@ async function start() {
         projectiles: projectiles.length,
         shots: projectiles.map(({ x, z, age }) => ({ x, z, age })),
         cache: activeLocation.cacheBody ? { opened: activeLocation.cacheBody.opened,
-          opening: chestVisuals.get(activeLocation.id)?.opening ? {
-            age: chestVisuals.get(activeLocation.id).opening.age,
-            phase: cacheOpeningPhase(chestVisuals.get(activeLocation.id).opening),
+          opening: chestVisuals.get(activeLocation.cacheBody.id)?.opening ? {
+            age: chestVisuals.get(activeLocation.cacheBody.id).opening.age,
+            phase: cacheOpeningPhase(chestVisuals.get(activeLocation.cacheBody.id).opening),
           } : null,
           collidable: bodies.includes(activeLocation.cacheBody),
-          puckVisible: chestVisuals.get(activeLocation.id)?.puck.visible ?? false,
-          puckScale: chestVisuals.get(activeLocation.id)?.puck.scale.x ?? 0,
-          holderY: chestVisuals.get(activeLocation.id)?.artHolder.position.y ?? 0,
-          rotationY: chestVisuals.get(activeLocation.id)?.group.rotation.y ?? 0,
-          lootVisible: chestVisuals.get(activeLocation.id)?.lootVisuals.some(item => item.group.visible) ?? false,
-          lootSettled: chestVisuals.get(activeLocation.id)?.lootVisuals.every(item => !item.group.parent || !item.spawn) ?? true,
-          lootMotion: chestVisuals.get(activeLocation.id)?.lootVisuals.map(item => ({ parent: Boolean(item.group.parent),
+          puckVisible: chestVisuals.get(activeLocation.cacheBody.id)?.puck.visible ?? false,
+          puckScale: chestVisuals.get(activeLocation.cacheBody.id)?.puck.scale.x ?? 0,
+          holderY: chestVisuals.get(activeLocation.cacheBody.id)?.artHolder.position.y ?? 0,
+          rotationY: chestVisuals.get(activeLocation.cacheBody.id)?.group.rotation.y ?? 0,
+          lootVisible: chestVisuals.get(activeLocation.cacheBody.id)?.lootVisuals.some(item => item.group.visible) ?? false,
+          lootSettled: chestVisuals.get(activeLocation.cacheBody.id)?.lootVisuals.every(item => !item.group.parent || !item.spawn) ?? true,
+          lootMotion: chestVisuals.get(activeLocation.cacheBody.id)?.lootVisuals.map(item => ({ parent: Boolean(item.group.parent),
             age: item.spawn?.age ?? null, duration: item.spawn?.duration ?? null })) ?? [],
-          openSprite: chestVisuals.get(activeLocation.id)?.stateArt[1].visible ?? false } : null,
+          openSprite: chestVisuals.get(activeLocation.cacheBody.id)?.stateArt[1].visible ?? false } : null,
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
         loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
     },
