@@ -1,6 +1,6 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
 export const SCENE_BUILD = '154';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=2';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=3';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
@@ -39,7 +39,7 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       throw new Error('Invalid global terrain style');
     return value;
   }
-  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius']
+  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius', 'revealNoiseSize']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
@@ -48,6 +48,7 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || !Number.isFinite(value.curve) || value.curve < .2 || value.curve > 4
       || (value.revealInnerRadius !== undefined && (!Number.isFinite(value.revealInnerRadius) || value.revealInnerRadius < 0 || value.revealInnerRadius > 480))
       || (value.revealOuterRadius !== undefined && (!Number.isFinite(value.revealOuterRadius) || value.revealOuterRadius < 1 || value.revealOuterRadius > 640))
+      || (value.revealNoiseSize !== undefined && (!Number.isFinite(value.revealNoiseSize) || value.revealNoiseSize < 2 || value.revealNoiseSize > 32))
       || (value.revealInnerRadius !== undefined && value.revealOuterRadius !== undefined
         && value.revealOuterRadius <= value.revealInnerRadius)) throw new Error('Invalid fog settings');
   } else if (lighting) {

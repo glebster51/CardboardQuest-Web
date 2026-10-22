@@ -386,7 +386,9 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     for (const input of panel.querySelectorAll('[data-fog]')) {
       input.value = registry.fog[input.dataset.fog];
       const output = input.closest('label').querySelector('output');
-      if (output) output.value = input.dataset.fog.startsWith('reveal') ? `${Number(input.value).toFixed(0)} px` : Number(input.value).toFixed(2);
+      if (output) output.value = input.dataset.fog.startsWith('reveal')
+        ? `${Number(input.value).toFixed(input.dataset.fog === 'revealNoiseSize' ? 1 : 0)} px`
+        : Number(input.value).toFixed(2);
     }
   }
   function refreshLighting() {
@@ -451,6 +453,9 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Тонирование <output></output><input data-fog="tint" aria-label="Тонирование тумана" type="range" min="0" max="1" step=".01"></label>
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
+        <label>Внутренний радиус просвета <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета игрока" type="range" min="0" max="480" step="1"></label>
+        <label>Внешний радиус просвета <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус просвета игрока" type="range" min="1" max="640" step="1"></label>
+        <label>Размер шума просвета <output></output><input data-fog="revealNoiseSize" aria-label="Размер экранного шума просвета" type="range" min="2" max="32" step=".5"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
       </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
         <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>
@@ -663,6 +668,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (settings.end - settings.start < .1) {
           if (input.dataset.fog === 'start') settings.end = settings.start + .1;
           else settings.start = settings.end - .1;
+        }
+        if (settings.revealOuterRadius <= settings.revealInnerRadius) {
+          if (input.dataset.fog === 'revealInnerRadius') settings.revealOuterRadius = settings.revealInnerRadius + 1;
+          else settings.revealInnerRadius = Math.max(0, settings.revealOuterRadius - 1);
         }
         registry.changeFog(settings); refreshFog(); changed();
       });

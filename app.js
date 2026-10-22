@@ -8,11 +8,11 @@ import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=21';
-import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=1';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=22';
+import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=2';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=143';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=145';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
