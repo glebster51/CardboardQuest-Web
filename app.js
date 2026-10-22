@@ -8,7 +8,7 @@ import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=25';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=26';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=12';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
@@ -1167,6 +1167,7 @@ async function start() {
         return;
       }
       marker.name = `inspection-marker:${location.id}`;
+      marker.userData.disablePlayerReveal = true;
       const art = marker.children[0];
       if (art) art.position.y += 1.12;
       const dark = new THREE.MeshBasicMaterial({ color: 0x3c241c, ...sceneStencil });
@@ -1176,6 +1177,27 @@ async function start() {
       const dotCenter = new THREE.Mesh(new THREE.CylinderGeometry(.105, .105, .058, 20), cream);
       dotCenter.position.y = .034;
       marker.add(dotOuter, dotCenter);
+      const groundArms = 4, armLength = .24, armCenterY = .065;
+      const outerArms = new THREE.InstancedMesh(new THREE.CylinderGeometry(.052, .052, armLength, 8), dark, groundArms);
+      const innerArms = new THREE.InstancedMesh(new THREE.CylinderGeometry(.031, .031, armLength, 8), cream, groundArms);
+      const armTransform = new THREE.Object3D();
+      const armPlacements = [
+        { x: -.225, z: 0, rotateX: 0, rotateZ: Math.PI / 2 },
+        { x: .225, z: 0, rotateX: 0, rotateZ: Math.PI / 2 },
+        { x: 0, z: -.225, rotateX: Math.PI / 2, rotateZ: 0 },
+        { x: 0, z: .225, rotateX: Math.PI / 2, rotateZ: 0 },
+      ];
+      for (let index = 0; index < groundArms; index++) {
+        const arm = armPlacements[index];
+        armTransform.position.set(arm.x, armCenterY, arm.z);
+        armTransform.rotation.set(arm.rotateX, 0, arm.rotateZ);
+        armTransform.updateMatrix();
+        outerArms.setMatrixAt(index, armTransform.matrix);
+        innerArms.setMatrixAt(index, armTransform.matrix);
+      }
+      outerArms.instanceMatrix.needsUpdate = true;
+      innerArms.instanceMatrix.needsUpdate = true;
+      marker.add(outerArms, innerArms);
       const dashCount = 7, dashHeight = .075, dashPitch = .15;
       // Outline and fill keep the doubled dash width readable at phone scale.
       const outerDashes = new THREE.InstancedMesh(new THREE.CylinderGeometry(.062, .062, dashHeight, 8), dark, dashCount);

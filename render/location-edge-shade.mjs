@@ -131,6 +131,7 @@ export function locationEdgeShadeAt(x, z, points, settings = FOG_DEFAULTS) {
 }
 
 export function applyLocationEdgeShade(root, patchMaterial) {
+  const disablePlayerReveal = Boolean(root.userData?.disablePlayerReveal);
   const isScenerySprite = object => {
     for (let parent = object.parent; parent && parent !== root; parent = parent.parent)
       if (parent.name === 'scenery-front' || parent.name === 'scenery-back') return true;
@@ -143,7 +144,7 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     const terrainSurface = Boolean(object.userData?.terrainSurface)
       || /^(playfield|terrain)-/.test(object.name)
       || /^(playfield|terrain)-/.test(object.parent?.name ?? '');
-    const revealableScenery = scenerySprite && !terrainSurface && !fogSurface;
+    const revealableScenery = scenerySprite && !terrainSurface && !fogSurface && !disablePlayerReveal;
     if (!terrainSurface && !scenerySprite && !fogSurface) return;
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
