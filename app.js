@@ -9,8 +9,8 @@ import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=13';
 import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=2';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=128';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=133';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=137';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=134';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=138';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -944,7 +944,7 @@ async function start() {
       id, scale: LOCATION_SCALE, layoutReady: !rebuildLayout,
       heightSeed: location.heightSeed, walkablePoints: location.walkablePoints,
       exits: location.exits, dropZones: location.dropZones, hazards: location.hazards,
-      art: location.art, terrainStyle: location.terrainStyle });
+      art: location.art, terrainStyle: location.terrainStyle, terrainEdits: sceneRegistry.terrainEdits(id) });
     if (terrain.layout) Object.assign(location, terrain.layout);
     if (activeCampaignGraph) { applyCampaignGraphToLocation(location, activeCampaignGraph); sceneRegistry.graphChanged(location); }
     location.sceneGroup = terrain.group; locationGroups[id] = terrain.group;
@@ -1000,6 +1000,27 @@ async function start() {
     await checkpoint();
     location.runtimeReady = true;
     return location;
+  }
+  async function rebuildLocationTerrain(location, edits) {
+    if (!location?.runtimeReady || !location.sceneGroup) return;
+    const result = await geometryClient.run('terrain', {
+      id: location.id, scale: LOCATION_SCALE, layoutReady: true, heightSeed: location.heightSeed,
+      walkablePoints: location.walkablePoints, exits: location.exits, dropZones: location.dropZones,
+      hazards: location.hazards, art: location.art, terrainStyle: location.terrainStyle, terrainEdits: edits,
+    });
+    const isTerrain = object => /^(terrain|playfield)-top-/.test(object.name);
+    const removed = location.sceneGroup.children.filter(isTerrain);
+    for (const object of removed) location.sceneGroup.remove(object);
+    const replacement = result.group.children.filter(isTerrain);
+    location.edgeShade?.applyTo(result.group);
+    for (const object of replacement) location.sceneGroup.add(object);
+    location.terrainHeightMap = restoreTerrainSampler(result.heightMap,
+      { rounded: result.rounded, depthMap: Boolean(location.art.depthMap), walkablePoints: location.walkablePoints });
+    delete location.terrainHeightMap.layers;
+    location.sceneGroup.userData.terrainHeightMap = location.terrainHeightMap;
+    disposeUnusedScenes([removed, result.group], [location.sceneGroup],
+      [paper, cardboardGrain, corrugation, terrainCorrugation]);
+    renderer.renderLists.dispose();
   }
   async function releaseLocation(id) {
     const location = locations[id], removed = [];
@@ -1682,6 +1703,7 @@ async function start() {
   persistCampaign();
   if (initialStoryCard) showStoryCard(initialStoryCard);
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
+    rebuildTerrain: rebuildLocationTerrain,
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
     getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
     onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });

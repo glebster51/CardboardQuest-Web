@@ -153,12 +153,13 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
     }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
     const terrainMargin = 30;
     const heightMap = location.art?.depthMap
-      ? createTerrainHeightMapFromDepthMap(location.art.depthMap, location.walkablePoints)
+      ? createTerrainHeightMapFromDepthMap(location.art.depthMap, location.walkablePoints,
+        { sculptEdits: location.terrainEdits })
       : createTerrainHeightMap(seed, location.walkablePoints,
       { minX: bounds.minX - terrainMargin, maxX: bounds.maxX + terrainMargin,
         minZ: bounds.minZ - terrainMargin, maxZ: bounds.maxZ + terrainMargin,
         cellSize: .7, step: .24, maxHeight, ...location.art?.terrain,
-        exits: location.exits, dropZones: location.dropZones });
+        exits: location.exits, dropZones: location.dropZones, sculptEdits: location.terrainEdits });
     location.terrainHeightMap = heightMap;
     location.sceneGroup.userData.terrainHeightMap = heightMap;
     const palette = TERRAIN_PALETTES[location.terrainStyle ?? location.id] ?? TERRAIN_PALETTES.forest;

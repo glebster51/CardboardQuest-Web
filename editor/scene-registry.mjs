@@ -1,7 +1,8 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=134';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=135';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
 export function createSceneRegistry({ THREE, overrides, setFog, setLighting = () => {} }) {
@@ -95,6 +96,12 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
   }
   return {
     model, fog, lighting,
+    terrainEdits(id) {
+      if (model.has(id, 'terrain')) return model.get(id, 'terrain');
+      const value = overrides.locations[id]?.terrain ?? { strokes: [] };
+      validateTerrainEdits(value);
+      return model.register(id, 'terrain', value);
+    },
     prepare(location) {
       sources.set(location.id, { location, data: JSON.parse(JSON.stringify({
         entry: location.entry, arrivals: location.arrivals, exits: location.exits, fogPaths: location.fogPaths,
@@ -205,6 +212,12 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       validateSceneValue(next, false, false, false, true);
       Object.assign(lighting, next); setLighting(lighting); return model.set(null, 'lighting', { ...lighting, direction: [...lighting.direction] });
     },
+    changeTerrain(location, edits) {
+      validateTerrainEdits(edits);
+      const changed = model.set(location.id, 'terrain', edits);
+      if (changed) location.terrainEdits = model.get(location.id, 'terrain');
+      return changed;
+    },
     fogPaths(location) { return model.get(location, 'fog-paths'); },
     changeFogPaths(location, paths) {
       validateSceneValue(paths, false, true);
@@ -221,6 +234,7 @@ export function createSceneRegistry({ THREE, overrides, setFog, setLighting = ()
       for (const [id, source] of sources) {
         source.location.fogPaths = model.get(id, 'fog-paths');
         source.location.edgeShade?.updatePaths(source.location.fogPaths);
+        if (model.has(id, 'terrain')) source.location.terrainEdits = model.get(id, 'terrain');
       }
       for (const bindings of resident.values()) for (const binding of bindings) apply(binding, model.get(binding.location, binding.id));
     },

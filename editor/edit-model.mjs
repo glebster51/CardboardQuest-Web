@@ -1,9 +1,10 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '135';
+export const SCENE_BUILD = '147';
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=2';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs';
 export { FOG_DEFAULTS };
 export const LIGHTING_DEFAULTS = { direction: [-5, 12, 7], intensity: 3, color: '#ffebcb' };
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -17,11 +18,12 @@ export function writeTransform(object, value) {
   for (const key of ['position', 'rotation', 'scale']) object[key].set(...value[key]);
   object.updateMatrixWorld(true);
 }
-export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false) {
-  if (value === null && !fog && !fogPaths && !graph && !lighting) return value;
+export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false) {
+  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain) return value;
   if (!value || typeof value !== 'object') throw new Error('Scene value must be an object');
   if (fogPaths) return validateFogPaths(value);
   if (graph) return validateCampaignGraph(value);
+  if (terrain) return validateTerrainEdits(value);
   const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
@@ -65,7 +67,7 @@ export function createEditModel() {
     get(location, object) { const entry = records.get(id(location, object)); return entry ? clone(entry.after) : null; },
     begin() { if (!transaction) transaction = new Map(); },
     set(location, object, value) {
-      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting');
+      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain');
       const key = id(location, object), entry = records.get(key);
       if (!entry) throw new Error(`Unregistered scene object: ${object}`);
       if (equal(entry.after, value)) return false;
@@ -116,18 +118,21 @@ export function mergeSceneDiff(overrides, diff) {
     const { location, object, before, after } = change;
     if (typeof object !== 'string' || !/^[a-zA-Z0-9:/._-]+$/.test(object) || /(?:__proto__|constructor|prototype)/.test(object))
       throw new Error('Invalid scene object id');
-    const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph', lighting = object === 'lighting';
+    const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
+      lighting = object === 'lighting', terrain = object === 'terrain';
     if (fog || graph || lighting ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
       || ['constructor', 'prototype'].includes(location)) throw new Error('Invalid scene location');
-    validateSceneValue(before, fog, fogPaths, graph, lighting); validateSceneValue(after, fog, fogPaths, graph, lighting);
+    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain);
+    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain);
     if (before === null && after === null) throw new Error('An empty edit has no effect');
     if (before === null && (!object.startsWith('placed:') || !after.asset)) throw new Error('New objects must come from the asset library');
     const current = fog ? { ...FOG_DEFAULTS, ...result.fog } : lighting ? { ...LIGHTING_DEFAULTS, ...result.lighting }
-      : graph ? result.graph ?? before : result.locations[location]?.[object];
+      : graph ? result.graph ?? before : terrain ? result.locations[location]?.terrain ?? { strokes: [] }
+        : result.locations[location]?.[object];
     const matches = (value, expected) => fog
       ? Object.keys(expected).every(key => equal(value?.[key], expected[key]))
       : equal(value, expected);
-    if ((fog || lighting || graph || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
+    if ((fog || lighting || graph || terrain || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
       throw new Error(`Scene edit conflict: ${location}/${object}`);
     if (fog) result.fog = { ...current, ...clone(after) };
     else if (lighting) result.lighting = clone(after);

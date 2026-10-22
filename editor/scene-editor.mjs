@@ -1,15 +1,19 @@
-import { readTransform } from './edit-model.mjs?v=134';
+import { readTransform } from './edit-model.mjs?v=135';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
+import { applyTerrainSculptDab, terrainBrushSpacing } from '../game/terrain-sculpt.mjs';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
 
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
-export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset,
+export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset, rebuildTerrain,
   getCampaignGraphData, onCampaignGraphChange }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
+  let terrainOpen = false, terrainBrush, terrainMode = 'level', terrainRadius = 5, terrainStrength = .45;
+  let terrainStroke = null, terrainMap = null, terrainEdits = null, terrainLast = null, terrainStrokeChanged = false, terrainTimer = 0;
+  let terrainRebuildPending = false, terrainRebuildTask = null;
   let campaignGraphEditor = null, graphOpen = false;
   let originalCamera, pointerStart = null, right = false, middle = false, lastPointer = null;
   let yaw = 0, pitch = 0, copyPending = null, copying = false, speed = 12;
@@ -32,6 +36,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (object === 'fog') label = 'Настройки тумана';
       else if (object === 'lighting') label = 'Освещение';
       else if (object === 'fog-paths') label = 'Линии тумана';
+      else if (object === 'terrain') label = 'Рельеф локации';
       else if (object === 'campaign-graph') label = 'Граф карты мира';
       else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
         .replace(/^placed:/, 'Добавленный объект · ').replace(/:/g, ' · ');
@@ -227,12 +232,140 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     else next.paths[pathIndex].points[pointIndex] = [point.x, point.z];
     registry.changeFogPaths(location, next); syncFogPathVisuals(next); changed();
   }
+  function terrainPointAt(event) {
+    const rect = canvas.getBoundingClientRect();
+    mouse.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2);
+    raycaster.setFromCamera(mouse, camera); scene.updateMatrixWorld(true);
+    const surfaces = [];
+    getLocation().sceneGroup.traverse(object => {
+      if (object.isMesh && /^(terrain|playfield)-top-/.test(object.name)) surfaces.push(object);
+    });
+    const hit = raycaster.intersectObjects(surfaces, false)[0];
+    if (hit) return hit.point;
+    return raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+  }
+  function walkableAt(x, z, points) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i], b = points[j];
+      if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+  function updateTerrainBrush(point) {
+    if (!terrainBrush || !point) { if (terrainBrush) terrainBrush.visible = false; return; }
+    if (terrainBrush.userData.radius !== terrainRadius) {
+      terrainBrush.geometry.dispose();
+      terrainBrush.geometry = new THREE.RingGeometry(terrainRadius * .94, terrainRadius, 64);
+      terrainBrush.userData.radius = terrainRadius;
+    }
+    const surfaceHeight = getLocation().terrainHeightMap?.sample(point.x, point.z) ?? point.y;
+    terrainBrush.position.set(point.x, surfaceHeight + .045, point.z);
+    terrainBrush.userData.world = { x: point.x, y: point.y, z: point.z };
+    terrainBrush.material.color.set(terrainMode === 'level' ? 0x9deaa9 : terrainMode === 'raise' ? 0xffc56a : 0x82c9f5);
+    terrainBrush.visible = true;
+  }
+  function requestTerrainRebuild() {
+    if (!rebuildTerrain) return;
+    terrainRebuildPending = true;
+    if (terrainRebuildTask) return;
+    terrainRebuildTask = (async () => {
+      while (terrainRebuildPending) {
+        terrainRebuildPending = false;
+        const location = getLocation();
+        await rebuildTerrain(location, registry.terrainEdits(location.id));
+      }
+    })().catch(error => { if (ui.status) ui.status.textContent = `Рельеф не обновлён: ${error.message}`; })
+      .finally(() => { terrainRebuildTask = null; if (terrainRebuildPending) requestTerrainRebuild(); });
+  }
+  function scheduleTerrainPreview() {
+    if (terrainTimer || !terrainStroke) return;
+    terrainTimer = setTimeout(() => {
+      terrainTimer = 0;
+      const location = getLocation();
+      try { registry.changeTerrain(location, terrainEdits); requestTerrainRebuild(); }
+      catch (error) { ui.status.textContent = `Слишком длинная кисть: ${error.message}`; }
+    }, 180);
+  }
+  function beginTerrainStroke(event, point) {
+    const location = getLocation(), map = location.terrainHeightMap;
+    if (!map || !point) return;
+    if (walkableAt(point.x, point.z, location.walkablePoints)) {
+      ui.status.textContent = 'Игровой пол остаётся плоским. Рисуй по рельефу за его границей.'; return;
+    }
+    if (point.x < map.minX || point.z < map.minZ
+      || point.x > map.minX + (map.columns - 1) * (map.cellSizeX ?? map.cellSize)
+      || point.z > map.minZ + (map.rows - 1) * (map.cellSizeZ ?? map.cellSize)) return;
+    terrainEdits = JSON.parse(JSON.stringify(registry.terrainEdits(location.id)));
+    if (terrainEdits.strokes.length >= 80) { ui.status.textContent = 'Лимит рельефных мазков достигнут.'; return; }
+    terrainMap = { ...map, values: new Float32Array(map.values) };
+    const targetHeight = map.sample(point.x, point.z);
+    terrainStroke = { mode: terrainMode, radius: terrainRadius, strength: terrainStrength,
+      targetHeight, points: [[point.x, point.z]] };
+    terrainLast = [point.x, point.z];
+    terrainEdits.strokes.push(terrainStroke);
+    model.begin();
+    terrainStrokeChanged = applyTerrainSculptDab(terrainMap, terrainStroke, point.x, point.z, location.walkablePoints);
+    updateTerrainBrush(point); canvas.style.cursor = 'crosshair';
+    ui.terrainLevel.textContent = `${targetHeight.toFixed(2)} м`;
+    ui.status.textContent = terrainMode === 'level' ? `Выбран уровень ${targetHeight.toFixed(2)} м · веди кисть` : 'Веди кисть по рельефу';
+    canvas.setPointerCapture(event.pointerId);
+    if (terrainStrokeChanged) scheduleTerrainPreview();
+  }
+  function continueTerrainStroke(point) {
+    if (!terrainStroke || !point) return;
+    const location = getLocation(), [lastX, lastZ] = terrainLast;
+    const distance = Math.hypot(point.x - lastX, point.z - lastZ);
+    const spacing = terrainBrushSpacing(terrainStroke.radius, terrainMap.cellSizeX ?? terrainMap.cellSize);
+    const steps = Math.min(256, Math.floor(distance / spacing));
+    for (let index = 1; index <= steps; index++) {
+      if (terrainStroke.points.length >= 5000) { ui.status.textContent = 'Лимит длины мазка достигнут.'; break; }
+      const t = index / steps;
+      const x = lastX + (point.x - lastX) * t, z = lastZ + (point.z - lastZ) * t;
+      terrainStroke.points.push([x, z]);
+      terrainStrokeChanged = applyTerrainSculptDab(terrainMap, terrainStroke, x, z, location.walkablePoints) || terrainStrokeChanged;
+    }
+    if (steps > 0) terrainLast = [point.x, point.z];
+    updateTerrainBrush(point); if (terrainStrokeChanged) scheduleTerrainPreview();
+  }
+  function finishTerrainStroke() {
+    if (!terrainStroke) return;
+    clearTimeout(terrainTimer); terrainTimer = 0;
+    const location = getLocation();
+    if (terrainStrokeChanged) {
+      try { registry.changeTerrain(location, terrainEdits); }
+      catch (error) { ui.status.textContent = `Мазок не сохранён: ${error.message}`; }
+      model.commit(); changed(); requestTerrainRebuild();
+    } else model.commit();
+    terrainStroke = terrainMap = terrainEdits = terrainLast = null;
+    terrainStrokeChanged = false;
+    canvas.style.cursor = 'crosshair';
+  }
+  function setTerrainModeOpen(open) {
+    terrainOpen = open; panel.classList.toggle('terrain-open', open);
+    panel.querySelector('#se-terrain').setAttribute('aria-pressed', String(open));
+    panel.querySelector('#se-terrain-window').hidden = !open;
+    if (open) {
+      if (pathMode) setPathMode(false);
+      controls.detach(); box.visible = false; controls.enabled = false;
+      terrainBrush.visible = false; panel.querySelector('#se-inspector')?.classList.add('se-terrain-inspector-hidden');
+      panel.querySelector('.se-library')?.classList.add('se-terrain-library-hidden');
+      ui.status.textContent = 'Игровой пол защищён; кисть меняет только окружающие картонные слои.';
+    } else {
+      finishTerrainStroke(); terrainBrush.visible = false; controls.enabled = true;
+      panel.querySelector('#se-inspector')?.classList.remove('se-terrain-inspector-hidden');
+      panel.querySelector('.se-library')?.classList.remove('se-terrain-library-hidden');
+      canvas.style.cursor = '';
+    }
+  }
   function restoreHistory(action) {
     if (!model[action]()) return;
     registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); changed();
+    requestTerrainRebuild();
   }
   async function openCampaignGraph() {
     if (graphOpen || !getCampaignGraphData) return;
+    if (terrainOpen) setTerrainModeOpen(false);
     if (!campaignGraphEditor) {
       const { createCampaignGraphEditor } = await import('./campaign-graph-editor.mjs?v=2');
       campaignGraphEditor = createCampaignGraphEditor({ model, getData: getCampaignGraphData, changed,
@@ -300,7 +433,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           <button data-mode="rotate" aria-pressed="false" title="E — вращение"><kbd>E</kbd> Вращать</button>
           <button data-mode="scale" aria-pressed="false" title="R — масштаб"><kbd>R</kbd> Масштаб</button></div>
         <button id="se-undo" title="Ctrl+Z">↶</button><button id="se-redo" title="Ctrl+Y">↷</button>
-        <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
+        <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
         <button id="se-close" title="~ / Ё">Вернуться в игру ×</button>
       </header><div class="se-fog">
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
@@ -324,7 +457,21 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Направление Z <output></output><input data-lighting="direction.2" aria-label="Направление света по Z" type="range" min="-20" max="20" step=".1"></label>
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
-      </div></div>
+      </div></div><section id="se-terrain-window" class="se-terrain-window" aria-label="Мастерская рельефа" hidden>
+        <header><div><small>МАСТЕРСКАЯ РЕЛЬЕФА · ИГРА НА ПАУЗЕ</small><strong>Терраформинг</strong></div><button id="se-terrain-close" title="Закрыть терраформинг">Готово ×</button></header>
+        <nav class="se-terrain-modes" role="group" aria-label="Режим кисти">
+          <button data-terrain-mode="level" aria-pressed="true">Выровнять по уровню</button>
+          <button data-terrain-mode="raise" aria-pressed="false">Наращивать гору</button>
+          <button data-terrain-mode="lower" aria-pressed="false">Углублять</button>
+        </nav>
+        <div class="se-terrain-controls">
+          <label>Размер кисти <output id="se-terrain-radius-value">5.0 м</output><input id="se-terrain-radius" type="range" min="1" max="16" step=".25" value="5" aria-label="Размер кисти"></label>
+          <label>Сила <output id="se-terrain-strength-value">0.45</output><input id="se-terrain-strength" type="range" min=".1" max="1.5" step=".05" value=".45" aria-label="Сила кисти"></label>
+          <span>Уровень выбора: <b id="se-terrain-level">не выбран</b></span>
+          <button id="se-terrain-reset">Сбросить рельеф локации</button>
+        </div>
+        <small class="se-terrain-help">Щёлкни по слою и веди мышь. Выровнять берёт высоту в точке начала мазка; края кисти мягкие. ПКМ + WASD — летать камерой. Игровая площадка и физика остаются ровными.</small>
+      </section>
       <aside class="se-inspector"><div class="se-caption">ОБЪЕКТЫ СЦЕНЫ</div>
         <select id="se-objects" aria-label="Объект сцены"></select><strong id="se-selected"></strong>
         <fieldset id="se-fields"><legend>Трансформация</legend></fieldset>
@@ -355,6 +502,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
     for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);
+    ui.terrainLevel = panel.querySelector('#se-terrain-level');
     for (const [property, label] of [['position', 'Позиция'], ['rotation', 'Поворот °'], ['scale', 'Масштаб']]) {
       const row = document.createElement('div'); row.className = 'se-vector';
       const title = document.createElement('span'); title.textContent = label; row.append(title);
@@ -380,11 +528,36 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-overview').addEventListener('click', () => focusSelection(true));
     panel.querySelector('#se-level-graph').addEventListener('click', () => void openCampaignGraph());
     panel.querySelector('#se-fog-paths').addEventListener('click', () => setPathMode(!pathMode));
+    panel.querySelector('#se-terrain').addEventListener('click', () => setTerrainModeOpen(!terrainOpen));
+    panel.querySelector('#se-terrain-close').addEventListener('click', () => setTerrainModeOpen(false));
+    for (const button of panel.querySelectorAll('[data-terrain-mode]')) button.addEventListener('click', () => {
+      terrainMode = button.dataset.terrainMode;
+      for (const other of panel.querySelectorAll('[data-terrain-mode]'))
+        other.setAttribute('aria-pressed', String(other === button));
+      updateTerrainBrush(terrainBrush.visible ? terrainBrush.userData.world : null);
+    });
+    panel.querySelector('#se-terrain-radius').addEventListener('input', event => {
+      terrainRadius = Number(event.target.value);
+      panel.querySelector('#se-terrain-radius-value').value = `${terrainRadius.toFixed(2)} м`;
+      updateTerrainBrush(terrainBrush.visible ? terrainBrush.userData.world : null);
+    });
+    panel.querySelector('#se-terrain-strength').addEventListener('input', event => {
+      terrainStrength = Number(event.target.value);
+      panel.querySelector('#se-terrain-strength-value').value = terrainStrength.toFixed(2);
+    });
+    panel.querySelector('#se-terrain-reset').addEventListener('click', () => {
+      const location = getLocation(); model.commit();
+      if (model.reset(location.id, 'terrain')) {
+        registry.sync(); changed(); requestTerrainRebuild();
+        ui.status.textContent = 'Рельеф возвращён к опубликованной версии.';
+      }
+    });
     panel.querySelector('#se-undo').addEventListener('click', () => restoreHistory('undo'));
     panel.querySelector('#se-redo').addEventListener('click', () => restoreHistory('redo'));
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); changed();
+      requestTerrainRebuild();
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
       if (selected && model.reset(selected.location, selected.id)) { registry.sync(); refreshObjects(); refreshInspector(); changed(); }
@@ -397,6 +570,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       if (!model.reset(location, object)) return;
       registry.sync(); campaignGraphEditor?.sync(); bindings = registry.bindings(getLocation().id);
       refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); syncFogPathVisuals(); changed();
+      if (object === 'terrain') requestTerrainRebuild();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
     let activeLibraryCategory = 'ordinary';
@@ -481,6 +655,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const { TransformControls } = await import('./vendor/TransformControls.mjs');
     makePanel(); helperRoot = new THREE.Group(); helperRoot.userData.cqRenderDebugExclude = true; scene.add(helperRoot);
     pathRoot = new THREE.Group(); pathRoot.userData.cqRenderDebugExclude = true; pathRoot.visible = false; scene.add(pathRoot);
+    terrainBrush = new THREE.Mesh(new THREE.RingGeometry(terrainRadius * .94, terrainRadius, 64),
+      new THREE.MeshBasicMaterial({ color: 0x9deaa9, transparent: true, opacity: .9, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    terrainBrush.rotation.x = -Math.PI / 2; terrainBrush.renderOrder = 10007; terrainBrush.visible = false;
+    terrainBrush.userData.cqRenderDebugExclude = true; scene.add(terrainBrush);
     renderDebug = createRenderDebugModes({ THREE, scene, renderer });
     controls = new TransformControls(camera, canvas); controls.enabled = false; controls.setSize(.9);
     scene.add(controls.getHelper());
@@ -499,6 +677,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     if (active) {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       active = false; pathMode = false; activePath = hoveredPath = null; pathRoot.visible = false;
+      if (terrainOpen) setTerrainModeOpen(false);
       setRenderMode('normal');
       panel.querySelector('#se-fog-paths').setAttribute('aria-pressed', 'false'); canvas.style.cursor = '';
       model.commit(); controls.detach(); controls.enabled = false; box.visible = false;
@@ -558,12 +737,17 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   addEventListener('blur', () => { keys.clear(); right = middle = false; model.commit(); });
   canvas.addEventListener('pointercancel', () => {
     right = middle = false; pointerStart = lastPointer = null;
+    if (terrainStroke) finishTerrainStroke();
     if (activePath) { setPathState(activePath, hoveredPath === activePath ? 'hover' : 'idle'); activePath = null; model.commit(); changed(); }
   });
   canvas.addEventListener('contextmenu', event => { if (active) event.preventDefault(); });
   canvas.addEventListener('pointerdown', event => {
     if (!active || !controls) return;
     if (editable(document.activeElement)) document.activeElement.blur();
+    if (terrainOpen && event.button === 0) {
+      event.preventDefault(); event.stopImmediatePropagation(); pointerStart = null; lastPointer = null;
+      beginTerrainStroke(event, terrainPointAt(event)); return;
+    }
     if (pathMode && event.button === 0) {
       const handle = pathHandleAt(event);
       event.preventDefault(); event.stopImmediatePropagation();
@@ -583,6 +767,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }, true);
   canvas.addEventListener('pointermove', event => {
     if (!active) return;
+    if (terrainOpen && terrainStroke && (event.buttons & 1)) {
+      const point = terrainPointAt(event); continueTerrainStroke(point); return;
+    }
+    if (terrainOpen && event.buttons === 0) { updateTerrainBrush(terrainPointAt(event)); return; }
     if (pathMode && (activePath || event.buttons === 0)) {
       if (activePath) {
         const rect = canvas.getBoundingClientRect();
@@ -606,6 +794,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }, true);
   addEventListener('pointerup', event => {
     if (!active || !controls) return;
+    if (terrainOpen && event.button === 0) { finishTerrainStroke(); return; }
     if (event.button === 0 && activePath) {
       setPathState(activePath, hoveredPath === activePath ? 'hover' : 'idle'); activePath = null;
       model.commit(); changed(); canvas.style.cursor = hoveredPath ? 'grab' : 'crosshair'; return;

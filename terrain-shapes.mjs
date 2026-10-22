@@ -1,3 +1,5 @@
+import { applyTerrainSculptStrokes } from './game/terrain-sculpt.mjs';
+
 export function createTerrainPeaks(seed = 1937, count = 16, maxRadius = 6.5) {
   let state = seed >>> 0;
   const random = () => {
@@ -233,6 +235,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
       return height <= 1e-4 ? 0 : Math.min(maxHeight, step + Math.floor((height + 1e-6) / step) * step);
     },
   };
+  applyTerrainSculptStrokes(map, options.sculptEdits ?? { strokes: [] }, walkablePoints);
   const layerCount = authoredRelief ? Math.ceil(maxHeight / step) : Math.max(0, Math.floor(maxHeight / step + 1e-8) - 1);
   map.layers = Array.from({ length: layerCount }, (_, index) => {
     const threshold = (index + (authoredRelief ? .5 : 1)) * step;
@@ -242,7 +245,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
 }
 
 /** Build the same renderer contract from an authored grayscale depth-map document. */
-export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []) {
+export function createTerrainHeightMapFromDepthMap(document, walkablePoints = [], options = {}) {
   if (document?.schema !== 'cardboardquest.depth-map.v1') throw new TypeError('Unsupported terrain depth-map schema');
   const { world, grid, elevation } = document;
   const columns = grid?.columns, rows = grid?.rows, samples = grid?.samples;
@@ -290,6 +293,7 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
     return height < step * .5 ? 0 : Math.min(maxHeight, Math.round(height / step) * step);
   };
   const map = { minX, minZ, columns: mapColumns, rows: mapRows, cellSize, cellSizeX, cellSizeZ, step, maxHeight, values, sample };
+  applyTerrainSculptStrokes(map, options.sculptEdits ?? { strokes: [] }, walkablePoints);
   map.layers = Array.from({ length: Math.max(1, Math.ceil(maxHeight / step - 1e-9)) }, (_, index) => {
     const threshold = (index + .5) * step;
     return { threshold, height: Math.min(maxHeight, (index + 1) * step), contours: extractTerrainContours(map, threshold) };
