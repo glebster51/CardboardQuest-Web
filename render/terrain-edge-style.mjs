@@ -43,8 +43,9 @@ float cqTopEdgeBand = smoothstep(1.0 - cqTerrainEdgeWidth, 1.0 - cqTerrainEdgeWi
 float cqBaseShadeBand = 1.0 - smoothstep(cqTerrainBaseWidth * 0.55, cqTerrainBaseWidth, cqLayerHeight);
 float cqBaseMultiply = cqBaseShadeBand * cqTerrainBaseStrength;
 diffuseColor.rgb *= mix(vec3(1.0), cqTerrainBaseColor, cqBaseMultiply);
-diffuseColor.rgb += cqTerrainEdgeColor * (cqTopEdgeBand * cqTerrainEdgeStrength);
-#include <roughnessmap_fragment>`);
+#include <roughnessmap_fragment>`)
+            .replace('#include <opaque_fragment>', `outgoingLight += cqTerrainEdgeColor * (cqTopEdgeBand * cqTerrainEdgeStrength);
+#include <opaque_fragment>`);
         };
         material.customProgramCacheKey = () => EDGE_SHADER_KEY;
         material.needsUpdate = true;
