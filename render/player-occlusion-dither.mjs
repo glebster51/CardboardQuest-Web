@@ -1,4 +1,4 @@
-export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 14, revealOuterRadius: 76 });
+export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 14, revealOuterRadius: 76, revealCheckerSize: 3 });
 
 /** Adds the screen-space dither discard to one opaque scenery shader. */
 export function applyPlayerOcclusionDitherShader(shader, uniforms) {
@@ -15,6 +15,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       uniform float cqRevealPlayerDepth;
       uniform float cqRevealInnerRadius;
       uniform float cqRevealOuterRadius;
+      uniform float cqRevealCheckerSize;
       varying float vCQRevealDepth;
       float cqRevealBayer4(vec2 p) {
         vec2 cell = mod(floor(p), 4.0);
@@ -28,7 +29,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
         if (cqRevealDistance <= cqRevealInnerRadius) discard;
         float cqRevealCoverage = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
-        vec2 cqRevealPixel = floor(gl_FragCoord.xy / 3.0);
+        vec2 cqRevealPixel = floor(gl_FragCoord.xy / cqRevealCheckerSize);
         float cqRevealChecker = mod(cqRevealPixel.x + cqRevealPixel.y, 2.0);
         float cqRevealThreshold = fract(cqRevealBayer4(cqRevealPixel) + cqRevealChecker * 0.0625);
         if (cqRevealThreshold < cqRevealCoverage) discard;
@@ -45,12 +46,14 @@ export function createPlayerOcclusionDither(THREE, renderer,
     cqRevealPlayerDepth: { value: 0 },
     cqRevealInnerRadius: { value: PLAYER_REVEAL_DEFAULTS.revealInnerRadius },
     cqRevealOuterRadius: { value: PLAYER_REVEAL_DEFAULTS.revealOuterRadius },
+    cqRevealCheckerSize: { value: PLAYER_REVEAL_DEFAULTS.revealCheckerSize },
   };
   const screen = new THREE.Vector3();
   const viewPosition = new THREE.Vector3();
   const viewport = new THREE.Vector2();
   let innerRadius = PLAYER_REVEAL_DEFAULTS.revealInnerRadius;
   let outerRadius = PLAYER_REVEAL_DEFAULTS.revealOuterRadius;
+  let checkerSize = PLAYER_REVEAL_DEFAULTS.revealCheckerSize;
   let appliedPixelRatio = null;
 
   function syncPixelRatio() {
@@ -62,12 +65,14 @@ export function createPlayerOcclusionDither(THREE, renderer,
     appliedPixelRatio = pixelRatio;
     uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio;
     uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio;
+    uniforms.cqRevealCheckerSize.value = checkerSize * pixelRatio;
     return pixelRatio;
   }
 
   function updateSettings(settings = {}) {
     innerRadius = settings.revealInnerRadius ?? innerRadius;
     outerRadius = settings.revealOuterRadius ?? outerRadius;
+    checkerSize = settings.revealCheckerSize ?? checkerSize;
     appliedPixelRatio = null;
     syncPixelRatio();
   }
