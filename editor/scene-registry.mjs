@@ -2,7 +2,7 @@ import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULT
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
 export function createSceneRegistry({ THREE, overrides, setFog, setLighting = () => {}, setTerrainStyle = () => {} }) {

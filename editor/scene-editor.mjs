@@ -1,7 +1,7 @@
 import { readTransform } from './edit-model.mjs?v=136';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
-import { applyTerrainSculptDab, terrainBrushSpacing } from '../game/terrain-sculpt.mjs';
+import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
 
@@ -291,7 +291,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function beginTerrainStroke(event, point) {
     const location = getLocation(), map = location.terrainHeightMap;
     if (!map || !point) return;
-    if (walkableAt(point.x, point.z, location.walkablePoints)) {
+    const onWalkableFloor = walkableAt(point.x, point.z, location.walkablePoints);
+    if (onWalkableFloor && terrainMode !== 'level') {
       ui.status.textContent = 'Игровой пол остаётся плоским. Рисуй по рельефу за его границей.'; return;
     }
     if (point.x < map.minX || point.z < map.minZ
@@ -300,7 +301,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     terrainEdits = JSON.parse(JSON.stringify(registry.terrainEdits(location.id)));
     if (terrainEdits.strokes.length >= 80) { ui.status.textContent = 'Лимит рельефных мазков достигнут.'; return; }
     terrainMap = { ...map, values: new Float32Array(map.values) };
-    const targetHeight = map.sample(point.x, point.z);
+    const targetHeight = terrainTargetHeightAt(map, point.x, point.z, location.walkablePoints);
     terrainStroke = { mode: terrainMode, radius: terrainRadius, strength: terrainStrength,
       targetHeight, points: [[point.x, point.z]] };
     terrainLast = [point.x, point.z];
@@ -498,7 +499,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           <span>Уровень выбора: <b id="se-terrain-level">не выбран</b></span>
           <button id="se-terrain-reset">Сбросить рельеф локации</button>
         </div>
-        <small class="se-terrain-help">Щёлкни по слою и веди мышь. Выровнять берёт высоту в точке начала мазка; края кисти мягкие. ПКМ + WASD — летать камерой. Игровая площадка и физика остаются ровными.</small>
+        <small class="se-terrain-help">Щёлкни по рельефу и веди мышь. Для выравнивания по игровой земле начни мазок на ней — это уровень 0 м. Края кисти мягкие. ПКМ + WASD — летать камерой. Игровая площадка и физика остаются ровными.</small>
       </section>
       <aside class="se-inspector"><div class="se-caption">ОБЪЕКТЫ СЦЕНЫ</div>
         <select id="se-objects" aria-label="Объект сцены"></select><strong id="se-selected"></strong>

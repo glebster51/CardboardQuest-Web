@@ -4,7 +4,7 @@ import { FOG_DEFAULTS } from '../fog-settings.mjs?v=3';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
 export { FOG_DEFAULTS };
 export const LIGHTING_DEFAULTS = { direction: [-5, 12, 7], intensity: 3, color: '#ffebcb' };
 export const TERRAIN_STYLE_DEFAULTS = {

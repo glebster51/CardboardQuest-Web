@@ -1,4 +1,5 @@
 const MODES = new Set(['level', 'raise', 'lower']);
+export const TERRAIN_SCULPT_MAX_HEIGHT = 8;
 const smoothStep = value => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 
 function insidePolygon(x, z, points) {
@@ -28,9 +29,15 @@ export function validateTerrainEdits(value) {
   return value;
 }
 
+/** The walkable tabletop is an explicit zero-height reference for level strokes. */
+export function terrainTargetHeightAt(map, x, z, walkablePoints = []) {
+  return walkablePoints.length >= 3 && insidePolygon(x, z, walkablePoints) ? 0 : map.sample(x, z);
+}
+
 /** Apply one smooth, world-space brush stamp to a sampled height field. */
 export function applyTerrainSculptDab(map, stroke, x, z, walkablePoints = []) {
-  const { columns, rows, values, minX, minZ, maxHeight } = map;
+  const { columns, rows, values, minX, minZ } = map;
+  const maxHeight = map.sculptMaxHeight ?? map.maxHeight;
   const cellX = map.cellSizeX ?? map.cellSize, cellZ = map.cellSizeZ ?? map.cellSize;
   const radius = stroke.radius, radiusSq = radius * radius;
   const minColumn = Math.max(0, Math.floor((x - radius - minX) / cellX));
