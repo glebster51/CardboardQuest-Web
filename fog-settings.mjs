@@ -1,4 +1,4 @@
-export const FOG_DEFAULTS = { start: 1.2, end: 8, color: '#242039', tint: .38, curve: 1.35,
-  revealInnerRadius: 14, revealOuterRadius: 76, revealNoiseEnabled: true, revealNoiseType: 'voronoi', revealNoiseSize: 8,
-  revealNoiseShift: 0, revealNoiseMultiply: .35, revealNoiseSpeedX: .08, revealNoiseSpeedY: .04,
-  revealCheckerSize: 3 };
+export const FOG_DEFAULTS = { start: -2.2, end: 10.9, color: '#242039', tint: 1, curve: 2.1,
+  revealInnerRadius: 85, revealOuterRadius: 311, revealNoiseEnabled: true, revealNoiseType: 'gaussian', revealNoiseSize: 115,
+  revealNoiseShift: 1, revealNoiseMultiply: .6, revealNoiseSpeedX: .08, revealNoiseSpeedY: .41,
+  revealCheckerSize: 1, revealDepthFadeAdd: .8, revealDepthFadeMultiply: 1.25 };

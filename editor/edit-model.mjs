@@ -1,6 +1,6 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '154';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=5';
+export const SCENE_BUILD = '155';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=7';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
@@ -41,7 +41,7 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
   }
   const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
     'revealNoiseEnabled', 'revealNoiseType', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply',
-    'revealNoiseSpeedX', 'revealNoiseSpeedY', 'revealCheckerSize']
+    'revealNoiseSpeedX', 'revealNoiseSpeedY', 'revealCheckerSize', 'revealDepthFadeAdd', 'revealDepthFadeMultiply']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
@@ -58,6 +58,8 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || (value.revealNoiseSpeedX !== undefined && (!Number.isFinite(value.revealNoiseSpeedX) || value.revealNoiseSpeedX < -2 || value.revealNoiseSpeedX > 2))
       || (value.revealNoiseSpeedY !== undefined && (!Number.isFinite(value.revealNoiseSpeedY) || value.revealNoiseSpeedY < -2 || value.revealNoiseSpeedY > 2))
       || (value.revealCheckerSize !== undefined && (!Number.isFinite(value.revealCheckerSize) || value.revealCheckerSize < 1 || value.revealCheckerSize > 16))
+      || (value.revealDepthFadeAdd !== undefined && (!Number.isFinite(value.revealDepthFadeAdd) || value.revealDepthFadeAdd < 0 || value.revealDepthFadeAdd > 4))
+      || (value.revealDepthFadeMultiply !== undefined && (!Number.isFinite(value.revealDepthFadeMultiply) || value.revealDepthFadeMultiply < .05 || value.revealDepthFadeMultiply > 4))
       || (value.revealInnerRadius !== undefined && value.revealOuterRadius !== undefined
         && value.revealOuterRadius <= value.revealInnerRadius)) throw new Error('Invalid fog settings');
   } else if (lighting) {

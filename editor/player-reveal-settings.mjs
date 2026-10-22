@@ -3,6 +3,8 @@ export function createPlayerRevealSettingsMarkup() {
     <div class="se-module-content se-player-reveal" role="group" aria-label="Настройки просвета сквозь окружение">
       <label>Внутренний радиус <output></output><input data-reveal-setting="revealInnerRadius" aria-label="Внутренний радиус просвета игрока" type="range" min="0" max="480" step="1"></label>
       <label>Внешний радиус <output></output><input data-reveal-setting="revealOuterRadius" aria-label="Внешний радиус просвета игрока" type="range" min="1" max="640" step="1"></label>
+      <label>Плавность глубины Add <output></output><input data-reveal-setting="revealDepthFadeAdd" aria-label="Добавка плавности просвета по глубине" type="range" min="0" max="4" step=".01"></label>
+      <label>Плавность глубины Multiply <output></output><input data-reveal-setting="revealDepthFadeMultiply" aria-label="Множитель плавности просвета по глубине" type="range" min=".05" max="4" step=".01"></label>
       <label class="se-reveal-toggle"><input data-reveal-setting="revealNoiseEnabled" aria-label="Включить шум просвета" type="checkbox"> Шум просвета</label>
       <div class="se-reveal-noise-mode" role="group" aria-label="Тип шума просвета">
         <span>Тип шума</span><div><button type="button" data-reveal-noise-type="voronoi" aria-pressed="true">Voronoi</button>
@@ -20,7 +22,8 @@ export function createPlayerRevealSettingsMarkup() {
 function formatOutput(input) {
   const value = Number(input.value), key = input.dataset.revealSetting;
   if (key === 'revealCheckerSize' || key === 'revealNoiseSize') return `${value.toFixed(1)} px`;
-  if (key === 'revealNoiseShift' || key === 'revealNoiseMultiply') return value.toFixed(2);
+  if (key === 'revealNoiseShift' || key === 'revealNoiseMultiply'
+    || key === 'revealDepthFadeAdd' || key === 'revealDepthFadeMultiply') return value.toFixed(2);
   if (key.startsWith('revealNoiseSpeed')) return `${value.toFixed(2)} яч/с`;
   return `${value.toFixed(0)} px`;
 }

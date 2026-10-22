@@ -1,6 +1,7 @@
-export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 14, revealOuterRadius: 76,
-  revealNoiseEnabled: true, revealNoiseType: 'voronoi', revealNoiseSize: 8, revealNoiseShift: 0,
-  revealNoiseMultiply: .35, revealNoiseSpeedX: .08, revealNoiseSpeedY: .04, revealCheckerSize: 3 });
+export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 85, revealOuterRadius: 311,
+  revealNoiseEnabled: true, revealNoiseType: 'gaussian', revealNoiseSize: 115, revealNoiseShift: 1,
+  revealNoiseMultiply: .6, revealNoiseSpeedX: .08, revealNoiseSpeedY: .41, revealCheckerSize: 1,
+  revealDepthFadeAdd: .8, revealDepthFadeMultiply: 1.25 });
 
 /** Adds the screen-space dither discard to one opaque scenery shader. */
 export function applyPlayerOcclusionDitherShader(shader, uniforms) {
@@ -17,6 +18,8 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       uniform float cqRevealPlayerDepth;
       uniform float cqRevealInnerRadius;
       uniform float cqRevealOuterRadius;
+      uniform float cqRevealDepthFadeAdd;
+      uniform float cqRevealDepthFadeMultiply;
       uniform float cqRevealCheckerSize;
       uniform float cqRevealNoiseEnabled;
       uniform float cqRevealNoiseSize;
@@ -34,17 +37,19 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       }`)
     .replace('#include <opaque_fragment>', `
       float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
-      float cqRevealBeforePlayer = step(vCQRevealDepth + 0.025, cqRevealPlayerDepth);
-      if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
-        if (cqRevealDistance <= cqRevealInnerRadius) discard;
+      if (cqRevealEnabled > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
         float cqRevealCoverage = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
-        if (cqRevealNoiseEnabled > 0.5) {
+        if (cqRevealNoiseEnabled > 0.5 && cqRevealDistance > cqRevealInnerRadius) {
           vec2 cqRevealNoiseUv = gl_FragCoord.xy / (cqRevealNoiseSize * 32.0)
             + cqRevealNoiseSpeed * cqRevealTime / 8.0;
           float cqRevealRemappedNoise = texture2D(cqRevealNoiseMap, cqRevealNoiseUv).r * 2.0 - 1.0;
           float cqRevealNoise = (cqRevealRemappedNoise + cqRevealNoiseShift) * cqRevealNoiseMultiply;
           cqRevealCoverage = clamp((cqRevealCoverage + cqRevealNoise) * cqRevealCoverage, 0.0, 1.0);
         }
+        float cqRevealDepthInput = (cqRevealPlayerDepth - vCQRevealDepth + cqRevealDepthFadeAdd)
+          * cqRevealDepthFadeMultiply;
+        float cqRevealDepthFade = smoothstep(0.0, 1.0, clamp(cqRevealDepthInput, 0.0, 1.0));
+        cqRevealCoverage *= cqRevealDepthFade;
         vec2 cqRevealPixel = floor(gl_FragCoord.xy / cqRevealCheckerSize);
         float cqRevealChecker = mod(cqRevealPixel.x + cqRevealPixel.y, 2.0);
         float cqRevealThreshold = fract(cqRevealBayer4(cqRevealPixel) + cqRevealChecker * 0.0625);
@@ -83,6 +88,8 @@ export function createPlayerOcclusionDither(THREE, renderer,
     cqRevealPlayerDepth: { value: 0 },
     cqRevealInnerRadius: { value: PLAYER_REVEAL_DEFAULTS.revealInnerRadius },
     cqRevealOuterRadius: { value: PLAYER_REVEAL_DEFAULTS.revealOuterRadius },
+    cqRevealDepthFadeAdd: { value: PLAYER_REVEAL_DEFAULTS.revealDepthFadeAdd },
+    cqRevealDepthFadeMultiply: { value: PLAYER_REVEAL_DEFAULTS.revealDepthFadeMultiply },
     cqRevealCheckerSize: { value: PLAYER_REVEAL_DEFAULTS.revealCheckerSize },
     cqRevealNoiseEnabled: { value: Number(PLAYER_REVEAL_DEFAULTS.revealNoiseEnabled) },
     cqRevealNoiseSize: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseSize },
@@ -98,6 +105,8 @@ export function createPlayerOcclusionDither(THREE, renderer,
   const viewport = new THREE.Vector2();
   let innerRadius = PLAYER_REVEAL_DEFAULTS.revealInnerRadius;
   let outerRadius = PLAYER_REVEAL_DEFAULTS.revealOuterRadius;
+  let depthFadeAdd = PLAYER_REVEAL_DEFAULTS.revealDepthFadeAdd;
+  let depthFadeMultiply = PLAYER_REVEAL_DEFAULTS.revealDepthFadeMultiply;
   let checkerSize = PLAYER_REVEAL_DEFAULTS.revealCheckerSize;
   let noiseEnabled = PLAYER_REVEAL_DEFAULTS.revealNoiseEnabled;
   let noiseType = PLAYER_REVEAL_DEFAULTS.revealNoiseType;
@@ -107,24 +116,29 @@ export function createPlayerOcclusionDither(THREE, renderer,
   let noiseSpeedX = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedX;
   let noiseSpeedY = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedY;
   let appliedPixelRatio = null;
+  let appliedZoomScale = null;
+  let referencePlayerDepth = null;
 
-  function syncPixelRatio() {
+  function syncPixelRatio(zoomScale = 1) {
     const devicePixelRatio = renderer.getPixelRatio();
     const renderPixelRatio = getRenderPixelRatio();
     const pixelRatio = Number.isFinite(renderPixelRatio) && renderPixelRatio > 0
       ? renderPixelRatio : devicePixelRatio;
-    if (pixelRatio === appliedPixelRatio) return pixelRatio;
+    if (pixelRatio === appliedPixelRatio && zoomScale === appliedZoomScale) return pixelRatio;
     appliedPixelRatio = pixelRatio;
-    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio;
-    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio;
+    appliedZoomScale = zoomScale;
+    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio * zoomScale;
+    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio * zoomScale;
     uniforms.cqRevealCheckerSize.value = checkerSize * pixelRatio;
-    uniforms.cqRevealNoiseSize.value = noiseSize * pixelRatio;
+    uniforms.cqRevealNoiseSize.value = noiseSize * pixelRatio * zoomScale;
     return pixelRatio;
   }
 
   function updateSettings(settings = {}) {
     innerRadius = settings.revealInnerRadius ?? innerRadius;
     outerRadius = settings.revealOuterRadius ?? outerRadius;
+    depthFadeAdd = settings.revealDepthFadeAdd ?? depthFadeAdd;
+    depthFadeMultiply = settings.revealDepthFadeMultiply ?? depthFadeMultiply;
     checkerSize = settings.revealCheckerSize ?? checkerSize;
     noiseEnabled = settings.revealNoiseEnabled ?? noiseEnabled;
     noiseType = settings.revealNoiseType ?? noiseType;
@@ -134,6 +148,8 @@ export function createPlayerOcclusionDither(THREE, renderer,
     noiseSpeedX = settings.revealNoiseSpeedX ?? noiseSpeedX;
     noiseSpeedY = settings.revealNoiseSpeedY ?? noiseSpeedY;
     uniforms.cqRevealNoiseEnabled.value = noiseEnabled ? 1 : 0;
+    uniforms.cqRevealDepthFadeAdd.value = depthFadeAdd;
+    uniforms.cqRevealDepthFadeMultiply.value = depthFadeMultiply;
     if (loadNoiseTexture) uniforms.cqRevealNoiseMap.value = loadNoiseTexture(noiseType);
     uniforms.cqRevealNoiseShift.value = noiseShift;
     uniforms.cqRevealNoiseMultiply.value = noiseMultiply;
@@ -144,12 +160,19 @@ export function createPlayerOcclusionDither(THREE, renderer,
 
   function update(camera, playerPosition, enabled = true,
     timeSeconds = globalThis.performance ? globalThis.performance.now() / 1000 : 0) {
-    const renderPixelRatio = syncPixelRatio();
     uniforms.cqRevealTime.value = timeSeconds;
     camera.updateMatrixWorld();
     screen.copy(playerPosition).project(camera);
     viewPosition.copy(playerPosition).applyMatrix4(camera.matrixWorldInverse);
+    const playerDepth = -viewPosition.z;
+    if (Number.isFinite(playerDepth) && playerDepth > 0) {
+      referencePlayerDepth ??= playerDepth;
+    }
+    // Under a perspective camera the on-screen height of a fixed-size sprite
+    // is inversely proportional to its camera-space depth.
+    const zoomScale = referencePlayerDepth && playerDepth > 0 ? referencePlayerDepth / playerDepth : 1;
     renderer.getDrawingBufferSize(viewport);
+    const renderPixelRatio = syncPixelRatio(zoomScale);
     const renderScale = renderPixelRatio / renderer.getPixelRatio();
     viewport.set(viewport.x * renderScale, viewport.y * renderScale);
     const visible = enabled && viewPosition.z < 0 && screen.z >= -1 && screen.z <= 1
@@ -158,7 +181,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
     if (!visible) return;
     uniforms.cqRevealScreen.value.set((screen.x * .5 + .5) * viewport.x,
       (screen.y * .5 + .5) * viewport.y);
-    uniforms.cqRevealPlayerDepth.value = -viewPosition.z;
+    uniforms.cqRevealPlayerDepth.value = playerDepth;
   }
 
   return { uniforms, update, updateSettings };
