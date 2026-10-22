@@ -14,7 +14,7 @@ import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/he
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=133';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=146';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=168';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=169';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=5';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';

@@ -26,7 +26,15 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor .se-fog input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--se-accent);cursor:pointer}
 #scene-editor .se-player-reveal{display:grid;gap:7px}
 #scene-editor .se-item-magnet{display:grid;gap:7px}
-#scene-editor .se-item-magnet label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
+#scene-editor .se-magnet-control{position:relative;z-index:1}
+#scene-editor .se-magnet-control:has(.se-magnet-gizmo:hover),#scene-editor .se-magnet-control:focus-within{z-index:32}
+#scene-editor .se-item-magnet label{width:100%;display:grid;grid-template-columns:1fr;gap:3px;font-size:11px;color:#d1c8b9}
+#scene-editor .se-item-magnet label>span{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+#scene-editor .se-magnet-gizmo{position:absolute;z-index:32;left:0;top:calc(100% + 2px);width:min(268px,calc(100vw - 52px));padding:3px;border:1px solid #d6ad70;border-radius:11px;background:#20232bf5;box-shadow:0 10px 24px #0009;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .12s ease,transform .12s ease,visibility .12s;pointer-events:none}
+#scene-editor .se-magnet-control:hover .se-magnet-gizmo,#scene-editor .se-magnet-control:focus-within .se-magnet-gizmo{opacity:1;visibility:visible;transform:translateY(0)}
+#scene-editor .se-magnet-gizmo svg{display:block;width:100%;height:auto}
+#scene-editor .se-magnet-gizmo .se-gizmo-note{fill:#c8baa5;font:600 8px system-ui,sans-serif;letter-spacing:1px}
+#scene-editor .se-magnet-gizmo .se-gizmo-value{fill:#f1bd6d;font:700 10px system-ui,sans-serif}
 #scene-editor .se-item-magnet small{font-size:10px;color:#b9ac97}
 #scene-editor .se-player-reveal label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
 #scene-editor .se-player-reveal label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px;cursor:pointer}

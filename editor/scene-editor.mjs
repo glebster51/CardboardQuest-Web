@@ -2,7 +2,7 @@ import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform }
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=5';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
-import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=1';
+import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=2';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
