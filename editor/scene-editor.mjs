@@ -385,10 +385,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   function refreshFog() {
     for (const input of panel.querySelectorAll('[data-fog]')) {
-      input.value = registry.fog[input.dataset.fog];
+      const value = registry.fog[input.dataset.fog];
+      if (input.type === 'checkbox') input.checked = Boolean(value);
+      else input.value = value;
       const output = input.closest('label').querySelector('output');
-      if (output) output.value = input.dataset.fog.startsWith('revealChecker')
+      if (output) output.value = input.dataset.fog === 'revealCheckerSize' || input.dataset.fog === 'revealNoiseSize'
         ? `${Number(input.value).toFixed(1)} px`
+        : input.dataset.fog === 'revealNoiseShift' || input.dataset.fog === 'revealNoiseMultiply'
+          ? Number(input.value).toFixed(2)
         : input.dataset.fog.startsWith('reveal')
         ? `${Number(input.value).toFixed(0)} px`
         : Number(input.value).toFixed(2);
@@ -452,6 +456,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <label>Внутренний радиус просвета <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета игрока" type="range" min="0" max="480" step="1"></label>
         <label>Внешний радиус просвета <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус просвета игрока" type="range" min="1" max="640" step="1"></label>
+        <label><input data-fog="revealNoiseEnabled" aria-label="Включить шум просвета" type="checkbox"> Voronoi-шум</label>
+        <label>Масштаб шума <output></output><input data-fog="revealNoiseSize" aria-label="Размер ячеек Voronoi-шума" type="range" min="2" max="160" step="1"></label>
+        <label>Сдвиг шума <output></output><input data-fog="revealNoiseShift" aria-label="Сдвиг Voronoi-шума" type="range" min="-1" max="1" step=".01"></label>
+        <label>Умножение шума <output></output><input data-fog="revealNoiseMultiply" aria-label="Множитель Voronoi-шума до формулы просвета" type="range" min="0" max="2" step=".01"></label>
         <label>Размер шахматки <output></output><input data-fog="revealCheckerSize" aria-label="Размер пиксельной шахматки просвета" type="range" min="1" max="16" step="0.5"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
       </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
@@ -659,7 +667,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       input.addEventListener('pointerdown', () => model.begin());
       input.addEventListener('change', () => model.commit());
       input.addEventListener('input', () => {
-        const settings = { ...registry.fog, [input.dataset.fog]: input.type === 'color' ? input.value : Number(input.value) };
+        const value = input.type === 'color' ? input.value : input.type === 'checkbox' ? input.checked : Number(input.value);
+        const settings = { ...registry.fog, [input.dataset.fog]: value };
         if (settings.end - settings.start < .1) {
           if (input.dataset.fog === 'start') settings.end = settings.start + .1;
           else settings.start = settings.end - .1;

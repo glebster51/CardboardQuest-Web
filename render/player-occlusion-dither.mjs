@@ -1,4 +1,5 @@
-export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 14, revealOuterRadius: 76, revealCheckerSize: 3 });
+export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 14, revealOuterRadius: 76,
+  revealNoiseEnabled: true, revealNoiseSize: 8, revealNoiseShift: 0, revealNoiseMultiply: .35, revealCheckerSize: 3 });
 
 /** Adds the screen-space dither discard to one opaque scenery shader. */
 export function applyPlayerOcclusionDitherShader(shader, uniforms) {
@@ -16,7 +17,28 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       uniform float cqRevealInnerRadius;
       uniform float cqRevealOuterRadius;
       uniform float cqRevealCheckerSize;
+      uniform float cqRevealNoiseEnabled;
+      uniform float cqRevealNoiseSize;
+      uniform float cqRevealNoiseShift;
+      uniform float cqRevealNoiseMultiply;
       varying float vCQRevealDepth;
+      float cqRevealHash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+      float cqRevealVoronoi(vec2 p) {
+        vec2 cell = floor(p);
+        vec2 local = fract(p);
+        float nearest = 1.0;
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 seed = cell + neighbor;
+            vec2 point = neighbor + vec2(cqRevealHash(seed), cqRevealHash(seed + 19.19));
+            nearest = min(nearest, length(local - point));
+          }
+        }
+        return nearest;
+      }
       float cqRevealBayer4(vec2 p) {
         vec2 cell = mod(floor(p), 4.0);
         float low = mod(cell.x, 2.0) + 2.0 * mod(cell.y, 2.0);
@@ -29,6 +51,12 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
         if (cqRevealDistance <= cqRevealInnerRadius) discard;
         float cqRevealCoverage = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
+        if (cqRevealNoiseEnabled > 0.5) {
+          float cqRevealVoronoiValue = cqRevealVoronoi(gl_FragCoord.xy / cqRevealNoiseSize);
+          float cqRevealRemappedNoise = clamp((cqRevealVoronoiValue - 0.35) * 4.0, -1.0, 1.0);
+          float cqRevealNoise = (cqRevealRemappedNoise + cqRevealNoiseShift) * cqRevealNoiseMultiply;
+          cqRevealCoverage = clamp((cqRevealCoverage + cqRevealNoise) * cqRevealCoverage, 0.0, 1.0);
+        }
         vec2 cqRevealPixel = floor(gl_FragCoord.xy / cqRevealCheckerSize);
         float cqRevealChecker = mod(cqRevealPixel.x + cqRevealPixel.y, 2.0);
         float cqRevealThreshold = fract(cqRevealBayer4(cqRevealPixel) + cqRevealChecker * 0.0625);
@@ -47,6 +75,10 @@ export function createPlayerOcclusionDither(THREE, renderer,
     cqRevealInnerRadius: { value: PLAYER_REVEAL_DEFAULTS.revealInnerRadius },
     cqRevealOuterRadius: { value: PLAYER_REVEAL_DEFAULTS.revealOuterRadius },
     cqRevealCheckerSize: { value: PLAYER_REVEAL_DEFAULTS.revealCheckerSize },
+    cqRevealNoiseEnabled: { value: Number(PLAYER_REVEAL_DEFAULTS.revealNoiseEnabled) },
+    cqRevealNoiseSize: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseSize },
+    cqRevealNoiseShift: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseShift },
+    cqRevealNoiseMultiply: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseMultiply },
   };
   const screen = new THREE.Vector3();
   const viewPosition = new THREE.Vector3();
@@ -54,6 +86,10 @@ export function createPlayerOcclusionDither(THREE, renderer,
   let innerRadius = PLAYER_REVEAL_DEFAULTS.revealInnerRadius;
   let outerRadius = PLAYER_REVEAL_DEFAULTS.revealOuterRadius;
   let checkerSize = PLAYER_REVEAL_DEFAULTS.revealCheckerSize;
+  let noiseEnabled = PLAYER_REVEAL_DEFAULTS.revealNoiseEnabled;
+  let noiseSize = PLAYER_REVEAL_DEFAULTS.revealNoiseSize;
+  let noiseShift = PLAYER_REVEAL_DEFAULTS.revealNoiseShift;
+  let noiseMultiply = PLAYER_REVEAL_DEFAULTS.revealNoiseMultiply;
   let appliedPixelRatio = null;
 
   function syncPixelRatio() {
@@ -66,6 +102,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
     uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio;
     uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio;
     uniforms.cqRevealCheckerSize.value = checkerSize * pixelRatio;
+    uniforms.cqRevealNoiseSize.value = noiseSize * pixelRatio;
     return pixelRatio;
   }
 
@@ -73,6 +110,13 @@ export function createPlayerOcclusionDither(THREE, renderer,
     innerRadius = settings.revealInnerRadius ?? innerRadius;
     outerRadius = settings.revealOuterRadius ?? outerRadius;
     checkerSize = settings.revealCheckerSize ?? checkerSize;
+    noiseEnabled = settings.revealNoiseEnabled ?? noiseEnabled;
+    noiseSize = settings.revealNoiseSize ?? noiseSize;
+    noiseShift = settings.revealNoiseShift ?? noiseShift;
+    noiseMultiply = settings.revealNoiseMultiply ?? noiseMultiply;
+    uniforms.cqRevealNoiseEnabled.value = noiseEnabled ? 1 : 0;
+    uniforms.cqRevealNoiseShift.value = noiseShift;
+    uniforms.cqRevealNoiseMultiply.value = noiseMultiply;
     appliedPixelRatio = null;
     syncPixelRatio();
   }

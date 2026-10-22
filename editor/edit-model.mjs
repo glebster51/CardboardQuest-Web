@@ -39,7 +39,8 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       throw new Error('Invalid global terrain style');
     return value;
   }
-  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius', 'revealNoiseSize', 'revealCheckerSize']
+  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
+    'revealNoiseEnabled', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply', 'revealCheckerSize']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
@@ -49,6 +50,9 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || (value.revealInnerRadius !== undefined && (!Number.isFinite(value.revealInnerRadius) || value.revealInnerRadius < 0 || value.revealInnerRadius > 480))
       || (value.revealOuterRadius !== undefined && (!Number.isFinite(value.revealOuterRadius) || value.revealOuterRadius < 1 || value.revealOuterRadius > 640))
       || (value.revealNoiseSize !== undefined && (!Number.isFinite(value.revealNoiseSize) || value.revealNoiseSize < 2 || value.revealNoiseSize > 160))
+      || (value.revealNoiseEnabled !== undefined && typeof value.revealNoiseEnabled !== 'boolean')
+      || (value.revealNoiseShift !== undefined && (!Number.isFinite(value.revealNoiseShift) || value.revealNoiseShift < -1 || value.revealNoiseShift > 1))
+      || (value.revealNoiseMultiply !== undefined && (!Number.isFinite(value.revealNoiseMultiply) || value.revealNoiseMultiply < 0 || value.revealNoiseMultiply > 2))
       || (value.revealCheckerSize !== undefined && (!Number.isFinite(value.revealCheckerSize) || value.revealCheckerSize < 1 || value.revealCheckerSize > 16))
       || (value.revealInnerRadius !== undefined && value.revealOuterRadius !== undefined
         && value.revealOuterRadius <= value.revealInnerRadius)) throw new Error('Invalid fog settings');
