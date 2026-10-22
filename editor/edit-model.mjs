@@ -40,7 +40,8 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
     return value;
   }
   const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
-    'revealNoiseEnabled', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply', 'revealCheckerSize']
+    'revealNoiseEnabled', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply',
+    'revealNoiseSpeedX', 'revealNoiseSpeedY', 'revealCheckerSize']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
@@ -53,6 +54,8 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || (value.revealNoiseEnabled !== undefined && typeof value.revealNoiseEnabled !== 'boolean')
       || (value.revealNoiseShift !== undefined && (!Number.isFinite(value.revealNoiseShift) || value.revealNoiseShift < -1 || value.revealNoiseShift > 1))
       || (value.revealNoiseMultiply !== undefined && (!Number.isFinite(value.revealNoiseMultiply) || value.revealNoiseMultiply < 0 || value.revealNoiseMultiply > 2))
+      || (value.revealNoiseSpeedX !== undefined && (!Number.isFinite(value.revealNoiseSpeedX) || value.revealNoiseSpeedX < -2 || value.revealNoiseSpeedX > 2))
+      || (value.revealNoiseSpeedY !== undefined && (!Number.isFinite(value.revealNoiseSpeedY) || value.revealNoiseSpeedY < -2 || value.revealNoiseSpeedY > 2))
       || (value.revealCheckerSize !== undefined && (!Number.isFinite(value.revealCheckerSize) || value.revealCheckerSize < 1 || value.revealCheckerSize > 16))
       || (value.revealInnerRadius !== undefined && value.revealOuterRadius !== undefined
         && value.revealOuterRadius <= value.revealInnerRadius)) throw new Error('Invalid fog settings');

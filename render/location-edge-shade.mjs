@@ -1,5 +1,5 @@
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=4';
-import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=7';
+import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=8';
 export const LOCATION_FAR_COLOR = 0x242039;
 const originalMaterialHooks = new WeakMap();
 
@@ -253,7 +253,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           #include <opaque_fragment>`);
     };
     const previousCacheKey = originalHooks.customProgramCacheKey;
-      material.customProgramCacheKey = () => `${previousCacheKey?.call(material) ?? ''}|cq-location-path-fog-v19-voronoi-${reveal ? 'reveal' : 'opaque'}`;
+      material.customProgramCacheKey = () => `${previousCacheKey?.call(material) ?? ''}|cq-location-path-fog-v20-voronoi-texture-${reveal ? 'reveal' : 'opaque'}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);

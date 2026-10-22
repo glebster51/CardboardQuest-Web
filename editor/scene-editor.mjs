@@ -393,6 +393,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         ? `${Number(input.value).toFixed(1)} px`
         : input.dataset.fog === 'revealNoiseShift' || input.dataset.fog === 'revealNoiseMultiply'
           ? Number(input.value).toFixed(2)
+          : input.dataset.fog.startsWith('revealNoiseSpeed')
+            ? `${Number(input.value).toFixed(2)} яч/с`
         : input.dataset.fog.startsWith('reveal')
         ? `${Number(input.value).toFixed(0)} px`
         : Number(input.value).toFixed(2);
@@ -460,6 +462,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Масштаб шума <output></output><input data-fog="revealNoiseSize" aria-label="Размер ячеек Voronoi-шума" type="range" min="2" max="160" step="1"></label>
         <label>Сдвиг шума <output></output><input data-fog="revealNoiseShift" aria-label="Сдвиг Voronoi-шума" type="range" min="-1" max="1" step=".01"></label>
         <label>Умножение шума <output></output><input data-fog="revealNoiseMultiply" aria-label="Множитель Voronoi-шума до формулы просвета" type="range" min="0" max="2" step=".01"></label>
+        <label>Скорость шума X <output></output><input data-fog="revealNoiseSpeedX" aria-label="Скорость прокрутки шума по X" type="range" min="-2" max="2" step=".01"></label>
+        <label>Скорость шума Y <output></output><input data-fog="revealNoiseSpeedY" aria-label="Скорость прокрутки шума по Y" type="range" min="-2" max="2" step=".01"></label>
         <label>Размер шахматки <output></output><input data-fog="revealCheckerSize" aria-label="Размер пиксельной шахматки просвета" type="range" min="1" max="16" step="0.5"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
       </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">

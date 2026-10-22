@@ -21,24 +21,10 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       uniform float cqRevealNoiseSize;
       uniform float cqRevealNoiseShift;
       uniform float cqRevealNoiseMultiply;
+      uniform float cqRevealTime;
+      uniform vec2 cqRevealNoiseSpeed;
+      uniform sampler2D cqRevealNoiseMap;
       varying float vCQRevealDepth;
-      float cqRevealHash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-      }
-      float cqRevealVoronoi(vec2 p) {
-        vec2 cell = floor(p);
-        vec2 local = fract(p);
-        float nearest = 1.0;
-        for (int y = -1; y <= 1; y++) {
-          for (int x = -1; x <= 1; x++) {
-            vec2 neighbor = vec2(float(x), float(y));
-            vec2 seed = cell + neighbor;
-            vec2 point = neighbor + vec2(cqRevealHash(seed), cqRevealHash(seed + 19.19));
-            nearest = min(nearest, length(local - point));
-          }
-        }
-        return nearest;
-      }
       float cqRevealBayer4(vec2 p) {
         vec2 cell = mod(floor(p), 4.0);
         float low = mod(cell.x, 2.0) + 2.0 * mod(cell.y, 2.0);
@@ -52,8 +38,9 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
         if (cqRevealDistance <= cqRevealInnerRadius) discard;
         float cqRevealCoverage = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
         if (cqRevealNoiseEnabled > 0.5) {
-          float cqRevealVoronoiValue = cqRevealVoronoi(gl_FragCoord.xy / cqRevealNoiseSize);
-          float cqRevealRemappedNoise = clamp((cqRevealVoronoiValue - 0.35) * 4.0, -1.0, 1.0);
+          vec2 cqRevealNoiseUv = gl_FragCoord.xy / (cqRevealNoiseSize * 32.0)
+            + cqRevealNoiseSpeed * cqRevealTime / 8.0;
+          float cqRevealRemappedNoise = texture2D(cqRevealNoiseMap, cqRevealNoiseUv).r * 2.0 - 1.0;
           float cqRevealNoise = (cqRevealRemappedNoise + cqRevealNoiseShift) * cqRevealNoiseMultiply;
           cqRevealCoverage = clamp((cqRevealCoverage + cqRevealNoise) * cqRevealCoverage, 0.0, 1.0);
         }
@@ -68,6 +55,15 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
 /** Shares a camera-space reveal mask across opaque scenery materials. */
 export function createPlayerOcclusionDither(THREE, renderer,
   getRenderPixelRatio = () => renderer.getPixelRatio()) {
+  let noiseTexture = null;
+  if (THREE.TextureLoader) {
+    noiseTexture = new THREE.TextureLoader().load(new URL('../assets/player-reveal-voronoi-256.png?v=1', import.meta.url).href);
+    noiseTexture.wrapS = noiseTexture.wrapT = THREE.RepeatWrapping;
+    noiseTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    noiseTexture.magFilter = THREE.LinearFilter;
+    noiseTexture.generateMipmaps = true;
+    noiseTexture.colorSpace = THREE.NoColorSpace;
+  }
   const uniforms = {
     cqRevealEnabled: { value: 0 },
     cqRevealScreen: { value: new THREE.Vector2() },
@@ -79,6 +75,10 @@ export function createPlayerOcclusionDither(THREE, renderer,
     cqRevealNoiseSize: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseSize },
     cqRevealNoiseShift: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseShift },
     cqRevealNoiseMultiply: { value: PLAYER_REVEAL_DEFAULTS.revealNoiseMultiply },
+    cqRevealTime: { value: 0 },
+    cqRevealNoiseSpeed: { value: new THREE.Vector2(PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedX,
+      PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedY) },
+    cqRevealNoiseMap: { value: noiseTexture },
   };
   const screen = new THREE.Vector3();
   const viewPosition = new THREE.Vector3();
@@ -90,6 +90,8 @@ export function createPlayerOcclusionDither(THREE, renderer,
   let noiseSize = PLAYER_REVEAL_DEFAULTS.revealNoiseSize;
   let noiseShift = PLAYER_REVEAL_DEFAULTS.revealNoiseShift;
   let noiseMultiply = PLAYER_REVEAL_DEFAULTS.revealNoiseMultiply;
+  let noiseSpeedX = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedX;
+  let noiseSpeedY = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedY;
   let appliedPixelRatio = null;
 
   function syncPixelRatio() {
@@ -114,15 +116,20 @@ export function createPlayerOcclusionDither(THREE, renderer,
     noiseSize = settings.revealNoiseSize ?? noiseSize;
     noiseShift = settings.revealNoiseShift ?? noiseShift;
     noiseMultiply = settings.revealNoiseMultiply ?? noiseMultiply;
+    noiseSpeedX = settings.revealNoiseSpeedX ?? noiseSpeedX;
+    noiseSpeedY = settings.revealNoiseSpeedY ?? noiseSpeedY;
     uniforms.cqRevealNoiseEnabled.value = noiseEnabled ? 1 : 0;
     uniforms.cqRevealNoiseShift.value = noiseShift;
     uniforms.cqRevealNoiseMultiply.value = noiseMultiply;
+    uniforms.cqRevealNoiseSpeed.value.set(noiseSpeedX, noiseSpeedY);
     appliedPixelRatio = null;
     syncPixelRatio();
   }
 
-  function update(camera, playerPosition, enabled = true) {
+  function update(camera, playerPosition, enabled = true,
+    timeSeconds = globalThis.performance ? globalThis.performance.now() / 1000 : 0) {
     const renderPixelRatio = syncPixelRatio();
+    uniforms.cqRevealTime.value = timeSeconds;
     camera.updateMatrixWorld();
     screen.copy(playerPosition).project(camera);
     viewPosition.copy(playerPosition).applyMatrix4(camera.matrixWorldInverse);
