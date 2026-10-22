@@ -29,6 +29,11 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor .se-render-mode button[data-render-mode=overdraw][aria-pressed=true]{background:#f29459;border-color:#ffc28d}
 #scene-editor .se-render-mode button[data-render-mode=wireframe][aria-pressed=true]{background:#67c9aa;border-color:#a6f6dc}
 #scene-editor #se-render-hint{margin-left:auto;font-size:10px;color:#b9ac97}
+#scene-editor .se-screen-effects{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;margin-top:9px;padding-top:8px;border-top:1px solid #ffffff18}
+#scene-editor .se-screen-effects>strong{font-size:10px;letter-spacing:1.3px;color:#b9ac97}
+#scene-editor .se-screen-effects label{display:inline-flex;align-items:center;gap:6px;color:#d1c8b9;font-size:11px;cursor:pointer}
+#scene-editor .se-screen-effects input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--se-accent);cursor:pointer}
+#scene-editor .se-screen-effects small{margin-left:auto;color:#95949c;font-size:10px}
 #scene-editor #se-path-hint{flex-basis:100%;font-size:10px;color:#b9ac97}
 #scene-editor input[type=color]{width:34px;height:30px;padding:0;border:0;background:transparent;cursor:pointer}
 #scene-editor .se-inspector{position:absolute;right:0;top:var(--se-top,154px);width:308px;padding:16px;max-height:calc(100% - var(--se-top,154px));overflow-y:auto}
@@ -88,7 +93,7 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor #se-assets .se-library-empty{grid-column:1/-1;padding:8px;color:#b9ac97;font-size:11px}
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}
-@media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-fog{gap:8px}#scene-editor .se-render-mode{flex-wrap:wrap}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor .se-inspector{width:275px}#scene-editor button{padding:6px!important}}
+@media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-fog{gap:8px}#scene-editor .se-render-mode{flex-wrap:wrap}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor .se-screen-effects{gap:7px 12px}#scene-editor .se-screen-effects small{flex-basis:100%;margin-left:0}#scene-editor .se-inspector{width:275px}#scene-editor button{padding:6px!important}}
 
 /* The campaign graph is a pure 2D editor; the Three.js scene is hidden and its loop is paused. */
 body.campaign-graph-open #scene,body.campaign-graph-open #hud-tools,body.campaign-graph-open #location-info,

@@ -4,6 +4,7 @@ import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=4';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=1';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
@@ -11,7 +12,7 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=2';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=139';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=140';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -83,7 +84,10 @@ async function start() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
-  let tiltShiftComposer = null, tiltShiftPass = null, ssaoPass = null, tiltShiftPixelRatio = 1;
+  let tiltShiftComposer = null, tiltShiftPass = null, ssaoPass = null, tiltShiftPixelRatio = 1, postProcessingPromise = null;
+  let screenEffects = DEFAULT_SCREEN_EFFECTS;
+  try { screenEffects = normalizeScreenEffects(JSON.parse(localStorage.getItem(SCREEN_EFFECT_SETTINGS_KEY) || 'null')); }
+  catch { screenEffects = normalizeScreenEffects(null); }
   const setSsaoSize = () => {
     if (!ssaoPass) return;
     const scale = Math.min(.5, 720 / Math.max(1, innerWidth), 540 / Math.max(1, innerHeight));
@@ -91,7 +95,7 @@ async function start() {
       Math.max(1, Math.round(innerHeight * scale * tiltShiftPixelRatio)));
   };
   const renderScene = () => {
-    if (!tiltShiftComposer) return renderer.render(scene, camera);
+    if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift)) return renderer.render(scene, camera);
     try { tiltShiftComposer.render(); }
     catch (error) {
       if (ssaoPass?.enabled) {
@@ -105,7 +109,9 @@ async function start() {
     }
   };
   async function enableTiltShift() {
-    try {
+    if ((!screenEffects.ssao && !screenEffects.tiltShift) || tiltShiftComposer) return;
+    if (postProcessingPromise) return postProcessingPromise;
+    postProcessingPromise = (async () => { try {
       const [composerModule, renderModule, ssaoModule, shaderModule, shaderPassModule, outputModule] = await Promise.all([
         import('three/addons/postprocessing/EffectComposer.js'),
         import('three/addons/postprocessing/RenderPass.js'),
@@ -125,6 +131,7 @@ async function start() {
         ssao.kernelRadius = 5;
         ssao.minDistance = .008;
         ssao.maxDistance = .12;
+        ssao.enabled = screenEffects.ssao;
         composer.addPass(ssao);
         ssaoPass = ssao;
       } catch (error) {
@@ -133,14 +140,26 @@ async function start() {
       const tilt = new shaderPassModule.ShaderPass(shaderModule.VerticalTiltShiftShader);
       tilt.uniforms.r.value = .48;
       tilt.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      tilt.enabled = screenEffects.tiltShift;
       composer.addPass(tilt);
       composer.addPass(new outputModule.OutputPass());
       composer.setSize(innerWidth, innerHeight);
       setSsaoSize();
       tiltShiftComposer = composer; tiltShiftPass = tilt;
+      tiltShiftPass.enabled = screenEffects.tiltShift;
+      if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
     } catch (error) {
       console.warn('Постобработка недоступна; используется обычный рендер', error);
-    }
+    } finally { postProcessingPromise = null; } })();
+    return postProcessingPromise;
+  }
+  function setScreenEffects(value) {
+    screenEffects = normalizeScreenEffects(value);
+    try { localStorage.setItem(SCREEN_EFFECT_SETTINGS_KEY, JSON.stringify(screenEffects)); }
+    catch { /* The current session still honors the selected effects. */ }
+    if (tiltShiftPass) tiltShiftPass.enabled = screenEffects.tiltShift;
+    if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
+    if (screenEffects.ssao || screenEffects.tiltShift) void enableTiltShift();
   }
 
   const scene = new THREE.Scene();
@@ -1711,6 +1730,7 @@ async function start() {
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
     rebuildTerrain: rebuildLocationTerrain,
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
+    getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
     getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
     onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
   if (debugMode) window.__CQ_DEBUG__ = {

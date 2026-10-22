@@ -7,7 +7,7 @@ const editable = target => target instanceof HTMLElement && (target.matches('inp
 
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
 export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset, rebuildTerrain,
-  getCampaignGraphData, onCampaignGraphChange }) {
+  getCampaignGraphData, onCampaignGraphChange, getScreenEffects = () => ({ ssao: true, tiltShift: true }), onScreenEffectsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
@@ -434,6 +434,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function makePanel() {
     panel = document.createElement('section'); panel.id = 'scene-editor'; panel.hidden = true;
     panel.setAttribute('aria-label', 'Редактор сцены');
+    const screenEffects = getScreenEffects();
     panel.innerHTML = `<div class="se-toolbar">
       <header><div><small>РЕДАКТОР СЦЕНЫ · ИГРА НА ПАУЗЕ</small><strong id="se-location"></strong></div>
         <div class="se-modes" role="group" aria-label="Гизмо">
@@ -458,6 +459,11 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <button data-render-mode="overdraw" aria-pressed="false" title="Подсвечивает области, где поверх друг друга рисуется геометрия">OVERDRAW</button>
         <button data-render-mode="wireframe" aria-pressed="false" title="Показывает только рёбра треугольников геометрии">Только сетка</button>
         <small id="se-render-hint">Режимы работают только пока открыт редактор.</small>
+      </div><div class="se-screen-effects" role="group" aria-label="Скринспейс эффекты">
+        <strong>ЭФФЕКТЫ</strong>
+        <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>
+        <label><input type="checkbox" data-screen-effect="tiltShift" ${screenEffects.tiltShift ? 'checked' : ''}> Tilt-shift</label>
+        <small>Настройки сохраняются в этом браузере.</small>
       </div><div class="se-lighting" role="group" aria-label="Настройки освещения">
         <strong>ОСВЕЩЕНИЕ</strong>
         <label>Направление X <output></output><input data-lighting="direction.0" aria-label="Направление света по X" type="range" min="-20" max="20" step=".1"></label>
@@ -538,6 +544,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     for (const button of panel.querySelectorAll('[data-mode]')) button.addEventListener('click', () => setMode(button.dataset.mode));
     for (const button of panel.querySelectorAll('[data-render-mode]'))
       button.addEventListener('click', () => setRenderMode(button.dataset.renderMode));
+    for (const input of panel.querySelectorAll('[data-screen-effect]')) input.addEventListener('change', () => {
+      onScreenEffectsChange(Object.fromEntries([...panel.querySelectorAll('[data-screen-effect]')]
+        .map(control => [control.dataset.screenEffect, control.checked])));
+    });
     ui.objects.addEventListener('change', () => select(bindings.find(binding => binding.id === ui.objects.value)));
     panel.querySelector('#se-close').addEventListener('click', () => void toggle());
     panel.querySelector('#se-focus').addEventListener('click', () => focusSelection());
