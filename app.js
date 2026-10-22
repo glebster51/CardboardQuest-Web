@@ -10,7 +10,7 @@ import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=23';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=3';
-import { bindSsaoSpriteAlphaCutouts, installSsaoSpriteAlphaCutout, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
+import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=137';
 import { installSceneEditor } from './editor/scene-editor.mjs?v=151';
@@ -132,7 +132,8 @@ async function start() {
       composer.addPass(new renderModule.RenderPass(scene, camera));
       try {
         const ssao = new ssaoModule.SSAOPass(scene, camera, innerWidth, innerHeight, 12);
-        installSsaoSpriteAlphaCutout(ssao.normalMaterial);
+        // The alpha-cutout shader made SSAO blank the framebuffer in the web
+        // build. Keep Three.js's stock normal prepass until that path is safe.
         ssao.kernelRadius = screenEffects.ssaoKernelRadius;
         ssao.minDistance = screenEffects.ssaoMinDistance;
         ssao.maxDistance = screenEffects.ssaoMaxDistance;
