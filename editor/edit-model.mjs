@@ -1,5 +1,5 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '155';
+export const SCENE_BUILD = '156';
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=7';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
@@ -7,6 +7,20 @@ import { validateCampaignGraph } from '../game/campaign-graph.mjs';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
 export { FOG_DEFAULTS };
 export const LIGHTING_DEFAULTS = { direction: [-5, 12, 7], intensity: 3, color: '#ffebcb' };
+export function lightingDirectionToAngles(direction) {
+  const [x, y, z] = direction, magnitude = Math.hypot(x, y, z);
+  if (!(magnitude > 0)) return { x: 0, y: 0 };
+  return {
+    x: Math.asin(Math.max(-1, Math.min(1, y / magnitude))) * 180 / Math.PI,
+    y: Math.atan2(x, z) * 180 / Math.PI,
+  };
+}
+export function lightingDirectionFromAngles(direction, angles) {
+  const magnitude = Math.hypot(...direction) || 1;
+  const pitch = angles.x * Math.PI / 180, yaw = angles.y * Math.PI / 180;
+  const horizontal = magnitude * Math.cos(pitch);
+  return [horizontal * Math.sin(yaw), magnitude * Math.sin(pitch), horizontal * Math.cos(yaw)];
+}
 export const TERRAIN_STYLE_DEFAULTS = {
   edgeColor: '#fff0c7', edgeStrength: .38, edgeWidth: .16,
   baseColor: '#33271f', baseStrength: .42, baseWidth: .3,

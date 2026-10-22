@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs?v=139';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=141';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=2';
@@ -396,11 +396,17 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     refreshRevealSettings();
   }
   function refreshLighting() {
+    const angles = lightingDirectionToAngles(registry.lighting.direction);
     for (const input of panel.querySelectorAll('[data-lighting]')) {
-      const key = input.dataset.lighting, directionIndex = key.startsWith('direction.') ? Number(key.split('.')[1]) : -1;
-      input.value = directionIndex >= 0 ? registry.lighting.direction[directionIndex] : registry.lighting[key];
+      const key = input.dataset.lighting;
+      input.value = registry.lighting[key];
       const output = input.closest('label').querySelector('output');
       if (output) output.value = Number(input.value).toFixed(1);
+    }
+    for (const input of panel.querySelectorAll('[data-lighting-angle]')) {
+      input.value = angles[input.dataset.lightingAngle];
+      const output = input.closest('label').querySelector('output');
+      if (output) output.value = `${Number(input.value).toFixed(1)}°`;
     }
   }
   function refreshTerrainStyle() {
@@ -462,9 +468,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Размытие Tilt-shift, px <output>${screenEffects.tiltShiftBlur.toFixed(1)}</output><input data-effect-setting="tiltShiftBlur" aria-label="Сила размытия Tilt-shift" type="range" min="0" max="24" step=".5" value="${screenEffects.tiltShiftBlur}"></label>
         <small>Настройки сохраняются в этом браузере.</small>
       </div></details><details class="se-module"><summary>Освещение</summary><div class="se-module-content se-lighting" role="group" aria-label="Настройки освещения">
-        <label>Направление X <output></output><input data-lighting="direction.0" aria-label="Направление света по X" type="range" min="-20" max="20" step=".1"></label>
-        <label>Направление Y <output></output><input data-lighting="direction.1" aria-label="Направление света по Y" type="range" min="-20" max="20" step=".1"></label>
-        <label>Направление Z <output></output><input data-lighting="direction.2" aria-label="Направление света по Z" type="range" min="-20" max="20" step=".1"></label>
+        <label>Угол Y <output></output><input data-lighting-angle="y" aria-label="Угол света по Y" type="range" min="-180" max="180" step="1"></label>
+        <label>Угол X <output></output><input data-lighting-angle="x" aria-label="Угол света по X" type="range" min="-90" max="90" step="1"></label>
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
       </div></details><details class="se-module"><summary>Кромки террас · глобально</summary><div class="se-module-content se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
@@ -680,6 +685,17 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         else settings[key] = input.type === 'color' ? input.value : Number(input.value);
         if (Math.hypot(...settings.direction) < .1) settings.direction[1] = .1;
         registry.changeLighting(settings); refreshLighting(); changed();
+      });
+    }
+    for (const input of panel.querySelectorAll('[data-lighting-angle]')) {
+      input.addEventListener('pointerdown', () => model.begin());
+      input.addEventListener('change', () => model.commit());
+      input.addEventListener('input', () => {
+        const angles = lightingDirectionToAngles(registry.lighting.direction);
+        angles[input.dataset.lightingAngle] = Number(input.value);
+        registry.changeLighting({ ...registry.lighting,
+          direction: lightingDirectionFromAngles(registry.lighting.direction, angles) });
+        refreshLighting(); changed();
       });
     }
     for (const input of panel.querySelectorAll('[data-terrain-style]')) {
