@@ -14,7 +14,7 @@ import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/he
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=132';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=143';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=164';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=165';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -1883,6 +1883,7 @@ async function start() {
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
     rebuildTerrain: rebuildLocationTerrain,
     onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end') scheduleTerrainFogRebuild(); },
+    onFogPathsChange() { scheduleTerrainFogRebuild(); },
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
     getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
     getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,

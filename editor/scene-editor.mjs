@@ -9,7 +9,7 @@ const editable = target => target instanceof HTMLElement && (target.matches('inp
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
 export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset, rebuildTerrain,
   getCampaignGraphData, onCampaignGraphChange, getScreenEffects = () => ({ ssao: true, tiltShift: true }), onScreenEffectsChange = () => {},
-  onFogSettingsChange = () => {} }) {
+  onFogSettingsChange = () => {}, onFogPathsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, pathRoot, renderDebug;
   let pathMode = false, pathHandles = [], pathLines = [], hoveredPath = null, activePath = null;
@@ -235,7 +235,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const next = JSON.parse(JSON.stringify(paths));
     if (sharedCenter) for (const path of next.paths) path.points[path.points.length - 1] = [point.x, point.z];
     else next.paths[pathIndex].points[pointIndex] = [point.x, point.z];
-    registry.changeFogPaths(location, next); syncFogPathVisuals(next); changed();
+    registry.changeFogPaths(location, next); syncFogPathVisuals(next); onFogPathsChange(location); changed();
   }
   function terrainPointAt(event) {
     const rect = canvas.getBoundingClientRect();
@@ -367,6 +367,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function restoreHistory(action) {
     if (!model[action]()) return;
     registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); changed();
+    onFogPathsChange(getLocation());
     requestTerrainRebuild();
   }
   async function openCampaignGraph() {
@@ -602,10 +603,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); changed();
+      onFogPathsChange(getLocation());
       requestTerrainRebuild();
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
-      if (selected && model.reset(selected.location, selected.id)) { registry.sync(); refreshObjects(); refreshInspector(); changed(); }
+      if (selected && model.reset(selected.location, selected.id)) {
+        registry.sync(); refreshObjects(); refreshInspector(); changed();
+        if (selected.id === 'fog-paths') onFogPathsChange(getLocation());
+      }
     });
     ui.changes.addEventListener('click', event => {
       const button = event.target.closest('button[data-revert]');
@@ -616,6 +621,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       registry.sync(); campaignGraphEditor?.sync(); bindings = registry.bindings(getLocation().id);
       refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); syncFogPathVisuals(); changed();
       if (object === 'terrain') requestTerrainRebuild();
+      if (object === 'fog-paths') onFogPathsChange(getLocation());
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
     let activeLibraryCategory = 'ordinary';
