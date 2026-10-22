@@ -1,7 +1,7 @@
 import { unpackScene } from './geometry-transfer.mjs';
 
 export function createGeometryClient(THREE, shared, yieldWork) {
-  const worker = new Worker(new URL('./geometry-worker.mjs?v=8', import.meta.url), { type: 'module' });
+  const worker = new Worker(new URL('./geometry-worker.mjs?v=9', import.meta.url), { type: 'module' });
   const pending = new Map(); let serial = 0;
   worker.onmessage = ({ data }) => {
     const task = pending.get(data.id); if (!task) return;

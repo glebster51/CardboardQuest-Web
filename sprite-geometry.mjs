@@ -80,6 +80,113 @@ function smoothClosed(points) {
   return smooth;
 }
 
+function findDeepConcavities(points, minArmLength, minDepth) {
+  const orientation = Math.sign(signedArea(points)) || 1;
+  const features = [];
+  const turns = new Float64Array(points.length);
+  for (let i = 0; i < points.length; i++) {
+    const previous = points[(i + points.length - 1) % points.length];
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    const incomingX = current.x - previous.x, incomingY = current.y - previous.y;
+    const outgoingX = next.x - current.x, outgoingY = next.y - current.y;
+    const incomingLength = Math.hypot(incomingX, incomingY);
+    const outgoingLength = Math.hypot(outgoingX, outgoingY);
+    if (Math.min(incomingLength, outgoingLength) < minArmLength) continue;
+    const cross = incomingX * outgoingY - incomingY * outgoingX;
+    turns[i] = Math.abs(Math.atan2(cross, incomingX * outgoingX + incomingY * outgoingY));
+    if (cross * orientation >= 0) continue;
+    const turn = turns[i];
+    const chordDepth = Math.hypot(current.x - (previous.x + next.x) / 2,
+      current.y - (previous.y + next.y) / 2);
+    if (turn < .35 || chordDepth < minDepth) continue;
+    features.push({ index: i, score: turn * Math.sqrt(Math.min(incomingLength, outgoingLength)) });
+  }
+  // Preserve sharp silhouette tips as well: otherwise an anchored resample can
+  // keep a deep notch perfectly while shaving a narrow printed point nearby.
+  for (const [axis, direction] of [['x', 1], ['x', -1], ['y', 1], ['y', -1]]) {
+    let index = -1, extreme = direction > 0 ? -Infinity : Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const value = points[i][axis];
+      if ((direction > 0 && value > extreme) || (direction < 0 && value < extreme)) { extreme = value; index = i; }
+    }
+    if (index >= 0 && turns[index] >= .35 && !features.some(feature => feature.index === index))
+      features.push({ index, score: turns[index] * Math.max(minArmLength, 1) });
+  }
+  return features;
+}
+
+function smoothClosedKeepingFeatures(points, iterations, pinnedIndices) {
+  const pinned = new Uint8Array(points.length);
+  for (const index of pinnedIndices) pinned[index] = 1;
+  let result = points;
+  for (let pass = 0; pass < iterations; pass++) {
+    result = result.map((point, i) => {
+      if (pinned[i]) return point;
+      const previous = result[(i + points.length - 1) % points.length];
+      const next = result[(i + 1) % points.length];
+      return { x: point.x * .5 + (previous.x + next.x) * .25,
+        y: point.y * .5 + (previous.y + next.y) * .25 };
+    });
+  }
+  return result;
+}
+
+function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
+  if (pinnedIndices.length < 2) return resampleClosed(points, spacing);
+  const lengths = points.map((point, i) => {
+    const next = points[(i + 1) % points.length];
+    return Math.hypot(next.x - point.x, next.y - point.y);
+  });
+  const perimeter = lengths.reduce((sum, length) => sum + length, 0);
+  const count = clamp(Math.round(perimeter / spacing), 12, 224);
+  const anchors = [...new Set(pinnedIndices)].sort((a, b) => a - b);
+  if (anchors.length >= count) return resampleClosed(points, spacing);
+
+  const arcs = anchors.map((start, anchorIndex) => {
+    const end = anchors[(anchorIndex + 1) % anchors.length];
+    const segments = [];
+    let index = start;
+    while (index !== end) {
+      segments.push(index);
+      index = (index + 1) % points.length;
+    }
+    return { start, segments, length: segments.reduce((sum, segment) => sum + lengths[segment], 0) };
+  });
+  const remaining = count - arcs.length;
+  const shares = arcs.map(arc => {
+    const ideal = perimeter > 0 ? arc.length / perimeter * remaining : 0;
+    return { intervals: 1 + Math.floor(ideal), fraction: ideal - Math.floor(ideal) };
+  });
+  let assigned = shares.reduce((sum, share) => sum + share.intervals, 0);
+  while (assigned < count) {
+    const target = shares.reduce((best, share, index) => share.fraction > shares[best].fraction ? index : best, 0);
+    shares[target].intervals++; shares[target].fraction = -1; assigned++;
+  }
+  while (assigned > count) {
+    let target = -1;
+    for (let i = 0; i < shares.length; i++) if (shares[i].intervals > 1 && (target < 0 || shares[i].fraction < shares[target].fraction)) target = i;
+    if (target < 0) return resampleClosed(points, spacing);
+    shares[target].intervals--; assigned--;
+  }
+
+  const sampleArc = (arc, distance) => {
+    let traversed = 0;
+    for (const segment of arc.segments) {
+      const length = lengths[segment];
+      if (distance <= traversed + length || segment === arc.segments.at(-1)) {
+        const a = points[segment], b = points[(segment + 1) % points.length];
+        const t = length > 0 ? clamp((distance - traversed) / length, 0, 1) : 0;
+        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      }
+      traversed += length;
+    }
+    return points[arc.start];
+  };
+  return arcs.flatMap((arc, i) => Array.from({ length: shares[i].intervals }, (_unused, step) =>
+    sampleArc(arc, arc.length * step / shares[i].intervals)));
+}
+
 function resampleClosed(points, spacing) {
   const lengths = points.map((p, i) => {
     const q = points[(i + 1) % points.length];
@@ -166,20 +273,23 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
     y: (.5 - p.y / gridHeight) * worldHeight,
   })));
   const simplifyTolerance = Math.max(worldWidth, worldHeight) / 256;
-  const smooth = normalized.map(loop => {
-    let result = simplifyClosed(loop, simplifyTolerance);
-    result = smoothClosed(result);
-    result = smoothClosed(result);
-    return result;
+  const contours = normalized.map(loop => {
+    const simplified = simplifyClosed(loop, simplifyTolerance);
+    const features = findDeepConcavities(simplified, Math.max(worldWidth, worldHeight) / 64,
+      Math.max(worldWidth, worldHeight) / 128);
+    const smoothed = features.length
+      ? smoothClosedKeepingFeatures(simplified, 2, features.map(feature => feature.index))
+      : smoothClosed(smoothClosed(simplified));
+    return { points: smoothed, features: features.map(feature => feature.index) };
   });
   const spacing = Math.max(worldWidth, worldHeight) / 96;
-  let contours = smooth.map(loop => resampleClosed(loop, spacing));
-  const total = contours.reduce((sum, loop) => sum + loop.length, 0);
+  let sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing, contour.features));
+  const total = sampled.reduce((sum, loop) => sum + loop.length, 0);
   if (total > 256) {
     const factor = total / 256;
-    contours = smooth.map(loop => resampleClosed(loop, spacing * factor));
+    sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing * factor, contour.features));
   }
-  const sorted = contours.map(points => ({ points, area: Math.abs(signedArea(points)) }))
+  const sorted = sampled.map(points => ({ points, area: Math.abs(signedArea(points)) }))
     .sort((a, b) => b.area - a.area);
   const contains = (p, polygon) => {
     let inside = false;

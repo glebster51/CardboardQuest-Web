@@ -31,7 +31,7 @@ import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campai
 import { buildLocationMapGraph } from './game/location-map-data.mjs';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
-import { createFigureFactory } from './render/figure-factory.mjs?v=3';
+import { createFigureFactory } from './render/figure-factory.mjs?v=4';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=4';
 import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9';
 import { createScenerySystem } from './render/scenery-system.mjs?v=10';
