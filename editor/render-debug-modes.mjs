@@ -3,7 +3,7 @@ export function createRenderDebugModes({ THREE, scene, renderer }) {
   const originals = new WeakMap();
   const materials = {
     overdraw: new THREE.MeshBasicMaterial({
-      color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: .16,
+      color: 0xff8c24, side: THREE.DoubleSide, transparent: true, opacity: .016,
       blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, fog: false, toneMapped: false,
     }),
     wireframe: new THREE.MeshBasicMaterial({

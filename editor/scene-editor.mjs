@@ -1,6 +1,6 @@
 import { readTransform } from './edit-model.mjs?v=137';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
-import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
+import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 
 const editable = target => target instanceof HTMLElement && (target.matches('input,textarea') || target.isContentEditable);
