@@ -1,6 +1,6 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const PLAYER_CHARGE_RECHARGE_INTERVAL = 9;
+export const PLAYER_CHARGE_RECHARGE_INTERVAL = 1;
 
 export function advanceChargeRecharge(unit, deltaSeconds, intervalSeconds = 3) {
   if (!unit || !Number.isFinite(deltaSeconds) || deltaSeconds < 0 || !(intervalSeconds > 0)) {

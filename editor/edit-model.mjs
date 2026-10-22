@@ -1,5 +1,5 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '148';
+export const SCENE_BUILD = '149';
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=2';
 import { catalogAsset } from './asset-catalog.mjs?v=4';
 import { validateFogPaths } from '../fog-paths.mjs';
