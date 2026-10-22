@@ -2,6 +2,14 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export const PLAYER_CHARGE_RECHARGE_INTERVAL = 1;
 
+export function spendCharge(unit) {
+  if (!unit || unit.charges <= 0) return false;
+  if (unit.charges >= unit.maxCharges) unit.rechargeTimer = 0;
+  unit.charges--;
+  if (unit.chargePop) unit.chargePop[unit.charges] = 0;
+  return true;
+}
+
 export function advanceChargeRecharge(unit, deltaSeconds, intervalSeconds = 3) {
   if (!unit || !Number.isFinite(deltaSeconds) || deltaSeconds < 0 || !(intervalSeconds > 0)) {
     throw new RangeError('Charge recharge parameters are invalid');

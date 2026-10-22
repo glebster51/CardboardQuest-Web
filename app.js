@@ -37,7 +37,7 @@ import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=1';
 import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=25';
 import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=1';
 import { createMarkerContours, markerFillTransform } from './marker-shapes.mjs?v=1';
-import { advanceChargeRecharge, chargeRechargeProgress, PLAYER_CHARGE_RECHARGE_INTERVAL } from './charge-recharge.mjs?v=4';
+import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, PLAYER_CHARGE_RECHARGE_INTERVAL } from './charge-recharge.mjs?v=5';
 import { heartHealthLevels, ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=2';
 import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=1';
 import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=3';
@@ -1661,7 +1661,7 @@ async function start() {
       audio.play('dash');
       if (body === heroBody) cameraManualOverride = 0;
       if (body === heroBody) heroFigure.victoryAnimation = null;
-      body.charges--; body.chargePop[body.charges] = 0; body.attackRicochets = 0;
+      spendCharge(body); body.attackRicochets = 0;
       const isPlayerDash = body === heroBody;
       launch(body, pull, isPlayerDash ? PLAYER_DASH_DISTANCE_MULTIPLIER : 1,
         isPlayerDash ? PLAYER_DASH_SPEED_MULTIPLIER : 1,
