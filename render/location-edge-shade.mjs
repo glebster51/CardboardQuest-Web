@@ -248,7 +248,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           #include <opaque_fragment>`);
     };
     const previousCacheKey = originalHooks.customProgramCacheKey;
-    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v16-no-player-reveal`;
+    material.customProgramCacheKey = () => `${previousCacheKey?.call(material) ?? ''}|cq-location-path-fog-v16-no-player-reveal`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
