@@ -1,9 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { createTerrainRenderer } from './terrain-renderer.mjs?v=4';
 import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=5';
-import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=11';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=11';
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=7';
+import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=12';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=12';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=8';
 import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=2';
 import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs';
 import { createCampaignLocations } from '../game/story-world.mjs?v=16';
@@ -63,7 +63,7 @@ self.onmessage = async ({ data: { id, kind, payload } }) => {
       context.putImageData(new ImageData(alphaPixels, width, height), 0, 0);
       const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
       const model = makeExtrudedSprite(alphaPixels, width, height, texture, texture, shared.corrugation,
-        payload.player, geometry.shapes, alphaPixels);
+        payload.player, geometry.shapes, alphaPixels, geometry.smoothingAnchors);
       root = model.group;
       extra = { width, height, alphaPixels, flashUuid: root.children.find(child => child.material === model.flashMaterial).uuid,
         backFlashUuid: root.children.find(child => child.material === model.backFlashMaterial).uuid };

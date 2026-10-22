@@ -1,5 +1,5 @@
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=11';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=11';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=12';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=12';
 import { heartHealthLevels } from '../heart-health.mjs';
 import { enableFigurePickLayer } from '../game/pick-layers.mjs';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
@@ -100,7 +100,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
           texture.colorSpace = THREE.SRGBColorSpace;
           texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
           const model = buildExtrudedSprite(alphaPixels, width, height, texture, texture,
-            corrugation, body.team === 'player', geometry.shapes, alphaPixels);
+            corrugation, body.team === 'player', geometry.shapes, alphaPixels, geometry.smoothingAnchors);
           model.group.rotation.y = side === 'back' ? Math.PI : 0;
           return { ...model, texture };
         };

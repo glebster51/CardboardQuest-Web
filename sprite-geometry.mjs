@@ -135,6 +135,19 @@ function findDeepConcavities(points, minArmLength, minDepth) {
   return merged;
 }
 
+function findConcaveVertexIndices(points, minimumTurn = .12) {
+  const orientation = Math.sign(signedArea(points)) || 1, indices = [];
+  for (let i = 0; i < points.length; i++) {
+    const previous = points[(i + points.length - 1) % points.length], current = points[i], next = points[(i + 1) % points.length];
+    const ax = current.x - previous.x, ay = current.y - previous.y;
+    const bx = next.x - current.x, by = next.y - current.y;
+    const cross = ax * by - ay * bx;
+    const turn = Math.abs(Math.atan2(cross, ax * bx + ay * by));
+    if (cross * orientation < 0 && turn >= minimumTurn) indices.push(i);
+  }
+  return indices;
+}
+
 function simplifyClosedKeepingFeatures(points, tolerance, features) {
   if (!features.length) return { points: simplifyClosed(points, tolerance), featurePositions: [] };
   const anchors = [...new Set(features.map(feature => feature.index))].sort((a, b) => a - b);
@@ -372,21 +385,31 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
     // lower than the old post-simplification test to catch narrow character folds.
     const rawFeatures = findDeepConcavities(raw[index], 2, .45);
     const simplified = simplifyClosedKeepingFeatures(loop, simplifyTolerance, rawFeatures);
-    return { points: simplified.points, features: simplified.featurePositions };
+    const concaveIndices = new Set(simplified.featurePositions);
+    for (const featureIndex of findConcaveVertexIndices(simplified.points)) concaveIndices.add(featureIndex);
+    const features = [...concaveIndices].sort((a, b) => a - b);
+    const concaveAnchors = features.map(featureIndex => simplified.points[featureIndex]);
+    return { points: simplified.points, features, concaveAnchors };
   });
   // Sample the faithful, simplified polyline evenly. Do not spline across the
   // alpha boundary. Concavities remain pinned through resampling.
   // Double the source contour spacing to cut the cardboard wall vertex count
   // roughly in half while preserving explicitly pinned silhouette features.
   const spacing = pixelSize * 2.5;
-  let sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing, contour.features));
-  const total = sampled.reduce((sum, loop) => sum + loop.length, 0);
+  let sampled = contours.map(contour => ({
+    points: resampleClosedKeepingFeatures(contour.points, spacing, contour.features),
+    concaveAnchors: contour.concaveAnchors,
+  }));
+  const total = sampled.reduce((sum, loop) => sum + loop.points.length, 0);
   if (total > 128) {
     const factor = total / 128;
-    sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing * factor, contour.features));
+    sampled = contours.map(contour => ({
+      points: resampleClosedKeepingFeatures(contour.points, spacing * factor, contour.features),
+      concaveAnchors: contour.concaveAnchors,
+    }));
   }
-  sampled = sampled.map(points => simplifySpriteExtrusionBase(points, pixelSize));
-  const sorted = sampled.map(points => ({ points, area: Math.abs(signedArea(points)) }))
+  sampled = sampled.map(contour => ({ ...contour, points: simplifySpriteExtrusionBase(contour.points, pixelSize) }));
+  const sorted = sampled.map(contour => ({ ...contour, area: Math.abs(signedArea(contour.points)) }))
     .sort((a, b) => b.area - a.area);
   const contains = (p, polygon) => {
     let inside = false;
@@ -403,7 +426,7 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
       break;
     }
   }
-  return sorted.map(({ points, depth }) => ({ points, depth, clockwise: signedArea(points) < 0 }));
+  return sorted.map(({ points, depth, concaveAnchors }) => ({ points, depth, clockwise: signedArea(points) < 0, concaveAnchors }));
 }
 
 export function validateSpriteFrames(states, backFrame) {

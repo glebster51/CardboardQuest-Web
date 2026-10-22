@@ -1,12 +1,14 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=11';
+import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=12';
 import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=1';
 import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
+import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=1';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);
   for (let i = 0; i < alpha.length; i++) alpha[i] = alphaPixels[i * 4 + 3];
   const contours = traceSpriteContours(alpha, width, height, worldWidth, worldHeight);
+  const smoothingAnchors = contours.flatMap(contour => contour.concaveAnchors);
   const contains = (point, polygon) => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -33,10 +35,10 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
   // at its original alpha silhouette so it slightly overhangs and hides the
   // recessed cardboard edge instead of being clipped down with the mesh.
   const rasterMask = createSpriteCapMask(alpha, width, height);
-  return { shapes, rasterMask };
+  return { shapes, rasterMask, smoothingAnchors };
 }
 
-export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels) {
+export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels, smoothingAnchors = []) {
   const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = CARDBOARD_EXTRUSION_DEPTH;
   const uv = (vertices, index) => new THREE.Vector2(vertices[index * 3] / worldWidth + .5, vertices[index * 3 + 1] / worldHeight + .5);
   const uvGenerator = {
@@ -56,6 +58,8 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
     }
     sideGeometry.setAttribute(name, new THREE.BufferAttribute(values, attribute.itemSize));
   }
+  sideGeometry.setAttribute('normal', new THREE.BufferAttribute(
+    smoothExtrusionSideNormals(sideGeometry.attributes.position.array, smoothingAnchors), 3));
   sideGeometry.computeBoundingSphere(); extruded.dispose();
   const stencil = { stencilWrite: true, stencilRef: stencilPlayer ? 1 : 0, stencilFunc: THREE.AlwaysStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   // Artwork caps only render from outside. DoubleSide on both caps exposes

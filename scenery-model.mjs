@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=11';
-import { flipSpriteRgbaX } from './sprite-geometry.mjs?v=11';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=12';
+import { flipSpriteRgbaX } from './sprite-geometry.mjs?v=12';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -75,10 +75,9 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
     const left = (y * sprite.width + x) * 4 + 3, right = (y * sprite.width + sprite.width - 1 - x) * 4 + 3;
     symmetricAlpha[left] = Math.max(sprite.alphaPixels[left], sprite.alphaPixels[right]);
   }
+  const outline = silhouetteShapes(symmetricAlpha, sprite.width, sprite.height,
+    2.05 * sprite.width / sprite.height, 2.05);
   const art = makeExtrudedSprite(symmetricAlpha, sprite.width, sprite.height,
-    frontTexture, backTexture, corrugation, false,
-    silhouetteShapes(symmetricAlpha, sprite.width, sprite.height,
-      2.05 * sprite.width / sprite.height, 2.05).shapes,
-    sprite.alphaPixels);
+    frontTexture, backTexture, corrugation, false, outline.shapes, sprite.alphaPixels, outline.smoothingAnchors);
   return { ...art, frontTexture, backTexture, width: sprite.width, height: sprite.height, backFlipMatches };
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=11';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=11';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=12';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from './sprite-geometry.mjs?v=12';
 
 const states = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const allSubjects = [{ id: 'hero', label: 'Игрок' }, { id: 'goblin', label: 'Гоблин' }, { id: 'ogre', label: 'Огр' },
@@ -49,7 +49,7 @@ async function loadSubject(subject) {
     ctx.putImageData(new ImageData(alphaPixels, frameWidth, frameHeight), 0, 0);
     const faceTexture = new THREE.CanvasTexture(canvas); faceTexture.colorSpace = THREE.SRGBColorSpace;
     const model = makeExtrudedSprite(alphaPixels, frameWidth, frameHeight, faceTexture, faceTexture,
-      corrugation, subject.id === 'hero', outline.shapes, alphaPixels);
+      corrugation, subject.id === 'hero', outline.shapes, alphaPixels, outline.smoothingAnchors);
     model.group.rotation.y = side === 'back' ? Math.PI : 0;
     return model;
   };

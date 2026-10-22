@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=11';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=12';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -71,15 +71,17 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
   const backTexture = new THREE.CanvasTexture(backCut); backTexture.colorSpace = THREE.SRGBColorSpace;
   const anisotropy = Math.min(4, maxAnisotropy);
   frontTexture.anisotropy = backTexture.anisotropy = anisotropy;
-  const shapes = silhouetteShapes(sprite.alphaPixels, sprite.width, sprite.height,
-    2.05 * sprite.width / sprite.height, 2.05).shapes;
+  const outline = silhouetteShapes(sprite.alphaPixels, sprite.width, sprite.height,
+    2.05 * sprite.width / sprite.height, 2.05);
+  const { shapes } = outline;
   const backAlphaPixels = flipRgbaX(sprite.alphaPixels, sprite.width, sprite.height);
-  const backShapes = silhouetteShapes(backAlphaPixels, sprite.width, sprite.height,
-    2.05 * sprite.width / sprite.height, 2.05).shapes;
+  const backOutline = silhouetteShapes(backAlphaPixels, sprite.width, sprite.height,
+    2.05 * sprite.width / sprite.height, 2.05);
+  const { shapes: backShapes } = backOutline;
   const frontArt = makeExtrudedSprite(sprite.alphaPixels, sprite.width, sprite.height,
-    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels);
+    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels, outline.smoothingAnchors);
   const backArt = makeExtrudedSprite(backAlphaPixels, sprite.width, sprite.height,
-    backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels);
+    backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels, backOutline.smoothingAnchors);
   // The shared extrusion factory configures both artwork faces and the cardboard edge
   // for two-sided rendering and shadow-map passes (characters use it too).
   const group = new THREE.Group();
