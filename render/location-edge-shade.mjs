@@ -136,21 +136,17 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     return false;
   };
   root.traverse(object => {
-    if (object.userData?.cqRevealOverlay) return;
     if (!object.isMesh) return;
     const scenerySprite = isScenerySprite(object);
     const fogSurface = Boolean(object.userData?.locationFogSurface);
     const terrainSurface = /^(playfield|terrain)-top-/.test(object.name);
     if (!terrainSurface && !scenerySprite && !fogSurface) return;
-    // Keep environment materials on the normal opaque path while reveal clipping is disabled.
-    const reveal = false;
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
-      if ((reveal && (material?.isMeshStandardMaterial || material?.isMeshBasicMaterial)
-        || scenerySprite && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
+      if ((scenerySprite && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
         && !material.userData.locationEdgeShadePatched)
         material = material.clone();
-      patchMaterial(material, reveal);
+      patchMaterial(material);
       return material;
     });
     if (Array.isArray(object.material)) object.material = patchedMaterials;
@@ -158,7 +154,7 @@ export function applyLocationEdgeShade(root, patchMaterial) {
   });
 }
 
-export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, revealUniforms = {}, yieldWork = async () => {} }) {
+export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, yieldWork = async () => {} }) {
   settings = { ...FOG_DEFAULTS, ...settings };
   const points = location.walkablePoints ?? [];
   let topology = buildFogPathTopology(location.fogPaths?.paths ?? []);
@@ -188,7 +184,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     cqPathFogColor: { value: new THREE.Color(settings.color) },
     cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
     cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
-  const patchMaterial = (material, reveal = false) => {
+  const patchMaterial = material => {
     if (!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) return;
     if (material.userData.locationEdgeShadePatched) return;
     material.userData.locationEdgeShadePatched = true;
@@ -200,14 +196,12 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     const previousCompile = originalHooks.onBeforeCompile;
     material.onBeforeCompile = shader => {
       previousCompile?.(shader);
-      Object.assign(shader.uniforms, uniforms, reveal ? revealUniforms : {});
+      Object.assign(shader.uniforms, uniforms);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>
-          varying vec3 vCQLocationWorld;
-          ${reveal ? 'varying float vCQRevealDepth;' : ''}`)
+          varying vec3 vCQLocationWorld;`)
         .replace('#include <project_vertex>', `vCQLocationWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
-          #include <project_vertex>
-          ${reveal ? 'vCQRevealDepth = -mvPosition.z;' : ''}`);
+          #include <project_vertex>`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>
           uniform sampler2D cqPathFogMap;
@@ -216,28 +210,6 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           uniform float cqPathFogCurve;
           uniform vec4 cqPathFogBounds;
           varying vec3 vCQLocationWorld;
-          ${reveal ? `uniform float cqRevealEnabled;
-            uniform vec2 cqRevealScreen;
-            uniform float cqRevealPlayerDepth;
-            uniform float cqRevealTime;
-            uniform float cqRevealInnerRadius;
-            uniform float cqRevealOuterRadius;
-            varying float vCQRevealDepth;` : ''}
-          ${reveal ? `float cqRevealHash(vec2 p) {
-            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-          }
-          float cqRevealVoronoi(vec2 p) {
-            vec2 cell = floor(p), local = fract(p);
-            float nearest = 1.0;
-            for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-              vec2 neighbor = vec2(float(x), float(y));
-              vec2 feature = vec2(cqRevealHash(cell + neighbor),
-                cqRevealHash(cell + neighbor + vec2(37.0, 17.0)));
-              feature = 0.18 + feature * 0.64;
-              nearest = min(nearest, length(neighbor + feature - local));
-            }
-            return clamp(nearest * 1.35, 0.0, 1.0);
-          }` : ''}
           vec3 cqLinearToOklab(vec3 c) {
             vec3 lms = vec3(
               0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
@@ -267,22 +239,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 cqPathFogUv = (vCQLocationWorld.xz - cqPathFogBounds.xy) / cqPathFogBounds.zw;
           float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r;`)
-        .replace('#include <opaque_fragment>', `${reveal ? `
-          float cqRevealCut = 0.0;
-          float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
-          float cqRevealBeforePlayer = step(vCQRevealDepth + 0.025, cqRevealPlayerDepth);
-          if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
-            float cqRevealFade = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
-            vec2 cqRevealScreenDrift = vec2(cqRevealTime * 0.035, -cqRevealTime * 0.022);
-            float cqRevealFine = cqRevealVoronoi(gl_FragCoord.xy / 7.5 + cqRevealScreenDrift);
-            float cqRevealBroad = cqRevealVoronoi(gl_FragCoord.xy / 23.0 - cqRevealScreenDrift * 0.7);
-            float cqRevealNoiseValue = cqRevealFine * 0.72 + cqRevealBroad * 0.28;
-            float cqRevealEdge = clamp(cqRevealFade + (cqRevealNoiseValue - 0.5) * 0.3
-              * 4.0 * cqRevealFade * (1.0 - cqRevealFade), 0.0, 1.0);
-            if (cqRevealEdge > cqRevealNoiseValue) cqRevealCut = 1.0;
-          }` : ''}
-          ${reveal ? 'if (cqRevealCut > 0.5) discard;' : ''}
-          vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
+        .replace('#include <opaque_fragment>', `vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
           vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
           float cqFogConvergence = pow(cqPathFog, cqPathFogCurve);
@@ -290,9 +247,8 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    if (reveal) { material.transparent = false; material.depthWrite = true; }
     const previousCacheKey = originalHooks.customProgramCacheKey;
-    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v15-screen-voronoi-reveal-disabled-${reveal}`;
+    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v16-no-player-reveal`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);

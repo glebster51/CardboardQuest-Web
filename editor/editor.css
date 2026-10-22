@@ -25,7 +25,6 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor input[type=range]{width:100%;margin:2px 0;accent-color:var(--se-accent);grid-column:1/-1;cursor:ew-resize}
 #scene-editor output{color:var(--se-accent);font-variant-numeric:tabular-nums}
 #scene-editor .se-fog .se-color{display:flex;align-items:center;justify-content:space-between;gap:8px}
-#scene-editor .se-fog .se-reveal-control{min-width:0}
 #scene-editor .se-lighting,#scene-editor .se-terrain-appearance{display:grid;gap:7px}
 #scene-editor .se-lighting label,#scene-editor .se-terrain-appearance label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
 #scene-editor .se-lighting .se-color,#scene-editor .se-terrain-appearance label:has(input[type=color]){display:flex;align-items:center;justify-content:space-between;gap:8px}

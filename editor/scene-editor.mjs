@@ -445,13 +445,11 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
         <button id="se-close" title="~ / Ё">Вернуться в игру ×</button>
       </header></div><aside class="se-controls" aria-label="Параметры сцены">
-      <details class="se-module" open><summary>Туман и просвет</summary><div class="se-module-content se-fog">
+      <details class="se-module" open><summary>Туман</summary><div class="se-module-content se-fog">
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
         <label>Конец тумана <output></output><input data-fog="end" aria-label="Конец тумана" type="range" min=".1" max="50" step=".1"></label>
         <label>Тонирование <output></output><input data-fog="tint" aria-label="Тонирование тумана" type="range" min="0" max="1" step=".01"></label>
         <label>Плавность <output></output><input data-fog="curve" aria-label="Плавность тумана" type="range" min=".2" max="4" step=".05"></label>
-        <label class="se-reveal-control">Просвет · центр, px <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета вокруг героя в пикселях экрана" type="range" min="0" max="480" step="1"></label>
-        <label class="se-reveal-control">Просвет · край, px <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус градиента просвета вокруг героя в пикселях экрана" type="range" min="1" max="640" step="1"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
       </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
@@ -665,10 +663,6 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (settings.end - settings.start < .1) {
           if (input.dataset.fog === 'start') settings.end = settings.start + .1;
           else settings.start = settings.end - .1;
-        }
-        if (settings.revealOuterRadius <= settings.revealInnerRadius) {
-          if (input.dataset.fog === 'revealInnerRadius') settings.revealOuterRadius = settings.revealInnerRadius + 1;
-          else settings.revealInnerRadius = Math.max(0, settings.revealOuterRadius - 1);
         }
         registry.changeFog(settings); refreshFog(); changed();
       });

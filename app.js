@@ -8,11 +8,10 @@ import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=18';
-import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=5';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=19';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=142';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=143';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -96,7 +95,20 @@ async function start() {
       Math.max(1, Math.round(innerHeight * scale * tiltShiftPixelRatio)));
   };
   const renderScene = () => {
-    renderer.render(scene, camera);
+    if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift)) {
+      return renderer.render(scene, camera);
+    }
+    try { tiltShiftComposer.render(); }
+    catch (error) {
+      if (ssaoPass?.enabled) {
+        ssaoPass.enabled = false;
+        console.warn('SSAO отключён после ошибки; сохраняю остальные эффекты', error);
+        try { tiltShiftComposer.render(); return; } catch { /* Fall back to the direct renderer below. */ }
+      }
+      tiltShiftComposer.dispose(); tiltShiftComposer = null; ssaoPass = null;
+      console.warn('Постобработка остановлена; используется обычный рендер', error);
+      renderer.render(scene, camera);
+    }
   };
   async function enableTiltShift() {
     if ((!screenEffects.ssao && !screenEffects.tiltShift) || tiltShiftComposer) return;
@@ -163,7 +175,6 @@ async function start() {
 
   const scene = new THREE.Scene();
   let sunLight = null;
-  const playerOcclusionReveal = createPlayerOcclusionReveal(THREE, renderer);
   scene.background = new THREE.Color(LOCATION_FAR_COLOR);
   let savedCampaign = null;
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
@@ -190,7 +201,6 @@ async function start() {
       applyTerrainEdgeStyle(location.sceneGroup, THREE, settings);
   }, setFog(settings) {
     scene.background.set(settings.color); renderer.setClearColor(settings.color);
-    playerOcclusionReveal.updateSettings(settings);
     for (const location of Object.values(locations)) {
       location.edgeShade?.update(settings);
       location.exitVisuals?.shadowMaterial.color.set(settings.color);
@@ -466,11 +476,6 @@ async function start() {
   orbit.theta = Math.PI;
   target.set(heroBody.x, .65, heroBody.z);
   heroFigure.locationId = 'home'; figures.push(heroFigure);
-  const revealTarget = new THREE.Vector3();
-  function updatePlayerReveal() {
-    revealTarget.set(heroFigure.group.position.x, 1.05, heroFigure.group.position.z);
-    playerOcclusionReveal.update(camera, revealTarget, heroBody.health > 0 && heroFigure.group.visible);
-  }
   const enemyBody = (id, locationId, x, z, options = {}) => {
     const stored = campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
     return {
@@ -979,7 +984,7 @@ async function start() {
     terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
     terrain.group.userData.walkablePoints = location.walkablePoints;
     location.edgeShade = await createLocationEdgeShade({ THREE, location, settings: sceneRegistry.fog,
-      revealUniforms: playerOcclusionReveal.uniforms, yieldWork: checkpoint });
+      yieldWork: checkpoint });
     location.edgeShade?.update(sceneRegistry.fog);
     if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
     await checkpoint();
@@ -1859,11 +1864,11 @@ async function start() {
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
     if (sceneEditor.graphOpen) return;
     if (sceneEditor.active) {
-      sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;
+      sceneEditor.update(frameDt); updateEditorPresentation(); renderScene(); return;
     }
     updateCacheAnimation(dt);
     if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen()) {
-      updateCamera(); updatePlayerReveal(); renderScene(); return;
+      updateCamera(); renderScene(); return;
     }
     elapsed += dt;
     transitionCooldown = Math.max(0, transitionCooldown - dt);
@@ -1936,7 +1941,7 @@ async function start() {
     }
     for (const enemy of activeLocation.enemies)
       clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
-    if (dialogue.isOpen()) { updateCamera(); updatePlayerReveal(); renderScene(); return; }
+    if (dialogue.isOpen()) { updateCamera(); renderScene(); return; }
     updateWorldLoot(dt);
     showCacheStoryAfterLootLands();
     updateProjectiles(dt);
@@ -2107,11 +2112,11 @@ async function start() {
       figure.healthHUD.position.set(figure.body.x, 2.65, figure.body.z);
       figure.healthHUD.quaternion.copy(camera.quaternion);
     }
-    updatePlayerReveal();
     renderScene();
   });
   frameWorkStarted = true;
   requestAnimationFrame(() => requestAnimationFrame(() => {
+    void enableTiltShift();
     if (!locationTransition) locationStreaming.retain(activeLocation.id)
       .catch(error => console.error('Не удалось подготовить соседние места', error));
   }));
