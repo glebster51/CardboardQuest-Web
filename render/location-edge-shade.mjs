@@ -135,7 +135,6 @@ export function applyLocationEdgeShade(root, patchMaterial) {
       if (parent.name === 'scenery-front' || parent.name === 'scenery-back') return true;
     return false;
   };
-  const revealSources = [];
   root.traverse(object => {
     if (object.userData?.cqRevealOverlay) return;
     if (!object.isMesh) return;
@@ -155,35 +154,7 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     });
     if (Array.isArray(object.material)) object.material = patchedMaterials;
     else object.material = patchedMaterials[0];
-    if (reveal && object.add && typeof object.clone === 'function'
-      && !object.userData?.cqHasRevealOverlayProxy) revealSources.push(object);
   });
-  for (const source of revealSources) {
-    source.userData ??= {};
-    const proxy = source.clone(false);
-    proxy.name = `${source.name || 'reveal-object'}-reveal-overlay`;
-    proxy.userData = { ...source.userData, cqRevealOverlay: true, cqRevealOverlayProxy: true };
-    proxy.material = [source.material].flat().map(material => {
-      const overlay = material.clone();
-      overlay.transparent = true;
-      overlay.opacity = 1;
-      overlay.depthWrite = false;
-      overlay.depthTest = true;
-      originalMaterialHooks.set(overlay, originalMaterialHooks.get(material));
-      patchMaterial(overlay, true, true);
-      overlay.needsUpdate = true;
-      return overlay;
-    });
-    if (!Array.isArray(source.material)) proxy.material = proxy.material[0];
-    proxy.position.set(0, 0, 0);
-    proxy.quaternion.identity();
-    proxy.scale.set(1, 1, 1);
-    proxy.renderOrder = source.renderOrder;
-    proxy.castShadow = false;
-    proxy.receiveShadow = false;
-    source.userData.cqHasRevealOverlayProxy = true;
-    source.add(proxy);
-  }
 }
 
 export async function createLocationEdgeShade({ THREE, location, resolution = 256, margin = 34, settings = {}, revealUniforms = {}, yieldWork = async () => {} }) {
@@ -216,12 +187,10 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     cqPathFogColor: { value: new THREE.Color(settings.color) },
     cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
     cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
-  const patchMaterial = (material, reveal = false, revealOverlay = false) => {
+  const patchMaterial = (material, reveal = false) => {
     if (!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) return;
-    if (material.userData.locationEdgeShadePatched
-      && material.userData.locationEdgeShadeRevealOverlay === revealOverlay) return;
+    if (material.userData.locationEdgeShadePatched) return;
     material.userData.locationEdgeShadePatched = true;
-    material.userData.locationEdgeShadeRevealOverlay = revealOverlay;
     material.userData.locationEdgeShadeTexture = texture;
     if (!originalMaterialHooks.has(material)) originalMaterialHooks.set(material, {
       onBeforeCompile: material.onBeforeCompile, customProgramCacheKey: material.customProgramCacheKey,
@@ -230,8 +199,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     const previousCompile = originalHooks.onBeforeCompile;
     material.onBeforeCompile = shader => {
       previousCompile?.(shader);
-      Object.assign(shader.uniforms, uniforms, reveal ? revealUniforms : {},
-        reveal ? { cqRevealOverlayMaterial: { value: revealOverlay ? 1 : 0 } } : {});
+      Object.assign(shader.uniforms, uniforms, reveal ? revealUniforms : {});
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>
           varying vec3 vCQLocationWorld;
@@ -253,7 +221,6 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
             uniform float cqRevealTime;
             uniform float cqRevealInnerRadius;
             uniform float cqRevealOuterRadius;
-            uniform float cqRevealOverlayMaterial;
             varying float vCQRevealDepth;` : ''}
           ${reveal ? `float cqRevealHash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -313,10 +280,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
               * 4.0 * cqRevealFade * (1.0 - cqRevealFade), 0.0, 1.0);
             if (cqRevealEdge > cqRevealNoiseValue) cqRevealCut = 1.0;
           }` : ''}
-          ${reveal ? `if (cqRevealOverlayMaterial > 0.5) {
-            if (cqRevealCut < 0.5) discard;
-            diffuseColor.a *= 0.4;
-          } else if (cqRevealCut > 0.5) discard;` : ''}
+          ${reveal ? 'if (cqRevealCut > 0.5) discard;' : ''}
           vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
           vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
@@ -325,9 +289,9 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    if (reveal && !revealOverlay) { material.transparent = false; material.depthWrite = true; }
+    if (reveal) { material.transparent = false; material.depthWrite = true; }
     const previousCacheKey = originalHooks.customProgramCacheKey;
-    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v13-screen-voronoi-reveal-overlay-${reveal}-${revealOverlay}`;
+    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v14-screen-voronoi-reveal-opaque-${reveal}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
