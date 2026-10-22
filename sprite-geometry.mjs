@@ -70,64 +70,119 @@ function simplifyClosed(points, tolerance) {
   return result.length >= 3 ? result : points;
 }
 
-function smoothClosed(points) {
-  const smooth = [];
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i], b = points[(i + 1) % points.length];
-    smooth.push({ x: a.x * .75 + b.x * .25, y: a.y * .75 + b.y * .25 });
-    smooth.push({ x: a.x * .25 + b.x * .75, y: a.y * .25 + b.y * .75 });
-  }
-  return smooth;
-}
-
 function findDeepConcavities(points, minArmLength, minDepth) {
   const orientation = Math.sign(signedArea(points)) || 1;
-  const features = [];
-  const turns = new Float64Array(points.length);
+  const candidates = [];
+  const probe = Math.max(2, Math.round(minArmLength));
   for (let i = 0; i < points.length; i++) {
-    const previous = points[(i + points.length - 1) % points.length];
+    const previous = points[(i - probe + points.length) % points.length];
     const current = points[i];
-    const next = points[(i + 1) % points.length];
+    const next = points[(i + probe) % points.length];
     const incomingX = current.x - previous.x, incomingY = current.y - previous.y;
     const outgoingX = next.x - current.x, outgoingY = next.y - current.y;
     const incomingLength = Math.hypot(incomingX, incomingY);
     const outgoingLength = Math.hypot(outgoingX, outgoingY);
     if (Math.min(incomingLength, outgoingLength) < minArmLength) continue;
     const cross = incomingX * outgoingY - incomingY * outgoingX;
-    turns[i] = Math.abs(Math.atan2(cross, incomingX * outgoingX + incomingY * outgoingY));
-    if (cross * orientation >= 0) continue;
-    const turn = turns[i];
+    const turn = Math.abs(Math.atan2(cross, incomingX * outgoingX + incomingY * outgoingY));
+    if (cross * orientation >= 0 || turn < .12) continue;
     const chordDepth = Math.hypot(current.x - (previous.x + next.x) / 2,
       current.y - (previous.y + next.y) / 2);
-    if (turn < .35 || chordDepth < minDepth) continue;
-    features.push({ index: i, score: turn * Math.sqrt(Math.min(incomingLength, outgoingLength)) });
+    if (chordDepth < minDepth) continue;
+    candidates.push({ index: i, score: chordDepth * turn, concave: true });
   }
-  // Preserve sharp silhouette tips as well: otherwise an anchored resample can
-  // keep a deep notch perfectly while shaving a narrow printed point nearby.
+  // Keep sharp outer tips too, so smoothing a nearby notch cannot shave off a
+  // narrow printed point from a character pose or scenery silhouette.
   for (const [axis, direction] of [['x', 1], ['x', -1], ['y', 1], ['y', -1]]) {
     let index = -1, extreme = direction > 0 ? -Infinity : Infinity;
     for (let i = 0; i < points.length; i++) {
       const value = points[i][axis];
       if ((direction > 0 && value > extreme) || (direction < 0 && value < extreme)) { extreme = value; index = i; }
     }
-    if (index >= 0 && turns[index] >= .35 && !features.some(feature => feature.index === index))
-      features.push({ index, score: turns[index] * Math.max(minArmLength, 1) });
+    if (index < 0 || candidates.some(feature => feature.index === index)) continue;
+    const previous = points[(index + points.length - 1) % points.length], current = points[index], next = points[(index + 1) % points.length];
+    const ax = current.x - previous.x, ay = current.y - previous.y, bx = next.x - current.x, by = next.y - current.y;
+    const turn = Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+    if (turn >= .2) candidates.push({ index, score: turn * Math.max(minArmLength, 1), concave: false });
   }
-  return features;
+  // Pixel contours may report several neighboring corners for one shallow
+  // valley. Collapse each short run to its deepest representative, retaining
+  // separate nearby valleys when the raw contour contains a real gap between.
+  candidates.sort((a, b) => a.index - b.index);
+  const separation = Math.max(5, probe * 2);
+  const merged = [];
+  for (const candidate of candidates) {
+    const last = merged.at(-1);
+    if (last && candidate.index - last.index <= separation) {
+      if ((candidate.concave && !last.concave) || (candidate.concave === last.concave && candidate.score > last.score))
+        merged[merged.length - 1] = candidate;
+    } else merged.push({ ...candidate });
+  }
+  if (merged.length > 1 && merged[0].index + points.length - merged.at(-1).index <= separation) {
+    const first = merged[0], last = merged.at(-1);
+    if ((last.concave && !first.concave) || (last.concave === first.concave && last.score > first.score)) merged[0] = last;
+    merged.pop();
+  }
+  return merged;
 }
 
-function smoothClosedKeepingFeatures(points, iterations, pinnedIndices) {
-  const pinned = new Uint8Array(points.length);
-  for (const index of pinnedIndices) pinned[index] = 1;
-  let result = points;
-  for (let pass = 0; pass < iterations; pass++) {
-    result = result.map((point, i) => {
-      if (pinned[i]) return point;
-      const previous = result[(i + points.length - 1) % points.length];
-      const next = result[(i + 1) % points.length];
-      return { x: point.x * .5 + (previous.x + next.x) * .25,
-        y: point.y * .5 + (previous.y + next.y) * .25 };
-    });
+function simplifyClosedKeepingFeatures(points, tolerance, features) {
+  if (!features.length) return { points: simplifyClosed(points, tolerance), featurePositions: [] };
+  const anchors = [...new Set(features.map(feature => feature.index))].sort((a, b) => a - b);
+  const output = [], featurePositions = [], concaveIndices = new Set(features.filter(feature => feature.concave).map(feature => feature.index));
+  for (let i = 0; i < anchors.length; i++) {
+    const start = anchors[i], end = anchors[(i + 1) % anchors.length], arc = [];
+    for (let index = start; ; index = (index + 1) % points.length) {
+      arc.push(points[index]);
+      if (index === end) break;
+    }
+    if (concaveIndices.has(start)) featurePositions.push(output.length);
+    output.push(...simplifyOpen(arc, tolerance).slice(0, -1));
+  }
+  return { points: output.length >= 3 ? output : points, featurePositions };
+}
+
+function bezierSegments(points, tension = .42) {
+  return points.map((p1, index) => {
+    const p0 = points[(index + points.length - 1) % points.length];
+    const p2 = points[(index + 1) % points.length];
+    const p3 = points[(index + 2) % points.length];
+    const span = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    let c1 = { x: p1.x + (p2.x - p0.x) * tension / 6,
+      y: p1.y + (p2.y - p0.y) * tension / 6 };
+    let c2 = { x: p2.x - (p3.x - p1.x) * tension / 6,
+      y: p2.y - (p3.y - p1.y) * tension / 6 };
+    const limitHandle = (point, control) => {
+      const dx = control.x - point.x, dy = control.y - point.y, length = Math.hypot(dx, dy), limit = span * .42;
+      return length > limit && length > 0 ? { x: point.x + dx * limit / length, y: point.y + dy * limit / length } : control;
+    };
+    c1 = limitHandle(p1, c1); c2 = limitHandle(p2, c2);
+    const evaluate = t => {
+      const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+      return { x: a * p1.x + b * c1.x + c * c2.x + d * p2.x,
+        y: a * p1.y + b * c1.y + c * c2.y + d * p2.y };
+    };
+    const samples = Array.from({ length: 25 }, (_unused, i) => evaluate(i / 24));
+    const lengths = samples.slice(1).map((point, i) => Math.hypot(point.x - samples[i].x, point.y - samples[i].y));
+    return { start: p1, end: p2, samples, lengths, length: lengths.reduce((sum, value) => sum + value, 0) };
+  });
+}
+
+function resampleClosed(points, spacing) {
+  const lengths = points.map((point, i) => {
+    const next = points[(i + 1) % points.length];
+    return Math.hypot(next.x - point.x, next.y - point.y);
+  });
+  const perimeter = lengths.reduce((sum, length) => sum + length, 0);
+  const count = clamp(Math.round(perimeter / spacing), 12, 224);
+  const result = [];
+  let segment = 0, traversed = 0;
+  for (let i = 0; i < count; i++) {
+    const distance = perimeter * i / count;
+    while (segment < lengths.length - 1 && traversed + lengths[segment] < distance) traversed += lengths[segment++];
+    const a = points[segment], b = points[(segment + 1) % points.length];
+    const t = lengths[segment] > 0 ? (distance - traversed) / lengths[segment] : 0;
+    result.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   }
   return result;
 }
@@ -142,15 +197,10 @@ function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
   const count = clamp(Math.round(perimeter / spacing), 12, 224);
   const anchors = [...new Set(pinnedIndices)].sort((a, b) => a - b);
   if (anchors.length >= count) return resampleClosed(points, spacing);
-
   const arcs = anchors.map((start, anchorIndex) => {
-    const end = anchors[(anchorIndex + 1) % anchors.length];
-    const segments = [];
+    const end = anchors[(anchorIndex + 1) % anchors.length], segments = [];
     let index = start;
-    while (index !== end) {
-      segments.push(index);
-      index = (index + 1) % points.length;
-    }
+    while (index !== end) { segments.push(index); index = (index + 1) % points.length; }
     return { start, segments, length: segments.reduce((sum, segment) => sum + lengths[segment], 0) };
   });
   const remaining = count - arcs.length;
@@ -169,7 +219,6 @@ function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
     if (target < 0) return resampleClosed(points, spacing);
     shares[target].intervals--; assigned--;
   }
-
   const sampleArc = (arc, distance) => {
     let traversed = 0;
     for (const segment of arc.segments) {
@@ -187,23 +236,13 @@ function resampleClosedKeepingFeatures(points, spacing, pinnedIndices) {
     sampleArc(arc, arc.length * step / shares[i].intervals)));
 }
 
-function resampleClosed(points, spacing) {
-  const lengths = points.map((p, i) => {
-    const q = points[(i + 1) % points.length];
-    return Math.hypot(q.x - p.x, q.y - p.y);
+function resampleBezierLoop(points, spacing, featurePositions = []) {
+  const segments = bezierSegments(points), dense = [], anchors = [];
+  segments.forEach((segment, index) => {
+    if (featurePositions.includes(index)) anchors.push(dense.length);
+    dense.push(...segment.samples.slice(0, -1));
   });
-  const perimeter = lengths.reduce((sum, length) => sum + length, 0);
-  const count = clamp(Math.round(perimeter / spacing), 12, 224);
-  const result = [];
-  let segment = 0, traversed = 0;
-  for (let i = 0; i < count; i++) {
-    const distance = perimeter * i / count;
-    while (segment < lengths.length - 1 && traversed + lengths[segment] < distance) traversed += lengths[segment++];
-    const a = points[segment], b = points[(segment + 1) % points.length];
-    const t = lengths[segment] > 0 ? (distance - traversed) / lengths[segment] : 0;
-    result.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  }
-  return result;
+  return resampleClosedKeepingFeatures(dense, spacing, anchors);
 }
 
 function traceLoops(mask, width, height) {
@@ -272,22 +311,21 @@ export function traceSpriteContours(alpha, width, height, worldWidth, worldHeigh
     x: (p.x / gridWidth - .5) * worldWidth,
     y: (.5 - p.y / gridHeight) * worldHeight,
   })));
-  const simplifyTolerance = Math.max(worldWidth, worldHeight) / 256;
-  const contours = normalized.map(loop => {
-    const simplified = simplifyClosed(loop, simplifyTolerance);
-    const features = findDeepConcavities(simplified, Math.max(worldWidth, worldHeight) / 64,
-      Math.max(worldWidth, worldHeight) / 128);
-    const smoothed = features.length
-      ? smoothClosedKeepingFeatures(simplified, 2, features.map(feature => feature.index))
-      : smoothClosed(smoothClosed(simplified));
-    return { points: smoothed, features: features.map(feature => feature.index) };
+  const simplifyTolerance = Math.max(worldWidth, worldHeight) / 64;
+  const contours = normalized.map((loop, index) => {
+    // Detect valleys on the untouched pixel contour, before simplification can
+    // erase shallow concave corners. The pixel-scale thresholds are deliberately
+    // lower than the old post-simplification test to catch narrow character folds.
+    const rawFeatures = findDeepConcavities(raw[index], 2, .45);
+    const simplified = simplifyClosedKeepingFeatures(loop, simplifyTolerance, rawFeatures);
+    return { points: simplified.points, features: simplified.featurePositions };
   });
   const spacing = Math.max(worldWidth, worldHeight) / 96;
-  let sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing, contour.features));
+  let sampled = contours.map(contour => resampleBezierLoop(contour.points, spacing, contour.features));
   const total = sampled.reduce((sum, loop) => sum + loop.length, 0);
   if (total > 256) {
     const factor = total / 256;
-    sampled = contours.map(contour => resampleClosedKeepingFeatures(contour.points, spacing * factor, contour.features));
+    sampled = contours.map(contour => resampleBezierLoop(contour.points, spacing * factor, contour.features));
   }
   const sorted = sampled.map(points => ({ points, area: Math.abs(signedArea(points)) }))
     .sort((a, b) => b.area - a.area);
