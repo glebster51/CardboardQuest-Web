@@ -7,7 +7,7 @@ import { createGeometryClient } from './render/geometry-client.mjs?v=6';
 import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=2';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
-import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=2';
+import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=23';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=3';
 import { bindSsaoSpriteAlphaCutouts, installSsaoSpriteAlphaCutout, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
