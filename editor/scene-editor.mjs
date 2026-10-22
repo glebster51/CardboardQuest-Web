@@ -444,7 +444,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <button id="se-undo" title="Ctrl+Z">↶</button><button id="se-redo" title="Ctrl+Y">↷</button>
         <button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button>
         <button id="se-close" title="~ / Ё">Вернуться в игру ×</button>
-      </header><div class="se-fog">
+      </header></div><aside class="se-controls" aria-label="Параметры сцены">
+      <details class="se-module" open><summary>Туман и просвет</summary><div class="se-module-content se-fog">
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
         <label>Конец тумана <output></output><input data-fog="end" aria-label="Конец тумана" type="range" min=".1" max="50" step=".1"></label>
         <label>Тонирование <output></output><input data-fog="tint" aria-label="Тонирование тумана" type="range" min="0" max="1" step=".01"></label>
@@ -453,33 +454,35 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label class="se-reveal-control">Просвет · край, px <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус градиента просвета вокруг героя в пикселях экрана" type="range" min="1" max="640" step="1"></label>
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
-      </div><div class="se-render-mode" role="group" aria-label="Диагностический режим рендера">
-        <span>РЕНДЕР</span>
-        <button data-render-mode="normal" aria-pressed="true">Обычный</button>
-        <button data-render-mode="overdraw" aria-pressed="false" title="Подсвечивает области, где поверх друг друга рисуется геометрия">OVERDRAW</button>
-        <button data-render-mode="wireframe" aria-pressed="false" title="Показывает только рёбра треугольников геометрии">Только сетка</button>
-        <small id="se-render-hint">Режимы работают только пока открыт редактор.</small>
-      </div><div class="se-screen-effects" role="group" aria-label="Скринспейс эффекты">
-        <strong>ЭФФЕКТЫ</strong>
+      </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
         <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>
         <label><input type="checkbox" data-screen-effect="tiltShift" ${screenEffects.tiltShift ? 'checked' : ''}> Tilt-shift</label>
+        <label>Радиус SSAO <output>${screenEffects.ssaoKernelRadius}</output><input data-effect-setting="ssaoKernelRadius" aria-label="Радиус SSAO" type="range" min="0" max="16" step=".25" value="${screenEffects.ssaoKernelRadius}"></label>
+        <label>Порог SSAO <output>${screenEffects.ssaoMinDistance.toFixed(3)}</output><input data-effect-setting="ssaoMinDistance" aria-label="Минимальная дистанция SSAO" type="range" min=".001" max=".05" step=".001" value="${screenEffects.ssaoMinDistance}"></label>
+        <label>Дальность SSAO <output>${screenEffects.ssaoMaxDistance.toFixed(2)}</output><input data-effect-setting="ssaoMaxDistance" aria-label="Максимальная дистанция SSAO" type="range" min=".01" max=".5" step=".01" value="${screenEffects.ssaoMaxDistance}"></label>
+        <label>Фокус Tilt-shift <output>${screenEffects.tiltShiftFocus.toFixed(2)}</output><input data-effect-setting="tiltShiftFocus" aria-label="Положение полосы фокуса Tilt-shift" type="range" min="0" max="1" step=".01" value="${screenEffects.tiltShiftFocus}"></label>
+        <label>Размытие Tilt-shift, px <output>${screenEffects.tiltShiftBlur.toFixed(1)}</output><input data-effect-setting="tiltShiftBlur" aria-label="Сила размытия Tilt-shift" type="range" min="0" max="24" step=".5" value="${screenEffects.tiltShiftBlur}"></label>
         <small>Настройки сохраняются в этом браузере.</small>
-      </div><div class="se-lighting" role="group" aria-label="Настройки освещения">
-        <strong>ОСВЕЩЕНИЕ</strong>
+      </div></details><details class="se-module"><summary>Освещение</summary><div class="se-module-content se-lighting" role="group" aria-label="Настройки освещения">
         <label>Направление X <output></output><input data-lighting="direction.0" aria-label="Направление света по X" type="range" min="-20" max="20" step=".1"></label>
         <label>Направление Y <output></output><input data-lighting="direction.1" aria-label="Направление света по Y" type="range" min="-20" max="20" step=".1"></label>
         <label>Направление Z <output></output><input data-lighting="direction.2" aria-label="Направление света по Z" type="range" min="-20" max="20" step=".1"></label>
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
-      </div><div class="se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
-        <strong>ГЛОБАЛЬНО · КРОМКИ ТЕРРАС</strong>
+      </div></details><details class="se-module"><summary>Кромки террас · глобально</summary><div class="se-module-content se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
         <label>Подсветка верхнего края<input data-terrain-style="edgeColor" aria-label="Цвет подсветки верхней кромки рельефа" type="color"></label>
         <label>Сила <output></output><input data-terrain-style="edgeStrength" aria-label="Сила подсветки кромки" type="range" min="0" max="1" step=".01"></label>
         <label>Ширина <output></output><input data-terrain-style="edgeWidth" aria-label="Ширина полосы подсветки" type="range" min=".03" max=".5" step=".01"></label>
         <label>Тёмное основание<input data-terrain-style="baseColor" aria-label="Цвет затенения основания рельефа" type="color"></label>
         <label>AO-сила <output></output><input data-terrain-style="baseStrength" aria-label="Сила затемнения основания слоя" type="range" min="0" max="1" step=".01"></label>
         <label>AO-ширина <output></output><input data-terrain-style="baseWidth" aria-label="Ширина затемнённой полосы у основания" type="range" min=".03" max=".5" step=".01"></label>
-      </div></div><section id="se-terrain-window" class="se-terrain-window" aria-label="Мастерская рельефа" hidden>
+      </div></details><details class="se-module"><summary>Диагностика рендера</summary><div class="se-module-content se-render-mode" role="group" aria-label="Диагностический режим рендера">
+        <span>РЕНДЕР</span>
+        <button data-render-mode="normal" aria-pressed="true">Обычный</button>
+        <button data-render-mode="overdraw" aria-pressed="false" title="Подсвечивает области, где поверх друг друга рисуется геометрия">OVERDRAW</button>
+        <button data-render-mode="wireframe" aria-pressed="false" title="Показывает только рёбра треугольников геометрии">Только сетка</button>
+        <small id="se-render-hint">Режимы работают только пока открыт редактор.</small>
+      </div></details></aside><section id="se-terrain-window" class="se-terrain-window" aria-label="Мастерская рельефа" hidden>
         <header><div><small>МАСТЕРСКАЯ РЕЛЬЕФА · ИГРА НА ПАУЗЕ</small><strong>Терраформинг</strong></div><button id="se-terrain-close" title="Закрыть терраформинг">Готово ×</button></header>
         <nav class="se-terrain-modes" role="group" aria-label="Режим кисти">
           <button data-terrain-mode="level" aria-pressed="true">Выровнять по уровню</button>
@@ -544,9 +547,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     for (const button of panel.querySelectorAll('[data-mode]')) button.addEventListener('click', () => setMode(button.dataset.mode));
     for (const button of panel.querySelectorAll('[data-render-mode]'))
       button.addEventListener('click', () => setRenderMode(button.dataset.renderMode));
-    for (const input of panel.querySelectorAll('[data-screen-effect]')) input.addEventListener('change', () => {
-      onScreenEffectsChange(Object.fromEntries([...panel.querySelectorAll('[data-screen-effect]')]
-        .map(control => [control.dataset.screenEffect, control.checked])));
+    const emitScreenEffects = () => onScreenEffectsChange({
+      ...Object.fromEntries([...panel.querySelectorAll('[data-screen-effect]')].map(control => [control.dataset.screenEffect, control.checked])),
+      ...Object.fromEntries([...panel.querySelectorAll('[data-effect-setting]')].map(control => [control.dataset.effectSetting, Number(control.value)])),
+    });
+    for (const input of panel.querySelectorAll('[data-screen-effect]')) input.addEventListener('change', emitScreenEffects);
+    for (const input of panel.querySelectorAll('[data-effect-setting]')) input.addEventListener('input', () => {
+      input.previousElementSibling.value = Number(input.value).toFixed(input.step === '.001' ? 3 : 2);
+      emitScreenEffects();
     });
     ui.objects.addEventListener('change', () => select(bindings.find(binding => binding.id === ui.objects.value)));
     panel.querySelector('#se-close').addEventListener('click', () => void toggle());

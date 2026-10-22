@@ -4,16 +4,15 @@ import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=4';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=1';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=2';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=15';
-import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=4';
-import { createPlayerRevealOverlayPass } from './render/player-reveal-overlay-pass.mjs?v=1';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=16';
+import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=5';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=140';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=142';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -85,7 +84,7 @@ async function start() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
-  let tiltShiftComposer = null, tiltShiftPass = null, ssaoPass = null, revealOverlayPass = null,
+  let tiltShiftComposer = null, tiltShiftPass = null, ssaoPass = null,
     tiltShiftPixelRatio = 1, postProcessingPromise = null;
   let screenEffects = DEFAULT_SCREEN_EFFECTS;
   try { screenEffects = normalizeScreenEffects(JSON.parse(localStorage.getItem(SCREEN_EFFECT_SETTINGS_KEY) || 'null')); }
@@ -98,9 +97,7 @@ async function start() {
   };
   const renderScene = () => {
     if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift)) {
-      renderer.render(scene, camera);
-      revealOverlayPass?.renderDirect(renderer);
-      return;
+      return renderer.render(scene, camera);
     }
     try { tiltShiftComposer.render(); }
     catch (error) {
@@ -112,7 +109,6 @@ async function start() {
       tiltShiftComposer.dispose(); tiltShiftComposer = null; ssaoPass = null;
       console.warn('Постобработка остановлена; используется обычный рендер', error);
       renderer.render(scene, camera);
-      revealOverlayPass?.renderDirect(renderer);
     }
   };
   async function enableTiltShift() {
@@ -133,12 +129,11 @@ async function start() {
       tiltShiftPixelRatio = Math.min(renderer.getPixelRatio(), 1);
       composer.setPixelRatio(tiltShiftPixelRatio);
       composer.addPass(new renderModule.RenderPass(scene, camera));
-      if (revealOverlayPass) composer.addPass(revealOverlayPass.composerPass);
       try {
         const ssao = new ssaoModule.SSAOPass(scene, camera, innerWidth, innerHeight, 12);
-        ssao.kernelRadius = 5;
-        ssao.minDistance = .008;
-        ssao.maxDistance = .12;
+        ssao.kernelRadius = screenEffects.ssaoKernelRadius;
+        ssao.minDistance = screenEffects.ssaoMinDistance;
+        ssao.maxDistance = screenEffects.ssaoMaxDistance;
         ssao.enabled = screenEffects.ssao;
         composer.addPass(ssao);
         ssaoPass = ssao;
@@ -146,8 +141,8 @@ async function start() {
         console.warn('SSAO недоступен; остальные эффекты сохраняются', error);
       }
       const tilt = new shaderPassModule.ShaderPass(shaderModule.VerticalTiltShiftShader);
-      tilt.uniforms.r.value = .48;
-      tilt.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      tilt.uniforms.r.value = screenEffects.tiltShiftFocus;
+      tilt.uniforms.v.value = screenEffects.tiltShiftBlur / Math.max(1, innerHeight * tiltShiftPixelRatio);
       tilt.enabled = screenEffects.tiltShift;
       composer.addPass(tilt);
       composer.addPass(new outputModule.OutputPass());
@@ -167,6 +162,15 @@ async function start() {
     catch { /* The current session still honors the selected effects. */ }
     if (tiltShiftPass) tiltShiftPass.enabled = screenEffects.tiltShift;
     if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
+    if (ssaoPass) {
+      ssaoPass.kernelRadius = screenEffects.ssaoKernelRadius;
+      ssaoPass.minDistance = screenEffects.ssaoMinDistance;
+      ssaoPass.maxDistance = screenEffects.ssaoMaxDistance;
+    }
+    if (tiltShiftPass) {
+      tiltShiftPass.uniforms.r.value = screenEffects.tiltShiftFocus;
+      tiltShiftPass.uniforms.v.value = screenEffects.tiltShiftBlur / Math.max(1, innerHeight * tiltShiftPixelRatio);
+    }
     if (screenEffects.ssao || screenEffects.tiltShift) void enableTiltShift();
   }
 
@@ -347,19 +351,16 @@ async function start() {
   });
   const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
-  revealOverlayPass = createPlayerRevealOverlayPass({ scene, camera, uniforms: playerOcclusionReveal.uniforms });
   const target = new THREE.Vector3(0, .65, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
   let cameraManualOverride = 0;
   const hemisphereLight = new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5);
-  hemisphereLight.layers.enable(31);
   scene.add(hemisphereLight);
   sunLight = new THREE.DirectionalLight();
   sunLight.position.set(...sceneRegistry.lighting.direction);
   sunLight.intensity = sceneRegistry.lighting.intensity;
   sunLight.color.set(sceneRegistry.lighting.color);
   sunLight.castShadow = true;
-  sunLight.layers.enable(31);
   sunLight.shadow.mapSize.set(2048, 2048);
   Object.assign(sunLight.shadow.camera, { left: -25.5, right: 25.5, top: 25.5, bottom: -25.5, far: 60 });
   sunLight.shadow.normalBias = .025;
@@ -1052,7 +1053,6 @@ async function start() {
     location.edgeShade?.applyTo(result.group);
     for (const object of replacement) {
       location.sceneGroup.add(object);
-      if (object._cqRevealOverlayProxy) location.sceneGroup.add(object._cqRevealOverlayProxy);
     }
     location.terrainHeightMap = restoreTerrainSampler(result.heightMap,
       { rounded: result.rounded, depthMap: Boolean(location.art.depthMap), walkablePoints: location.walkablePoints });
@@ -1725,7 +1725,7 @@ async function start() {
     camera.updateProjectionMatrix(); updateCamera();
     if (tiltShiftComposer) {
       tiltShiftComposer.setSize(innerWidth, innerHeight);
-      tiltShiftPass.uniforms.v.value = 7 / Math.max(1, innerHeight * tiltShiftPixelRatio);
+      tiltShiftPass.uniforms.v.value = screenEffects.tiltShiftBlur / Math.max(1, innerHeight * tiltShiftPixelRatio);
       setSsaoSize();
     }
   }

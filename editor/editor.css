@@ -2,7 +2,7 @@
 body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editing #interact,body.scene-editing #story-dialogue,body.scene-editing #inventory-panel,body.scene-editing #audio-panel,body.scene-editing #world-map{visibility:hidden!important;pointer-events:none!important}
 #scene-editor{position:fixed;inset:12px;z-index:2000;pointer-events:none;color:#f0e7d6;font:13px/1.4 system-ui,sans-serif;--se-accent:#f1bd6d}
 #scene-editor *{box-sizing:border-box}
-#scene-editor .se-toolbar,#scene-editor .se-inspector{pointer-events:auto;background:#20232bf5;border:1px solid #62616a;border-radius:12px;box-shadow:0 8px 32px #0005;backdrop-filter:blur(12px)}
+#scene-editor .se-toolbar,#scene-editor .se-controls,#scene-editor .se-inspector{pointer-events:auto;background:#20232bf5;border:1px solid #62616a;border-radius:12px;box-shadow:0 8px 32px #0005;backdrop-filter:blur(12px)}
 #scene-editor .se-toolbar{padding:12px 16px}
 #scene-editor header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 #scene-editor header>div:first-child{margin-right:auto;min-width:180px}
@@ -13,28 +13,35 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor button[aria-pressed=true]{background:#d9ad6f;color:#24252b;border-color:#eac991}
 #scene-editor kbd{font:11px ui-monospace,monospace;font-weight:700;margin-right:4px}
 #scene-editor .se-modes{display:flex;gap:4px}
-#scene-editor .se-fog{display:flex;gap:20px;align-items:center;border-top:1px solid #ffffff18;margin-top:11px;padding-top:10px}
-#scene-editor .se-fog label{flex:1;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
+#scene-editor .se-controls{position:absolute;left:0;top:var(--se-top,154px);width:308px;padding:8px;max-height:calc(100% - var(--se-top,154px));overflow-y:auto}
+#scene-editor .se-module{padding:0;margin:0 0 6px;border:1px solid #ffffff18;border-radius:8px;background:#171a2099;color:#d1c8b9}
+#scene-editor .se-module>summary{padding:8px 10px;color:#f0d7a9;font-weight:650;list-style:none}
+#scene-editor .se-module>summary::-webkit-details-marker{display:none}
+#scene-editor .se-module>summary::before{content:'›';display:inline-block;width:17px;color:var(--se-accent);font-size:17px;line-height:12px;vertical-align:-1px;transition:transform .15s}
+#scene-editor .se-module[open]>summary::before{transform:rotate(90deg)}
+#scene-editor .se-module-content{padding:4px 10px 10px;border-top:1px solid #ffffff12}
+#scene-editor .se-fog{display:grid;gap:7px;align-items:center}
+#scene-editor .se-fog label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
 #scene-editor input[type=range]{width:100%;margin:2px 0;accent-color:var(--se-accent);grid-column:1/-1;cursor:ew-resize}
 #scene-editor output{color:var(--se-accent);font-variant-numeric:tabular-nums}
-#scene-editor .se-fog .se-color{flex:0 0 88px;display:flex;align-items:center;gap:8px}
-#scene-editor .se-fog .se-reveal-control{flex:.8;min-width:90px}
-#scene-editor .se-lighting{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;border-top:1px solid #ffffff18;margin-top:10px;padding-top:9px}
-#scene-editor .se-lighting>strong{font-size:10px;letter-spacing:1.3px;color:#b9ac97}
-#scene-editor .se-lighting label{flex:1;min-width:110px;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
-#scene-editor .se-lighting .se-color{flex:0 0 120px;display:flex;align-items:center;gap:8px}
-#scene-editor .se-render-mode{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid #ffffff18}
+#scene-editor .se-fog .se-color{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#scene-editor .se-fog .se-reveal-control{min-width:0}
+#scene-editor .se-lighting,#scene-editor .se-terrain-appearance{display:grid;gap:7px}
+#scene-editor .se-lighting label,#scene-editor .se-terrain-appearance label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
+#scene-editor .se-lighting .se-color,#scene-editor .se-terrain-appearance label:has(input[type=color]){display:flex;align-items:center;justify-content:space-between;gap:8px}
+#scene-editor .se-render-mode{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 #scene-editor .se-render-mode>span{font-size:10px;letter-spacing:1.3px;color:#b9ac97;margin-right:3px}
 #scene-editor .se-render-mode button{padding:5px 9px;font-size:11px}
 #scene-editor .se-render-mode button[data-render-mode=overdraw][aria-pressed=true]{background:#f29459;border-color:#ffc28d}
 #scene-editor .se-render-mode button[data-render-mode=wireframe][aria-pressed=true]{background:#67c9aa;border-color:#a6f6dc}
 #scene-editor #se-render-hint{margin-left:auto;font-size:10px;color:#b9ac97}
-#scene-editor .se-screen-effects{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;margin-top:9px;padding-top:8px;border-top:1px solid #ffffff18}
-#scene-editor .se-screen-effects>strong{font-size:10px;letter-spacing:1.3px;color:#b9ac97}
-#scene-editor .se-screen-effects label{display:inline-flex;align-items:center;gap:6px;color:#d1c8b9;font-size:11px;cursor:pointer}
+#scene-editor .se-screen-effects{display:grid;gap:7px}
+#scene-editor .se-screen-effects label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;color:#d1c8b9;font-size:11px}
+#scene-editor .se-screen-effects label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px;cursor:pointer}
+#scene-editor .se-screen-effects label:has(input[type=checkbox]) input{order:-1}
 #scene-editor .se-screen-effects input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--se-accent);cursor:pointer}
-#scene-editor .se-screen-effects small{margin-left:auto;color:#95949c;font-size:10px}
-#scene-editor #se-path-hint{flex-basis:100%;font-size:10px;color:#b9ac97}
+#scene-editor .se-screen-effects small{color:#95949c;font-size:10px}
+#scene-editor #se-path-hint{grid-column:1/-1;font-size:10px;color:#b9ac97}
 #scene-editor input[type=color]{width:34px;height:30px;padding:0;border:0;background:transparent;cursor:pointer}
 #scene-editor .se-inspector{position:absolute;right:0;top:var(--se-top,154px);width:308px;padding:16px;max-height:calc(100% - var(--se-top,154px));overflow-y:auto}
 #scene-editor #se-objects{width:100%;margin:8px 0 10px}
@@ -76,7 +83,7 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor textarea{width:100%;height:180px;resize:vertical;background:#12161c;color:#d6d3c7;border:1px solid #50535d;border-radius:5px;padding:8px;font:10px/1.5 ui-monospace,monospace;white-space:pre}
 #scene-editor #se-download{font-size:11px;margin-top:6px}
 #scene-editor .se-delete{width:100%;margin-top:8px;color:#edb4a3;border-color:#8b625b;background:#3b2b2b}
-#scene-editor .se-library{position:absolute;bottom:0;left:0;width:min(590px,calc(100% - 330px));pointer-events:auto;background:#20232bf5;border:1px solid #62616a;border-radius:12px;box-shadow:0 8px 32px #0005;padding:12px;backdrop-filter:blur(12px)}
+#scene-editor .se-library{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:min(590px,calc(100% - 640px));pointer-events:auto;background:#20232bf5;border:1px solid #62616a;border-radius:12px;box-shadow:0 8px 32px #0005;padding:12px;backdrop-filter:blur(12px)}
 #scene-editor .se-library header{gap:10px;margin-bottom:10px}
 #scene-editor .se-library header strong{font-size:14px}
 #scene-editor .se-library header small{letter-spacing:0;font-size:10px}
@@ -93,7 +100,7 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor #se-assets .se-library-empty{grid-column:1/-1;padding:8px;color:#b9ac97;font-size:11px}
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}
-@media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-fog{gap:8px}#scene-editor .se-render-mode{flex-wrap:wrap}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor .se-screen-effects{gap:7px 12px}#scene-editor .se-screen-effects small{flex-basis:100%;margin-left:0}#scene-editor .se-inspector{width:275px}#scene-editor button{padding:6px!important}}
+@media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-controls{width:275px}#scene-editor .se-inspector{width:275px}#scene-editor .se-library{width:min(520px,calc(100% - 570px))}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor button{padding:6px!important}}
 
 /* The campaign graph is a pure 2D editor; the Three.js scene is hidden and its loop is paused. */
 body.campaign-graph-open #scene,body.campaign-graph-open #hud-tools,body.campaign-graph-open #location-info,
@@ -158,7 +165,7 @@ body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor{visibi
 #scene-editor #se-terrain-level{color:#ffe0a0}
 #scene-editor #se-terrain-reset{font-size:10px;padding:6px 8px}
 #scene-editor .se-terrain-help{display:block;margin-top:10px;color:#a9b4a2;font-size:10px;line-height:1.55}
-#scene-editor.terrain-open .se-inspector,#scene-editor.terrain-open .se-library{display:none}
+#scene-editor.terrain-open .se-inspector,#scene-editor.terrain-open .se-library,#scene-editor.terrain-open .se-controls{display:none}
 @media(max-width:1000px){#scene-editor .se-terrain-window{width:min(570px,100%);top:var(--se-top,154px)}#scene-editor .se-terrain-controls{flex-wrap:wrap}#scene-editor .se-terrain-controls label{min-width:120px}}
 #scene-editor .se-terrain-appearance{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border-top:1px solid #ffffff18;margin-top:9px;padding-top:8px}
 #scene-editor .se-terrain-appearance>strong{font-size:9px;letter-spacing:1.2px;color:#c7b999}

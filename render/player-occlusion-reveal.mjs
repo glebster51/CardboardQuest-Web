@@ -9,7 +9,6 @@ export function createPlayerOcclusionReveal(THREE, renderer) {
     cqRevealTime: { value: 0 },
     cqRevealInnerRadius: { value: PLAYER_REVEAL_DEFAULTS.revealInnerRadius },
     cqRevealOuterRadius: { value: PLAYER_REVEAL_DEFAULTS.revealOuterRadius },
-    cqRevealOverlayPass: { value: 0 },
   };
   const screen = new THREE.Vector3();
   const viewPosition = new THREE.Vector3();

@@ -1,5 +1,6 @@
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=2';
 export const LOCATION_FAR_COLOR = 0x242039;
+const originalMaterialHooks = new WeakMap();
 
 function distanceToSegment(x, z, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -154,10 +155,11 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     });
     if (Array.isArray(object.material)) object.material = patchedMaterials;
     else object.material = patchedMaterials[0];
-    if (reveal && object.parent?.add && typeof object.clone === 'function'
-      && !object.userData?.cqRevealOverlayProxy) revealSources.push(object);
+    if (reveal && object.add && typeof object.clone === 'function'
+      && !object.userData?.cqHasRevealOverlayProxy) revealSources.push(object);
   });
   for (const source of revealSources) {
+    source.userData ??= {};
     const proxy = source.clone(false);
     proxy.name = `${source.name || 'reveal-object'}-reveal-overlay`;
     proxy.userData = { ...source.userData, cqRevealOverlay: true, cqRevealOverlayProxy: true };
@@ -167,16 +169,20 @@ export function applyLocationEdgeShade(root, patchMaterial) {
       overlay.opacity = 1;
       overlay.depthWrite = false;
       overlay.depthTest = true;
+      originalMaterialHooks.set(overlay, originalMaterialHooks.get(material));
+      patchMaterial(overlay, true, true);
       overlay.needsUpdate = true;
       return overlay;
     });
     if (!Array.isArray(source.material)) proxy.material = proxy.material[0];
-    proxy.layers.set(31);
+    proxy.position.set(0, 0, 0);
+    proxy.quaternion.identity();
+    proxy.scale.set(1, 1, 1);
+    proxy.renderOrder = source.renderOrder;
     proxy.castShadow = false;
     proxy.receiveShadow = false;
-    proxy._cqRevealOverlaySource = source;
-    source._cqRevealOverlayProxy = proxy;
-    source.parent.add(proxy);
+    source.userData.cqHasRevealOverlayProxy = true;
+    source.add(proxy);
   }
 }
 
@@ -210,14 +216,22 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     cqPathFogColor: { value: new THREE.Color(settings.color) },
     cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
     cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
-  const patchMaterial = (material, reveal = false) => {
-    if ((!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) || material.userData.locationEdgeShadePatched) return;
+  const patchMaterial = (material, reveal = false, revealOverlay = false) => {
+    if (!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) return;
+    if (material.userData.locationEdgeShadePatched
+      && material.userData.locationEdgeShadeRevealOverlay === revealOverlay) return;
     material.userData.locationEdgeShadePatched = true;
+    material.userData.locationEdgeShadeRevealOverlay = revealOverlay;
     material.userData.locationEdgeShadeTexture = texture;
-    const previousCompile = material.onBeforeCompile;
+    if (!originalMaterialHooks.has(material)) originalMaterialHooks.set(material, {
+      onBeforeCompile: material.onBeforeCompile, customProgramCacheKey: material.customProgramCacheKey,
+    });
+    const originalHooks = originalMaterialHooks.get(material);
+    const previousCompile = originalHooks.onBeforeCompile;
     material.onBeforeCompile = shader => {
       previousCompile?.(shader);
-      Object.assign(shader.uniforms, uniforms, reveal ? revealUniforms : {});
+      Object.assign(shader.uniforms, uniforms, reveal ? revealUniforms : {},
+        reveal ? { cqRevealOverlayMaterial: { value: revealOverlay ? 1 : 0 } } : {});
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>
           varying vec3 vCQLocationWorld;
@@ -239,7 +253,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
             uniform float cqRevealTime;
             uniform float cqRevealInnerRadius;
             uniform float cqRevealOuterRadius;
-            uniform float cqRevealOverlayPass;
+            uniform float cqRevealOverlayMaterial;
             varying float vCQRevealDepth;` : ''}
           ${reveal ? `float cqRevealHash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -299,7 +313,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
               * 4.0 * cqRevealFade * (1.0 - cqRevealFade), 0.0, 1.0);
             if (cqRevealEdge > cqRevealNoiseValue) cqRevealCut = 1.0;
           }` : ''}
-          ${reveal ? `if (cqRevealOverlayPass > 0.5) {
+          ${reveal ? `if (cqRevealOverlayMaterial > 0.5) {
             if (cqRevealCut < 0.5) discard;
             diffuseColor.a *= 0.4;
           } else if (cqRevealCut > 0.5) discard;` : ''}
@@ -311,8 +325,9 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           outgoingLight = cqOklabToLinear(cqFogLab);
           #include <opaque_fragment>`);
     };
-    if (reveal) { material.transparent = false; material.depthWrite = true; }
-    material.customProgramCacheKey = () => `cq-location-path-fog-v12-screen-voronoi-reveal-overlay-${reveal}`;
+    if (reveal && !revealOverlay) { material.transparent = false; material.depthWrite = true; }
+    const previousCacheKey = originalHooks.customProgramCacheKey;
+    material.customProgramCacheKey = () => `${previousCacheKey?.() ?? ''}|cq-location-path-fog-v13-screen-voronoi-reveal-overlay-${reveal}-${revealOverlay}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
