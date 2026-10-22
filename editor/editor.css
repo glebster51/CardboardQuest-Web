@@ -100,6 +100,8 @@ body.scene-editing #hud-tools,body.scene-editing #location-info,body.scene-editi
 #scene-editor #se-assets img{width:65px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 2px #0006);pointer-events:none}
 #scene-editor #se-assets span{font-size:9px;line-height:1.2;max-width:80px}
 @media(max-width:1000px){#scene-editor{inset:6px}#scene-editor .se-toolbar{padding:8px}#scene-editor .se-controls{width:275px}#scene-editor .se-inspector{width:275px}#scene-editor .se-library{width:min(520px,calc(100% - 570px))}#scene-editor #se-render-hint{flex-basis:100%;margin-left:0}#scene-editor button{padding:6px!important}}
+@media(max-width:850px){#scene-editor .se-inspector,#scene-editor .se-library{display:none!important}}
+#scene-editor #se-close{color:#24252b;background:#d9ad6f;border-color:#eac991;font-weight:700}
 
 /* The campaign graph is a pure 2D editor; the Three.js scene is hidden and its loop is paused. */
 body.campaign-graph-open #scene,body.campaign-graph-open #hud-tools,body.campaign-graph-open #location-info,
