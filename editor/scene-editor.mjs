@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs?v=136';
+import { readTransform } from './edit-model.mjs?v=137';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
@@ -456,7 +456,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label class="se-color">Цвет тумана<input data-fog="color" aria-label="Цвет тумана" type="color"></label>
         <label>Внутренний радиус просвета <output></output><input data-fog="revealInnerRadius" aria-label="Внутренний радиус просвета игрока" type="range" min="0" max="480" step="1"></label>
         <label>Внешний радиус просвета <output></output><input data-fog="revealOuterRadius" aria-label="Внешний радиус просвета игрока" type="range" min="1" max="640" step="1"></label>
-        <label>Размер шума просвета <output></output><input data-fog="revealNoiseSize" aria-label="Размер экранного шума просвета" type="range" min="2" max="32" step=".5"></label>
+        <label>Размер шума просвета <output></output><input data-fog="revealNoiseSize" aria-label="Размер экранного шума просвета" type="range" min="2" max="160" step=".5"></label>
         <small id="se-path-hint">Туман строится вдоль линий троп от входов к центру карты.</small>
       </div></details><details class="se-module" open><summary>Эффекты изображения</summary><div class="se-module-content se-screen-effects" role="group" aria-label="Скринспейс эффекты">
         <label><input type="checkbox" data-screen-effect="ssao" ${screenEffects.ssao ? 'checked' : ''}> Ambient Occlusion · SSAO</label>

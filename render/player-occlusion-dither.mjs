@@ -43,6 +43,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
       float cqRevealBeforePlayer = step(vCQRevealDepth + 0.025, cqRevealPlayerDepth);
       if (cqRevealEnabled > 0.5 && cqRevealBeforePlayer > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
+        if (cqRevealDistance <= cqRevealInnerRadius) discard;
         float cqRevealFade = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
         vec2 cqRevealDrift = vec2(cqRevealTime * 0.035, -cqRevealTime * 0.022);
         float cqRevealFine = cqRevealVoronoi(gl_FragCoord.xy / cqRevealNoiseSize + cqRevealDrift);
@@ -50,7 +51,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
         float cqRevealNoise = cqRevealFine * 0.72 + cqRevealBroad * 0.28;
         float cqRevealShape = clamp(cqRevealFade + (cqRevealNoise - 0.5) * 1.2
           * cqRevealFade * (1.0 - cqRevealFade), 0.0, 1.0);
-        float cqRevealCoverage = cqRevealShape * 0.60;
+        float cqRevealCoverage = cqRevealShape;
         vec2 cqRevealPixel = floor(gl_FragCoord.xy / 3.0);
         float cqRevealChecker = mod(cqRevealPixel.x + cqRevealPixel.y, 2.0);
         float cqRevealThreshold = mix(cqRevealBayer4(cqRevealPixel), cqRevealNoise, 0.28);

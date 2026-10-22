@@ -48,7 +48,7 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       || !Number.isFinite(value.curve) || value.curve < .2 || value.curve > 4
       || (value.revealInnerRadius !== undefined && (!Number.isFinite(value.revealInnerRadius) || value.revealInnerRadius < 0 || value.revealInnerRadius > 480))
       || (value.revealOuterRadius !== undefined && (!Number.isFinite(value.revealOuterRadius) || value.revealOuterRadius < 1 || value.revealOuterRadius > 640))
-      || (value.revealNoiseSize !== undefined && (!Number.isFinite(value.revealNoiseSize) || value.revealNoiseSize < 2 || value.revealNoiseSize > 32))
+      || (value.revealNoiseSize !== undefined && (!Number.isFinite(value.revealNoiseSize) || value.revealNoiseSize < 2 || value.revealNoiseSize > 160))
       || (value.revealInnerRadius !== undefined && value.revealOuterRadius !== undefined
         && value.revealOuterRadius <= value.revealInnerRadius)) throw new Error('Invalid fog settings');
   } else if (lighting) {
