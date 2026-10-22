@@ -12,6 +12,7 @@ import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-e
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=2';
+import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=151';
@@ -39,7 +40,7 @@ import { executeMerchantTrade, canReachMerchant, merchantDefinition } from './ga
 import { createLocationMerchants, createMerchantActor } from './render/merchants.mjs?v=2';
 import { createShopPanel } from './render/shop-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
-import { createFigureFactory } from './render/figure-factory.mjs?v=11';
+import { createFigureFactory } from './render/figure-factory.mjs?v=12';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=5';
 import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9';
 import { createScenerySystem } from './render/scenery-system.mjs?v=13';
@@ -546,8 +547,26 @@ async function start() {
       context.restore();
     });
   });
-  const heartMaterials = heartTextures.map(map => new THREE.MeshBasicMaterial({ map, transparent: true,
-    side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+  const poisonHeartTextures = heartTextures.map(source => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(source.image, 0, 0, 128, 128);
+    const pixels = context.getImageData(0, 0, 128, 128);
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+      const offset = (y * 128 + x) * 4, red = pixels.data[offset], green = pixels.data[offset + 1], blue = pixels.data[offset + 2];
+      if (pixels.data[offset + 3] < 12 || red < 72 || red < Math.max(green, blue) * 1.24) continue;
+      const value = Math.max(red, green, blue);
+      const grain = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      const noise = grain - Math.floor(grain);
+      const mottling = (noise - .5) * .13, yellowMoss = noise > .91 ? .12 : 0;
+      pixels.data[offset] = Math.min(255, value * (.34 + yellowMoss));
+      pixels.data[offset + 1] = Math.min(255, value * (.68 + mottling + yellowMoss));
+      pixels.data[offset + 2] = Math.min(255, value * (.17 + yellowMoss * .28));
+    }
+    context.putImageData(pixels, 0, 0);
+    const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace; return map;
+  });
+  const heartMaterialVariants = createStatusHeartMaterials(THREE, heartTextures, poisonHeartTextures);
   reportLoadStage('Текстура: атлас сердец', 'ready', `${heartAtlasCanvas.width}×${heartAtlasCanvas.height}`);
   const puckAmbientShadow = texture(256, 256, (context, width, height) => {
     const gradient = context.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 2);
@@ -582,7 +601,7 @@ async function start() {
   const geometryClient = createGeometryClient(THREE,
     { paper, grain: cardboardGrain, corrugation, terrainCorrugation }, yieldLocationWork);
   const createFigure = createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
-    corrugation, paper, sceneStencil, heartMaterials, geometryClient,
+    corrugation, paper, sceneStencil, heartMaterialVariants, geometryClient,
     createEnemyMarker: (...args) => createVectorMarker(...args), groundUiY: GROUND_UI_Y });
   applyUnitPuckColors = createFigure.setPuckColors;
   applyUnitPuckColors(sceneRegistry.unitPuckColors);
@@ -1532,8 +1551,8 @@ async function start() {
     removed.push(...await createFigure.releaseUnused(new Set(figures.map(figure => figure.prefix))));
     removed.push(...await scenerySystem.releaseUnused(retained));
     disposeUnusedScenes(removed, retained, [paper, cardboardGrain, corrugation, terrainCorrugation,
-      ambientShadowMaterial, contactShadowMaterial, ...heartMaterials,
-      ...heartTextures, puckAmbientShadow, figureContactShadow, lootBeamGeometry, lootBeamMaterial, lootBeamTexture,
+      ambientShadowMaterial, contactShadowMaterial, ...heartMaterialVariants.all,
+      ...heartTextures, ...poisonHeartTextures, puckAmbientShadow, figureContactShadow, lootBeamGeometry, lootBeamMaterial, lootBeamTexture,
       lootRayMaterial, lootRayTexture, lootGlintTexture, lootGlintMaterial,
       storyPickupIconGeometry, storyPickupIconMaterial, storyPickupIconMaterial.map,
       ...[...(groundResources?.materials.values() ?? [])], ...[...(groundResources?.textures.values() ?? [])]]);
@@ -2515,6 +2534,7 @@ async function start() {
     }
     updateCacheAnimation(dt);
     elapsed += dt;
+    heartMaterialVariants.updateTime(elapsed);
     for (const body of [heroBody, ...activeLocation.enemies.filter(enemy => enemy.active !== false)]) {
       if (body.health <= 0) continue;
       const target = body === heroBody ? campaignState : body;
@@ -2700,12 +2720,20 @@ async function start() {
       }
       figure.attacking = isAttacking(body);
       const heartLevels = heartHealthLevels(body.health, body.maxHealth);
+      const effects = body === heroBody ? campaignState.statusEffects : body.statusEffects;
+      const poisoned = effects?.some(effect => effect.id === 'poison') ?? false;
+      const burning = effects?.some(effect => effect.id === 'burn') ?? false;
+      const variant = poisoned ? (burning ? 'poisonBurn' : 'poison') : (burning ? 'burn' : 'normal');
       figure.heartIcons.forEach((icon, index) => {
         const level = heartLevels[index];
-        if (icon.level === level) return;
-        icon.mesh.material = heartMaterials[level];
-        icon.level = level;
+        const material = heartMaterialVariants[variant][level];
+        if (icon.level !== level || icon.materialVariant !== variant) {
+          icon.mesh.material = material;
+          markSsaoSpriteAlphaCutout(icon.mesh, material.map, material.alphaTest || .04);
+          icon.level = level; icon.materialVariant = variant;
+        }
       });
+      figure.statusIndicators.update(effects);
       const rechargeProgress = chargeRechargeProgress(body,
         body === heroBody ? playerChargeRechargeInterval(activeLocation.enemies) : undefined);
       figure.chargePips.forEach(({ group, base, fill }, index) => {

@@ -4,6 +4,7 @@ import { heartHealthLevels } from '../heart-health.mjs';
 import { enableFigurePickLayer } from '../game/pick-layers.mjs';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
 import { assignSharpHudLayer } from './sharp-hud-overlay.mjs';
+import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=1';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
@@ -27,7 +28,7 @@ function yieldFrameWork() {
 
 /** Build display instances from cached pose geometry and source textures. */
 export function createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
-  corrugation, paper, sceneStencil, heartMaterials, createEnemyMarker, groundUiY, assetBase = 'assets/', geometryClient }) {
+  corrugation, paper, sceneStencil, heartMaterialVariants, createEnemyMarker, groundUiY, assetBase = 'assets/', geometryClient }) {
   const artCache = new Map();
   let puckColors = { player: '#d1e8ae', enemy: '#e9a092' };
   const unitPucks = new Set();
@@ -203,13 +204,15 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     const healthHUD = new THREE.Group();
     const levels = heartHealthLevels(body.health, body.maxHealth);
     const heartIcons = levels.map((level, index) => {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(.23, .23), heartMaterials[level]);
-      markSsaoSpriteAlphaCutout(mesh, heartMaterials[level].map, heartMaterials[level].alphaTest || .04);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(.23, .23), heartMaterialVariants.normal[level]);
+      markSsaoSpriteAlphaCutout(mesh, heartMaterialVariants.normal[level].map, heartMaterialVariants.normal[level].alphaTest || .04);
       mesh.renderOrder = 100;
       mesh.position.set((index - (levels.length - 1) / 2) * .245, 0, .01);
       healthHUD.add(mesh);
       return { mesh, level };
     });
+    const statusIndicators = createStatusEffectIndicators(THREE);
+    healthHUD.add(statusIndicators.group);
     let chargePips = [];
     if (body.team === 'player') {
       chargePips = Array.from({ length: body.maxCharges }, (_, index) => {
@@ -238,7 +241,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     }
     const figure = { group, prefix, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
-      healthHUD, heartIcons, chargePips, enemyMarker, deadGroundedY: assets.deadGroundedY,
+      healthHUD, heartIcons, chargePips, statusIndicators, enemyMarker, deadGroundedY: assets.deadGroundedY,
       flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
       viewBack: false, facing: 0, hitAge: 10, hitStrength: 0, hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
