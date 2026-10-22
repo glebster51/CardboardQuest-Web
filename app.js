@@ -18,6 +18,7 @@ import { installSceneEditor } from './editor/scene-editor.mjs?v=163';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
+import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=1';
 import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=4';
@@ -1271,8 +1272,11 @@ async function start() {
     rebuildBodies();
   }
   function beginSpawn(figure, from) {
-    figure.spawnSource = from;
-    figure.spawnAnimation = { age: 0, duration: .78, fromX: from.x, fromZ: from.z };
+    const origin = resolveSpawnOrigin(from, figure?.body);
+    if (origin.usedFallback) reportLoadStage(`Точка появления: ${figure?.body?.id ?? 'неизвестный враг'}`, 'warning',
+      `источник ${JSON.stringify(from)}; продолжение с позиции юнита (${origin.x}, ${origin.z})`);
+    figure.spawnSource = { x: origin.x, z: origin.z };
+    figure.spawnAnimation = { age: 0, duration: .78, fromX: origin.x, fromZ: origin.z };
     const isCurrentLocation = activeLocation.id === figure.locationId;
     figure.group.visible = isCurrentLocation;
     figure.healthHUD.visible = false;
