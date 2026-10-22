@@ -484,12 +484,13 @@ async function start() {
   heroFigure.group.rotation.y = 0;
   orbit.theta = Math.PI;
   target.set(heroBody.x, .65, heroBody.z);
-  heroFigure.locationId = 'home'; figures.push(heroFigure);
+  heroFigure.locationId = activeLocation.id; figures.push(heroFigure);
   const revealTarget = new THREE.Vector3();
   function updatePlayerReveal() {
     revealTarget.set(heroFigure.group.position.x, 1.05, heroFigure.group.position.z);
+    // Inactive location groups are hidden; a stale figure location must not disable the shared reveal mask.
     playerOcclusionDither.update(camera, revealTarget,
-      heroBody.health > 0 && heroFigure.group.visible && heroFigure.locationId === activeLocation.id);
+      heroBody.health > 0 && heroFigure.group.visible);
   }
   const enemyBody = (id, locationId, x, z, options = {}) => {
     const stored = campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
@@ -1218,6 +1219,7 @@ async function start() {
       heroFigure.victoryAnimation = null;
       clearProjectiles();
       activeLocation = next;
+      heroFigure.locationId = activeLocation.id;
       audio.play('transition');
       dialogue.close();
       protectedEntryFrom = fromLocationId;
