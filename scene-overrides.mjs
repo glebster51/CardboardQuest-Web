@@ -13,6 +13,14 @@ export const SCENE_OVERRIDES = {
     "intensity": 3,
     "color": "#ffebcb"
   },
+  "terrainStyle": {
+    "edgeColor": "#fff0c7",
+    "edgeStrength": 0.38,
+    "edgeWidth": 0.16,
+    "baseColor": "#33271f",
+    "baseStrength": 0.42,
+    "baseWidth": 0.3
+  },
   "locations": {
     "home": {
       "arrival:forest": {

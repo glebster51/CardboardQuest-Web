@@ -1,4 +1,4 @@
-import { readTransform } from './edit-model.mjs?v=135';
+import { readTransform } from './edit-model.mjs?v=136';
 import { ASSET_CATALOG } from './asset-catalog.mjs?v=4';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=1';
 import { applyTerrainSculptDab, terrainBrushSpacing } from '../game/terrain-sculpt.mjs';
@@ -37,6 +37,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       else if (object === 'lighting') label = 'Освещение';
       else if (object === 'fog-paths') label = 'Линии тумана';
       else if (object === 'terrain') label = 'Рельеф локации';
+      else if (object === 'terrain-style') label = 'Цвета кромок террас';
       else if (object === 'campaign-graph') label = 'Граф карты мира';
       else label = object.replace(/^exit:/, 'Выход · ').replace(/^arrival:/, 'Вход из ')
         .replace(/^placed:/, 'Добавленный объект · ').replace(/:/g, ' · ');
@@ -360,7 +361,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   function restoreHistory(action) {
     if (!model[action]()) return;
-    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); changed();
+    registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); changed();
     requestTerrainRebuild();
   }
   async function openCampaignGraph() {
@@ -394,6 +395,13 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       input.value = directionIndex >= 0 ? registry.lighting.direction[directionIndex] : registry.lighting[key];
       const output = input.closest('label').querySelector('output');
       if (output) output.value = Number(input.value).toFixed(1);
+    }
+  }
+  function refreshTerrainStyle() {
+    for (const input of panel.querySelectorAll('[data-terrain-style]')) {
+      input.value = registry.terrainStyle[input.dataset.terrainStyle];
+      const output = input.closest('label').querySelector('output');
+      if (output) output.value = Number(input.value).toFixed(2);
     }
   }
   function focusSelection(all = false) {
@@ -457,6 +465,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         <label>Направление Z <output></output><input data-lighting="direction.2" aria-label="Направление света по Z" type="range" min="-20" max="20" step=".1"></label>
         <label>Сила <output></output><input data-lighting="intensity" aria-label="Сила направленного света" type="range" min="0" max="8" step=".05"></label>
         <label class="se-color">Цвет света<input data-lighting="color" aria-label="Цвет направленного света" type="color"></label>
+      </div><div class="se-terrain-appearance" role="group" aria-label="Глобальные настройки цвета кромок террас">
+        <strong>ГЛОБАЛЬНО · КРОМКИ ТЕРРАС</strong>
+        <label>Подсветка верхнего края<input data-terrain-style="edgeColor" aria-label="Цвет подсветки верхней кромки рельефа" type="color"></label>
+        <label>Сила <output></output><input data-terrain-style="edgeStrength" aria-label="Сила подсветки кромки" type="range" min="0" max="1" step=".01"></label>
+        <label>Ширина <output></output><input data-terrain-style="edgeWidth" aria-label="Ширина полосы подсветки" type="range" min=".03" max=".5" step=".01"></label>
+        <label>Тёмное основание<input data-terrain-style="baseColor" aria-label="Цвет затенения основания рельефа" type="color"></label>
+        <label>AO-сила <output></output><input data-terrain-style="baseStrength" aria-label="Сила затемнения основания слоя" type="range" min="0" max="1" step=".01"></label>
+        <label>AO-ширина <output></output><input data-terrain-style="baseWidth" aria-label="Ширина затемнённой полосы у основания" type="range" min=".03" max=".5" step=".01"></label>
       </div></div><section id="se-terrain-window" class="se-terrain-window" aria-label="Мастерская рельефа" hidden>
         <header><div><small>МАСТЕРСКАЯ РЕЛЬЕФА · ИГРА НА ПАУЗЕ</small><strong>Терраформинг</strong></div><button id="se-terrain-close" title="Закрыть терраформинг">Готово ×</button></header>
         <nav class="se-terrain-modes" role="group" aria-label="Режим кисти">
@@ -556,7 +572,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     panel.querySelector('#se-redo').addEventListener('click', () => restoreHistory('redo'));
     panel.querySelector('#se-reset-all').addEventListener('click', async () => {
       if (addJobs.size) await Promise.allSettled([...addJobs]);
-      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); changed();
+      model.resetAll(); registry.sync(); campaignGraphEditor?.sync(); refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); changed();
       requestTerrainRebuild();
     });
     panel.querySelector('#se-reset').addEventListener('click', () => {
@@ -569,7 +585,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       model.commit();
       if (!model.reset(location, object)) return;
       registry.sync(); campaignGraphEditor?.sync(); bindings = registry.bindings(getLocation().id);
-      refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); syncFogPathVisuals(); changed();
+      refreshObjects(); refreshInspector(); refreshFog(); refreshLighting(); refreshTerrainStyle(); syncFogPathVisuals(); changed();
       if (object === 'terrain') requestTerrainRebuild();
     });
     panel.querySelector('#se-delete').addEventListener('click', deleteSelection);
@@ -650,6 +666,15 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         registry.changeLighting(settings); refreshLighting(); changed();
       });
     }
+    for (const input of panel.querySelectorAll('[data-terrain-style]')) {
+      input.addEventListener('pointerdown', () => model.begin());
+      input.addEventListener('change', () => model.commit());
+      input.addEventListener('input', () => {
+        const settings = { ...registry.terrainStyle,
+          [input.dataset.terrainStyle]: input.type === 'color' ? input.value : Number(input.value) };
+        registry.changeTerrainStyle(settings); refreshTerrainStyle(); changed();
+      });
+    }
   }
   async function initialize() {
     const { TransformControls } = await import('./vendor/TransformControls.mjs');
@@ -705,7 +730,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (binding.helper) makeHelper(binding);
       }
       makeFogPathVisuals(location);
-      controls.enabled = true; select(null); refreshObjects(); refreshFog(); refreshLighting(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
+      controls.enabled = true; select(null); refreshObjects(); refreshFog(); refreshLighting(); refreshTerrainStyle(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
       focusPoint.copy(camera.position).add(direction.set(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(15));
       if (model.diff().changes.length) void copyDiff(model.text());
     } catch (error) {

@@ -6,11 +6,12 @@ import { createLocationStreaming } from './game/location-streaming.mjs';
 import { createGeometryClient } from './render/geometry-client.mjs?v=4';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs';
+import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=1';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=13';
 import { createPlayerOcclusionReveal } from './render/player-occlusion-reveal.mjs?v=2';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=128';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=134';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=138';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=129';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=135';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=139';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -166,6 +167,9 @@ async function start() {
     sunLight.position.set(...settings.direction);
     sunLight.intensity = settings.intensity;
     sunLight.color.set(settings.color);
+  }, setTerrainStyle(settings) {
+    for (const location of Object.values(locations)) if (location.sceneGroup)
+      applyTerrainEdgeStyle(location.sceneGroup, THREE, settings);
   }, setFog(settings) {
     scene.background.set(settings.color); renderer.setClearColor(settings.color);
     playerOcclusionReveal.updateSettings(settings);
@@ -947,6 +951,7 @@ async function start() {
       art: location.art, terrainStyle: location.terrainStyle, terrainEdits: sceneRegistry.terrainEdits(id) });
     if (terrain.layout) Object.assign(location, terrain.layout);
     if (activeCampaignGraph) { applyCampaignGraphToLocation(location, activeCampaignGraph); sceneRegistry.graphChanged(location); }
+    applyTerrainEdgeStyle(terrain.group, THREE, sceneRegistry.terrainStyle);
     location.sceneGroup = terrain.group; locationGroups[id] = terrain.group;
     terrain.group.visible = false; scene.add(terrain.group);
     location.terrainHeightMap = restoreTerrainSampler(terrain.heightMap,
@@ -1012,6 +1017,7 @@ async function start() {
     const removed = location.sceneGroup.children.filter(isTerrain);
     for (const object of removed) location.sceneGroup.remove(object);
     const replacement = result.group.children.filter(isTerrain);
+    applyTerrainEdgeStyle(result.group, THREE, sceneRegistry.terrainStyle);
     location.edgeShade?.applyTo(result.group);
     for (const object of replacement) location.sceneGroup.add(object);
     location.terrainHeightMap = restoreTerrainSampler(result.heightMap,
