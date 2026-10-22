@@ -1,4 +1,4 @@
-import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=13';
+import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=14';
 import { markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
 import { EXIT_FOG_CENTER_DEPTH, EXIT_FOG_LENGTH } from '../exit-fog.mjs';
 

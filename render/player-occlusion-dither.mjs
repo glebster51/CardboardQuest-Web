@@ -1,4 +1,4 @@
-export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealInnerRadius: 85, revealOuterRadius: 311,
+export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealEnabled: true, revealInnerRadius: 85, revealOuterRadius: 311,
   revealNoiseEnabled: true, revealNoiseType: 'gaussian', revealNoiseSize: 115, revealNoiseShift: 1,
   revealNoiseMultiply: .6, revealNoiseSpeedX: .08, revealNoiseSpeedY: .41, revealCheckerSize: 1,
   revealDepthFadeAdd: .8, revealDepthFadeMultiply: 1.25 });
@@ -14,6 +14,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>
       uniform float cqRevealEnabled;
+      uniform float cqRevealEffectEnabled;
       uniform vec2 cqRevealScreen;
       uniform float cqRevealPlayerDepth;
       uniform float cqRevealInnerRadius;
@@ -37,7 +38,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
       }`)
     .replace('#include <opaque_fragment>', `
       float cqRevealDistance = length(gl_FragCoord.xy - cqRevealScreen);
-      if (cqRevealEnabled > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
+      if (cqRevealEnabled > 0.5 && cqRevealEffectEnabled > 0.5 && cqRevealDistance < cqRevealOuterRadius) {
         float cqRevealCoverage = 1.0 - smoothstep(cqRevealInnerRadius, cqRevealOuterRadius, cqRevealDistance);
         if (cqRevealNoiseEnabled > 0.5 && cqRevealDistance > cqRevealInnerRadius) {
           vec2 cqRevealNoiseUv = gl_FragCoord.xy / (cqRevealNoiseSize * 32.0)
@@ -84,6 +85,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
   }
   const uniforms = {
     cqRevealEnabled: { value: 0 },
+    cqRevealEffectEnabled: { value: Number(PLAYER_REVEAL_DEFAULTS.revealEnabled) },
     cqRevealScreen: { value: new THREE.Vector2() },
     cqRevealPlayerDepth: { value: 0 },
     cqRevealInnerRadius: { value: PLAYER_REVEAL_DEFAULTS.revealInnerRadius },
@@ -104,6 +106,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
   const viewPosition = new THREE.Vector3();
   const viewport = new THREE.Vector2();
   let innerRadius = PLAYER_REVEAL_DEFAULTS.revealInnerRadius;
+  let effectEnabled = PLAYER_REVEAL_DEFAULTS.revealEnabled;
   let outerRadius = PLAYER_REVEAL_DEFAULTS.revealOuterRadius;
   let depthFadeAdd = PLAYER_REVEAL_DEFAULTS.revealDepthFadeAdd;
   let depthFadeMultiply = PLAYER_REVEAL_DEFAULTS.revealDepthFadeMultiply;
@@ -135,6 +138,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
   }
 
   function updateSettings(settings = {}) {
+    effectEnabled = settings.revealEnabled ?? effectEnabled;
     innerRadius = settings.revealInnerRadius ?? innerRadius;
     outerRadius = settings.revealOuterRadius ?? outerRadius;
     depthFadeAdd = settings.revealDepthFadeAdd ?? depthFadeAdd;
@@ -148,6 +152,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
     noiseSpeedX = settings.revealNoiseSpeedX ?? noiseSpeedX;
     noiseSpeedY = settings.revealNoiseSpeedY ?? noiseSpeedY;
     uniforms.cqRevealNoiseEnabled.value = noiseEnabled ? 1 : 0;
+    uniforms.cqRevealEffectEnabled.value = effectEnabled ? 1 : 0;
     uniforms.cqRevealDepthFadeAdd.value = depthFadeAdd;
     uniforms.cqRevealDepthFadeMultiply.value = depthFadeMultiply;
     if (loadNoiseTexture) uniforms.cqRevealNoiseMap.value = loadNoiseTexture(noiseType);

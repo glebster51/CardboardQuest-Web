@@ -1,6 +1,6 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '159';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=7';
+export const SCENE_BUILD = '160';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=8';
 import { catalogAsset } from './asset-catalog.mjs?v=5';
 import { validateFogPaths } from '../fog-paths.mjs';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
@@ -60,13 +60,15 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
       throw new Error('Invalid unit puck colors');
     return value;
   }
-  const allowed = fog ? ['start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
+  const allowed = fog ? ['enabled', 'revealEnabled', 'start', 'end', 'color', 'tint', 'curve', 'revealInnerRadius', 'revealOuterRadius',
     'revealNoiseEnabled', 'revealNoiseType', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply',
     'revealNoiseSpeedX', 'revealNoiseSpeedY', 'revealCheckerSize', 'revealDepthFadeAdd', 'revealDepthFadeMultiply']
     : lighting ? ['direction', 'intensity', 'color'] : ['position', 'rotation', 'scale', 'asset', 'size'];
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected scene value field');
   if (fog) {
-    if (!Number.isFinite(value.start) || !Number.isFinite(value.end) || value.start < -20 || value.end > 60 || value.end - value.start < .1
+    if ((value.enabled !== undefined && typeof value.enabled !== 'boolean')
+      || (value.revealEnabled !== undefined && typeof value.revealEnabled !== 'boolean')
+      || !Number.isFinite(value.start) || !Number.isFinite(value.end) || value.start < -20 || value.end > 60 || value.end - value.start < .1
       || !/^#[0-9a-f]{6}$/i.test(value.color) || !Number.isFinite(value.tint) || value.tint < 0 || value.tint > 1
       || !Number.isFinite(value.curve) || value.curve < .2 || value.curve > 4
       || (value.revealInnerRadius !== undefined && (!Number.isFinite(value.revealInnerRadius) || value.revealInnerRadius < 0 || value.revealInnerRadius > 480))

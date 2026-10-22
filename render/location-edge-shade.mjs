@@ -1,5 +1,5 @@
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=5';
-import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=9';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=6';
+import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=10';
 export const LOCATION_FAR_COLOR = 0x242039;
 const originalMaterialHooks = new WeakMap();
 
@@ -185,7 +185,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
   texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = false; texture.needsUpdate = true;
-  const uniforms = { cqPathFogMap: { value: texture },
+  const uniforms = { cqPathFogMap: { value: texture }, cqPathFogEnabled: { value: Number(settings.enabled !== false) },
     cqPathFogColor: { value: new THREE.Color(settings.color) },
     cqPathFogTint: { value: settings.tint }, cqPathFogCurve: { value: settings.curve },
     cqPathFogBounds: { value: new THREE.Vector4(bounds.minX, bounds.minZ, width, height) } };
@@ -211,6 +211,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>
           uniform sampler2D cqPathFogMap;
+          uniform float cqPathFogEnabled;
           uniform vec3 cqPathFogColor;
           uniform float cqPathFogTint;
           uniform float cqPathFogCurve;
@@ -244,7 +245,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 cqPathFogUv = (vCQLocationWorld.xz - cqPathFogBounds.xy) / cqPathFogBounds.zw;
-          float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r;`)
+          float cqPathFog = texture2D(cqPathFogMap, cqPathFogUv).r * cqPathFogEnabled;`)
         .replace('#include <opaque_fragment>', `vec3 cqBaseLight = max(outgoingLight, vec3(0.0));
           vec3 cqSoftTint = cqSoftLight(cqBaseLight, cqPathFogColor);
           vec3 cqOverlaid = mix(cqBaseLight, cqSoftTint, cqPathFog * cqPathFogTint);
@@ -254,7 +255,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
           #include <opaque_fragment>`);
     };
     const previousCacheKey = originalHooks.customProgramCacheKey;
-      material.customProgramCacheKey = () => `${previousCacheKey?.call(material) ?? ''}|cq-location-path-fog-v20-voronoi-texture-${reveal ? 'reveal' : 'opaque'}`;
+      material.customProgramCacheKey = () => `${previousCacheKey?.call(material) ?? ''}|cq-location-path-fog-v21-voronoi-texture-${reveal ? 'reveal' : 'opaque'}`;
     material.needsUpdate = true;
   };
   const applyTo = root => applyLocationEdgeShade(root, patchMaterial);
@@ -263,6 +264,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     const previous = settings; settings = { ...settings, ...next };
     if (previous.start !== settings.start || previous.end !== settings.end) redrawPathTexture();
     uniforms.cqPathFogColor.value.set(settings.color);
+    uniforms.cqPathFogEnabled.value = Number(settings.enabled !== false);
     uniforms.cqPathFogTint.value = settings.tint; uniforms.cqPathFogCurve.value = settings.curve;
   };
   const redrawPathTexture = () => {

@@ -2,6 +2,8 @@
 export const SCENE_OVERRIDES = {
   "version": 1,
   "fog": {
+    "enabled": true,
+    "revealEnabled": true,
     "start": -2.2,
     "end": 10.9,
     "color": "#242039",

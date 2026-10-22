@@ -1,6 +1,7 @@
 export function createPlayerRevealSettingsMarkup() {
   return `<details class="se-module" open><summary>Просвет сквозь окружение</summary>
     <div class="se-module-content se-player-reveal" role="group" aria-label="Настройки просвета сквозь окружение">
+      <label class="se-reveal-toggle"><input data-reveal-setting="revealEnabled" aria-label="Включить просвет игрока сквозь окружение" type="checkbox"> Просвет сквозь окружение</label>
       <label>Внутренний радиус <output></output><input data-reveal-setting="revealInnerRadius" aria-label="Внутренний радиус просвета игрока" type="range" min="0" max="480" step="1"></label>
       <label>Внешний радиус <output></output><input data-reveal-setting="revealOuterRadius" aria-label="Внешний радиус просвета игрока" type="range" min="1" max="640" step="1"></label>
       <label>Плавность глубины Add <output></output><input data-reveal-setting="revealDepthFadeAdd" aria-label="Добавка плавности просвета по глубине" type="range" min="0" max="4" step=".01"></label>

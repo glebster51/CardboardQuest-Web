@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createTerrainRenderer } from './terrain-renderer.mjs?v=3';
+import { createTerrainRenderer } from './terrain-renderer.mjs?v=4';
 import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=5';
 import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=11';
 import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=11';

@@ -3,18 +3,18 @@ import { createGameAudio } from './audio/game-audio.mjs?v=3';
 import { createAudioControls } from './audio/audio-controls.mjs';
 import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=2';
 import { createLocationStreaming } from './game/location-streaming.mjs';
-import { createGeometryClient } from './render/geometry-client.mjs?v=8';
+import { createGeometryClient } from './render/geometry-client.mjs?v=9';
 import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=3';
 import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs';
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=26';
-import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=12';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=27';
+import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
-import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=132';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=145';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=167';
+import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=133';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=146';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=168';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=5';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -1100,7 +1100,7 @@ async function start() {
       exits: location.exits, dropZones: location.dropZones, hazards: location.hazards,
       fogPaths: location.fogPaths,
       art: location.art, terrainStyle: location.terrainStyle, terrainEdits: sceneRegistry.terrainEdits(id),
-      fog: { start: sceneRegistry.fog.start, end: sceneRegistry.fog.end } });
+      fog: { enabled: sceneRegistry.fog.enabled, start: sceneRegistry.fog.start, end: sceneRegistry.fog.end } });
     if (terrain.layout) Object.assign(location, terrain.layout);
     if (activeCampaignGraph) { applyCampaignGraphToLocation(location, activeCampaignGraph); sceneRegistry.graphChanged(location); }
     applyTerrainEdgeStyle(terrain.group, THREE, sceneRegistry.terrainStyle);
@@ -1255,7 +1255,7 @@ async function start() {
       walkablePoints: location.walkablePoints, exits: location.exits, dropZones: location.dropZones,
       fogPaths: location.fogPaths,
       hazards: location.hazards, art: location.art, terrainStyle: location.terrainStyle, terrainEdits: edits,
-      fog: { start: sceneRegistry.fog.start, end: sceneRegistry.fog.end },
+      fog: { enabled: sceneRegistry.fog.enabled, start: sceneRegistry.fog.start, end: sceneRegistry.fog.end },
     });
     const isTerrain = object => /^(terrain|playfield)-top-/.test(object.name);
     const removed = location.sceneGroup.children.filter(isTerrain);
@@ -1969,7 +1969,7 @@ async function start() {
   reportLoadStage('Подключение редактора сцены');
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
     rebuildTerrain: rebuildLocationTerrain,
-    onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end') scheduleTerrainFogRebuild(); },
+    onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end' || key === 'enabled') scheduleTerrainFogRebuild(); },
     onFogPathsChange() { scheduleTerrainFogRebuild(); },
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
     getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,

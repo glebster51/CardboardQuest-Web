@@ -1,5 +1,5 @@
-import { FOG_DEFAULTS } from './fog-settings.mjs?v=5';
-import { buildFogPathTopology, fogPathDistanceAt, isInsideFogLoop } from './render/location-edge-shade.mjs?v=25';
+import { FOG_DEFAULTS } from './fog-settings.mjs?v=6';
+import { buildFogPathTopology, fogPathDistanceAt, isInsideFogLoop } from './render/location-edge-shade.mjs?v=27';
 
 const cross2 = (ax, az, bx, bz) => ax * bz - az * bx;
 
@@ -26,6 +26,7 @@ export function terrainFogCullDistance(fog = FOG_DEFAULTS) {
 }
 
 export function shouldCullTerrainSideFace(faceCenter, faceNormal, levelCenter, fogTopology, fog = FOG_DEFAULTS) {
+  if (fog.enabled === false) return false;
   if (!fogTopology?.paths?.length || isInsideFogLoop(faceCenter.x, faceCenter.z, fogTopology.clearRegions)) return false;
   if (fogPathDistanceAt(faceCenter.x, faceCenter.z, fogTopology.paths) < terrainFogCullDistance(fog)) return false;
   const towardCenterX = levelCenter.x - faceCenter.x, towardCenterZ = levelCenter.z - faceCenter.z;
