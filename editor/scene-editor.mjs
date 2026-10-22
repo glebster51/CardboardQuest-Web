@@ -725,8 +725,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     }
   }
   async function initialize() {
+    const loadStatus = window.__CQ_LOAD_STATUS__ ?? (() => {});
+    loadStatus('Редактор: импорт TransformControls');
     const { TransformControls } = await import('./vendor/TransformControls.mjs');
+    loadStatus('Редактор: импорт TransformControls', 'ready');
+    loadStatus('Редактор: создание HTML-панели');
     makePanel(); helperRoot = new THREE.Group(); helperRoot.userData.cqRenderDebugExclude = true; scene.add(helperRoot);
+    loadStatus('Редактор: создание HTML-панели', 'ready');
+    loadStatus('Редактор: создание гизмо и отладочных инструментов');
     pathRoot = new THREE.Group(); pathRoot.userData.cqRenderDebugExclude = true; pathRoot.visible = false; scene.add(pathRoot);
     terrainBrush = new THREE.Mesh(new THREE.RingGeometry(terrainRadius * .94, terrainRadius, 64),
       new THREE.MeshBasicMaterial({ color: 0x9deaa9, transparent: true, opacity: .9, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
@@ -744,6 +750,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       registry.change(selected); refreshInspector(); changed();
     });
     controls.addEventListener('mouseUp', () => model.commit());
+    loadStatus('Редактор: создание гизмо и отладочных инструментов', 'ready');
   }
   async function toggle() {
     if (opening || (!active && !canOpen())) return;
@@ -766,12 +773,17 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       return;
     }
     active = true; opening = true; onActiveChange(true);
+    const loadStatus = window.__CQ_LOAD_STATUS__ ?? (() => {});
+    loadStatus('Редактор: открытие');
     syncEditorToggleButton();
     originalCamera = { position: camera.position.clone(), quaternion: camera.quaternion.clone() };
     try {
       if (!controls) await initialize();
       setRenderMode('normal');
-      const location = getLocation(); bindings = registry.bindings(location.id);
+      const location = getLocation();
+      loadStatus(`Редактор: объекты сцены · ${location.id}`);
+      bindings = registry.bindings(location.id);
+      loadStatus(`Редактор: объекты сцены · ${location.id}`, 'ready', `${bindings.length} объектов`);
       rememberBindings(location);
       document.body.classList.add('scene-editing'); panel.hidden = false; helperRoot.visible = true;
       ui.renderAssets();
@@ -780,10 +792,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         if (binding.helper) makeHelper(binding);
       }
       makeFogPathVisuals(location);
+      loadStatus('Редактор: заполнение панели');
       controls.enabled = true; select(null); refreshObjects(); refreshFog(); refreshLighting(); refreshTerrainStyle(); refreshUnitPuckColors(); ui.diff.value = model.text(); refreshChangeList(); cameraAngles();
       focusPoint.copy(camera.position).add(direction.set(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(15));
       if (model.diff().changes.length) void copyDiff(model.text());
+      loadStatus('Редактор: открыт', 'ready');
     } catch (error) {
+      const stackLine = String(error?.stack ?? '').split('\n').find(line => /:\d+:\d+\)?$/.test(line.trim()))?.trim();
+      loadStatus('Редактор: ошибка', 'error', `${error.message || error}${stackLine ? ` · ${stackLine}` : ''}`);
       active = false; onActiveChange(false); document.body.classList.remove('scene-editing');
       syncEditorToggleButton();
       if (panel) panel.hidden = true;

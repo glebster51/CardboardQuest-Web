@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=88">
+  <link rel="stylesheet" href="style.css?v=89">
   <link rel="stylesheet" href="editor/editor.css?v=146">
   <script type="importmap">
     {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
@@ -128,7 +128,11 @@
   </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
-  <script type="module" src="app.js?v=196"></script>
+  <aside id="load-debug" aria-live="polite" aria-label="Диагностика загрузки" hidden>
+    <header><strong>Диагностика загрузки</strong><span id="load-debug-current">HTML готов · ожидаю app.js</span></header>
+    <ol id="load-debug-list"><li data-state="ready">HTML-оболочка · готова</li></ol>
+  </aside>
+  <script type="module" src="app.js?v=197"></script>
 </body>
 </html>
 

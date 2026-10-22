@@ -14,7 +14,7 @@ import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/he
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=132';
 import { createSceneRegistry } from './editor/scene-registry.mjs?v=143';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=162';
+import { installSceneEditor } from './editor/scene-editor.mjs?v=163';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=4';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
@@ -32,7 +32,7 @@ import { buildLocationMapGraph } from './game/location-map-data.mjs';
 import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
 import { createFigureFactory } from './render/figure-factory.mjs?v=6';
-import { createGroundRenderer } from './render/ground-renderer.mjs?v=4';
+import { createGroundRenderer } from './render/ground-renderer.mjs?v=5';
 import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9';
 import { createScenerySystem } from './render/scenery-system.mjs?v=10';
 import { populateNarrativeScenery } from './render/location-scenery.mjs?v=4';
@@ -59,6 +59,26 @@ import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCH
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
+const loadDebugEnabled = new URLSearchParams(location.search).get('loadDebug') === '1';
+const loadDebugPanel = document.querySelector('#load-debug');
+const loadDebugList = document.querySelector('#load-debug-list');
+const loadDebugCurrent = document.querySelector('#load-debug-current');
+let currentLoadStage = 'JavaScript entry';
+function reportLoadStage(name, status = 'running', detail = '') {
+  currentLoadStage = name;
+  if (!loadDebugEnabled || !loadDebugPanel || !loadDebugList) return;
+  loadDebugPanel.hidden = false;
+  loadDebugCurrent.textContent = `${status.toUpperCase()} · ${name}${detail ? ` · ${detail}` : ''}`;
+  const row = document.createElement('li'); row.dataset.state = status;
+  row.textContent = `${new Date().toLocaleTimeString()} · ${name} · ${status}${detail ? ` · ${detail}` : ''}`;
+  loadDebugList.append(row);
+  while (loadDebugList.children.length > 80) loadDebugList.firstElementChild.remove();
+  loadDebugList.scrollTop = loadDebugList.scrollHeight;
+}
+if (loadDebugEnabled) {
+  reportLoadStage('JavaScript и статические модули', 'ready');
+  window.__CQ_LOAD_STATUS__ = reportLoadStage;
+}
 const audio = createGameAudio();
 const scaled = value => value * LOCATION_SCALE;
 const yieldFrameWork = () => new Promise(resolve => {
@@ -79,7 +99,9 @@ const MAX_AIM_MARKER_EXTENSION = 5.4 * AIM_MARKER_LENGTH_SCALE;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
 async function start() {
+  reportLoadStage('Создание WebGL-рендера');
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
+  reportLoadStage('Создание WebGL-рендера', 'ready');
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setClearColor(LOCATION_FAR_COLOR);
   renderer.shadowMap.enabled = true;
@@ -183,16 +205,20 @@ async function start() {
   let sunLight = null;
   scene.background = new THREE.Color(LOCATION_FAR_COLOR);
   let savedCampaign = null;
+  reportLoadStage('Сохранение кампании и текущая локация');
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
   const campaignState = createCampaignState(savedCampaign);
   campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
   const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE, [campaignState.currentLocationId]);
+  reportLoadStage('Сохранение кампании и текущая локация', 'ready', campaignState.currentLocationId);
   let activeCampaignGraph = SCENE_OVERRIDES.graph ?? null;
+  reportLoadStage(`Карта глубины: ${campaignState.currentLocationId}`);
   await loadLocationDepthMaps({ [campaignState.currentLocationId]: locations[campaignState.currentLocationId] });
   // Rebuild authored footprints now that raster-derived features (notably the
   // black river mask) are available to gameplay collision and floor cutting.
   if (locations[campaignState.currentLocationId].art.depthMap)
     createCampaignLocations(locations, LOCATION_SCALE, [campaignState.currentLocationId]);
+  reportLoadStage(`Карта глубины: ${campaignState.currentLocationId}`, 'ready');
   const authoredEntry = SCENE_OVERRIDES.locations[campaignState.currentLocationId]?.entry;
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
@@ -216,7 +242,9 @@ async function start() {
       location.exitVisuals?.shadowMaterial.color.set(settings.color);
     }
   } });
+  reportLoadStage('Реестр сцены и релизные настройки');
   sceneRegistry.sync();
+  reportLoadStage('Реестр сцены и релизные настройки', 'ready');
   for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
     const location = locations[id];
     location.defeats = stored.defeats ?? location.defeats;
@@ -232,6 +260,7 @@ async function start() {
   const playerStart = resolveCampaignPlayerStart(locations[campaignState.currentLocationId], {
     health: savedCampaign?.playerHealth, maxHealth: heroBody.maxHealth, position: savedCampaign?.playerPosition,
   });
+  reportLoadStage('Точка появления игрока', 'ready', `${playerStart.position.x}, ${playerStart.position.z}`);
   heroBody.health = playerStart.health;
   heroBody.x = playerStart.position.x; heroBody.z = playerStart.position.z;
   const savedLastSafePosition = resolveCampaignPlayerStart(locations[campaignState.currentLocationId], {
@@ -405,6 +434,7 @@ async function start() {
       c.stroke();
     }
   });
+  reportLoadStage('Текстура: атлас сердец');
   const heartAtlasImage = await new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
@@ -443,6 +473,7 @@ async function start() {
   });
   const heartMaterials = heartTextures.map(map => new THREE.MeshBasicMaterial({ map, transparent: true,
     side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+  reportLoadStage('Текстура: атлас сердец', 'ready', `${heartAtlasCanvas.width}×${heartAtlasCanvas.height}`);
   const puckAmbientShadow = texture(256, 256, (context, width, height) => {
     const gradient = context.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 2);
     gradient.addColorStop(0, 'rgba(35, 24, 12, .12)');
@@ -485,7 +516,9 @@ async function start() {
   const { create: createScenery, loadTemplate: loadSceneryTemplate, loadStateTemplates,
     createSprite: createScenerySpriteModel, facePairs: sceneryFacePairs } = scenerySystem;
   const figures = [];
+  reportLoadStage('Персонаж: игрок');
   const heroFigure = await createFigure(heroBody, 'hero');
+  reportLoadStage('Персонаж: игрок', 'ready');
   heroFigure.facing = 0;
   heroFigure.group.rotation.y = 0;
   orbit.theta = Math.PI;
@@ -529,7 +562,9 @@ async function start() {
       const body = enemyBody(`forest-goblin-${index + 1}`, 'forest', point.x, point.z,
         { combatAwake: locations.forest.combatTriggered });
       locations.forest.enemies.push(body);
+      reportLoadStage(`Персонаж: forest-goblin-${index + 1}`);
       const figure = await createFigure(body, 'goblin');
+      reportLoadStage(`Персонаж: forest-goblin-${index + 1}`, 'ready');
       figure.locationId = 'forest'; figure.group.visible = false; figure.healthHUD.visible = false;
       figure.enemyMarker.group.visible = false; figures.push(figure);
     }
@@ -538,7 +573,9 @@ async function start() {
       const point = campSpawns[index];
       const body = enemyBody(`camp-goblin-${index + 1}`, 'camp', point.x, point.z, { spawnReady: false, combatAwake: true });
       locations.camp.enemies.push(body);
+      reportLoadStage(`Персонаж: camp-goblin-${index + 1}`);
       const figure = await createFigure(body, 'goblin');
+      reportLoadStage(`Персонаж: camp-goblin-${index + 1}`, 'ready');
       figure.locationId = 'camp'; figure.spawnSource = { x: point.hutX, z: point.hutZ }; figure.spawnStarted = false;
       figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
       figures.push(figure);
@@ -548,7 +585,9 @@ async function start() {
         scaled(unit.x), scaled(unit.z), { combatAwake: true, archetype: unit.type, ...ENEMY_STATS[unit.type] });
       body.lastSafePosition = { x: body.x, z: body.z };
       locations[encounter.location].enemies.push(body);
+      reportLoadStage(`Персонаж: ${encounter.location}-${unit.id}`);
       const figure = await createFigure(body, unit.type);
+      reportLoadStage(`Персонаж: ${encounter.location}-${unit.id}`, 'ready');
       figure.locationId = encounter.location; figure.group.visible = false;
       figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
       figures.push(figure);
@@ -984,6 +1023,7 @@ async function start() {
   }
   async function buildLocation(id, stillWanted) {
     const location = locations[id];
+    reportLoadStage(`Локация ${id}: подготовка`);
     const checkpoint = async () => {
       await yieldLocationWork();
       if (!stillWanted()) throw new Error('Location preparation cancelled');
@@ -991,9 +1031,12 @@ async function start() {
     await checkpoint();
     let rebuildLayout = !location.layoutReady;
     if (location.art.depthMapUrl && !location.art.depthMap) {
+      reportLoadStage(`Карта глубины: ${id}`);
       await loadLocationDepthMaps({ [id]: location });
+      reportLoadStage(`Карта глубины: ${id}`, 'ready');
       rebuildLayout = true;
     }
+    reportLoadStage(`Геометрия террейна: ${id}`);
     const terrain = await geometryClient.run('terrain', {
       id, scale: LOCATION_SCALE, layoutReady: !rebuildLayout,
       heightSeed: location.heightSeed, walkablePoints: location.walkablePoints,
@@ -1004,16 +1047,19 @@ async function start() {
     applyTerrainEdgeStyle(terrain.group, THREE, sceneRegistry.terrainStyle);
     location.sceneGroup = terrain.group; locationGroups[id] = terrain.group;
     terrain.group.visible = false; scene.add(terrain.group);
+    reportLoadStage(`Геометрия террейна: ${id}`, 'ready', `${terrain.group.children.length} элементов`);
     location.terrainHeightMap = restoreTerrainSampler(terrain.heightMap,
       { rounded: terrain.rounded, depthMap: Boolean(location.art.depthMap), walkablePoints: location.walkablePoints });
     delete location.terrainHeightMap.layers;
     terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
     terrain.group.userData.walkablePoints = location.walkablePoints;
+    reportLoadStage(`Кромки и туман: ${id}`);
     location.edgeShade = await createLocationEdgeShade({ THREE, location, settings: sceneRegistry.fog,
       revealUniforms: playerOcclusionDither.uniforms,
       yieldWork: checkpoint });
     location.edgeShade?.update(sceneRegistry.fog);
     if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
+    reportLoadStage(`Кромки и туман: ${id}`, 'ready');
     await checkpoint();
     await createLocationEnemies(location);
     if (id === 'camp') {
@@ -1024,24 +1070,61 @@ async function start() {
     }
     await checkpoint();
     if (location.enemies.length || location.secret || location.loot.length) await ensureLootSprites();
-    await populateNarrativeScenery({ locations: { [id]: location }, createScenery, loadTemplate: loadSceneryTemplate,
+    let sceneryIndex = 0;
+    const createSceneryTracked = async (...args) => {
+      const asset = args[0], catalogEntry = catalogAsset(asset);
+      const label = `${id} · ${catalogEntry?.label ?? asset} · ${++sceneryIndex}`;
+      reportLoadStage(`Пропс: ${label}`);
+      try {
+        const prop = await createScenery(...args);
+        reportLoadStage(`Пропс: ${label}`, 'ready');
+        return prop;
+      } catch (error) {
+        reportLoadStage(`Пропс: ${label}`, 'error', error.message || String(error));
+        throw error;
+      }
+    };
+    reportLoadStage(`Окружение: ${id}`);
+    await populateNarrativeScenery({ locations: { [id]: location }, createScenery: createSceneryTracked, loadTemplate: loadSceneryTemplate,
       scale: LOCATION_SCALE, hutAnchors: CAMP_HUT_ANCHORS, puckRadius: PUCK_RADIUS, yieldWork: checkpoint });
-    const actors = await createStoryActors({ locations: { [id]: location }, createScenery, scale: LOCATION_SCALE, campaign: campaignState });
+    reportLoadStage(`Сюжетные персонажи: ${id}`);
+    const actors = await createStoryActors({ locations: { [id]: location }, createScenery: createSceneryTracked, scale: LOCATION_SCALE, campaign: campaignState });
     storyActors.actors.push(...actors.actors);
+    reportLoadStage(`Сюжетные персонажи: ${id}`, 'ready', `${actors.actors.length} актёров`);
     await checkpoint();
+    reportLoadStage(`Травы и декали: ${id}`);
     groundResources = await createGroundRenderer({ THREE, renderer, locations: { [id]: location }, specsByLocation: decorationSpecs,
       pathTargets: { camp: CAMP_HUT_ANCHORS.map(hut => ({ x: scaled(hut.x), z: scaled(hut.z) })) },
-      createLocationWalkPaths, scatterGroundDetails, resources: groundResources, geometryClient, yieldWork: checkpoint });
+      createLocationWalkPaths, scatterGroundDetails, resources: groundResources, geometryClient, yieldWork: checkpoint,
+      reportStatus: reportLoadStage });
+    reportLoadStage(`Травы и декали: ${id}`, 'ready');
+    reportLoadStage(`Выходы и барьеры: ${id}`);
     const exitLocked = locationHasLivingEnemies(location);
     location.exitBarriers = createExitBarrierBodies(location);
     if (exitLocked) location.obstacles.push(...location.exitBarriers);
     location.exitVisuals = createLocationExitVisuals({ THREE, location, locked: exitLocked });
     location.exitVisuals.shadowMaterial.color.set(sceneRegistry.fog.color);
-    if (location.secret) await makeCacheBody(location, await loadStateTemplates('assets/chest-states.png', 2));
-    for (const item of location.loot) { createLootVisual(location, item); await checkpoint(); }
-    for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) createStoryPickupVisual(location, pickup);
+    reportLoadStage(`Выходы и барьеры: ${id}`, 'ready');
+    if (location.secret) {
+      reportLoadStage(`Сундук: ${id}`);
+      const chestTemplates = await loadStateTemplates('assets/chest-states.png', 2);
+      await makeCacheBody(location, chestTemplates);
+      reportLoadStage(`Сундук: ${id}`, 'ready');
+    }
+    for (const item of location.loot) {
+      reportLoadStage(`Добыча: ${item.id}`);
+      createLootVisual(location, item); await checkpoint();
+      reportLoadStage(`Добыча: ${item.id}`, 'ready');
+    }
+    for (const pickup of location.storyPickups ?? []) if (!campaignState.flags[pickup.flag]) {
+      reportLoadStage(`Сюжетный предмет: ${pickup.id}`);
+      createStoryPickupVisual(location, pickup);
+      reportLoadStage(`Сюжетный предмет: ${pickup.id}`, 'ready');
+    }
+    reportLoadStage(`Редакторские объекты: ${id}`);
     await sceneRegistry.restorePlaced(location, createEditorAsset);
     sceneRegistry.prepare(location);
+    reportLoadStage(`Редакторские объекты: ${id}`, 'ready', `${sceneRegistry.bindings(id).length} объектов`);
     for (const figure of figures) if (figure.locationId === id && figure.body.team === 'enemy')
       sceneRegistry.bindEntity(location, `enemy:${figure.body.id}`, `Враг · ${figure.body.archetype}`, figure.group, {
         category: 'enemies', deletable: false,
@@ -1052,9 +1135,16 @@ async function start() {
     // a neighboring location's textures in its first visible frame.
     const roots = [location.sceneGroup, ...figures.filter(figure => figure.locationId === id).map(figure => figure.group)];
     if (!frameWorkStarted) roots.push(heroFigure.group);
-    for (const resource of sceneResources(roots)) if (resource.isTexture) { renderer.initTexture(resource); await checkpoint(); }
+    let textureIndex = 0;
+    for (const resource of sceneResources(roots)) if (resource.isTexture) {
+      textureIndex++;
+      reportLoadStage(`GPU-текстура ${textureIndex}: ${resource.name || resource.image?.src?.split('/').pop() || 'CanvasTexture'}`);
+      renderer.initTexture(resource); await checkpoint();
+      reportLoadStage(`GPU-текстура ${textureIndex}`, 'ready');
+    }
     await checkpoint();
     location.runtimeReady = true;
+    reportLoadStage(`Локация ${id}: готова`, 'ready');
     return location;
   }
   async function rebuildLocationTerrain(location, edits) {
@@ -1122,7 +1212,11 @@ async function start() {
   const locationStreaming = createLocationStreaming({
     neighbors: id => locations[id].exits.map(exit => exit.to).filter(Boolean), build: buildLocation, release: releaseLocation,
     schedule: callback => requestAnimationFrame(() => setTimeout(callback, 0)),
-    onError: error => console.error('Не удалось подготовить соседнюю локацию', error),
+    onError: error => {
+      const stackLine = String(error?.stack ?? '').split('\n').find(line => /:\d+:\d+\)?$/.test(line.trim()))?.trim();
+      reportLoadStage('Подготовка соседней локации', 'error', `${error.message || error}${stackLine ? ` · ${stackLine}` : ''}`);
+      console.error('Не удалось подготовить соседнюю локацию', error);
+    },
   });
 
   function refreshLocationInfo() {
@@ -1261,8 +1355,9 @@ async function start() {
       return true;
     } catch (error) {
       console.error('Не удалось открыть локацию', error);
+      reportLoadStage(`Переход в локацию ${locationId}`, 'error', error.message || String(error));
       document.querySelector('#error').hidden = false;
-      document.querySelector('#error').textContent = `Не удалось подготовить локацию: ${error.message}. Попробуй перейти ещё раз.`;
+      document.querySelector('#error').textContent = `Не удалось подготовить локацию «${locationId}» на этапе «${currentLoadStage}»: ${error.message}. Попробуй перейти ещё раз.`;
       return false;
     } finally { locationTransition = false; loading.hidden = true; }
   }
@@ -1750,7 +1845,9 @@ async function start() {
     }
   }
   addEventListener('resize', resize); resize();
+  reportLoadStage(`Стриминг: подготовка текущей локации ${activeLocation.id}`);
   await locationStreaming.retain(activeLocation.id, false);
+  reportLoadStage(`Стриминг: подготовка текущей локации ${activeLocation.id}`, 'ready');
   showActiveLocationFigures();
   rebuildBodies();
   prepareScenePresentation();
@@ -1762,12 +1859,14 @@ async function start() {
   loading.hidden = true;
   persistCampaign();
   if (initialStoryCard) showStoryCard(initialStoryCard);
+  reportLoadStage('Подключение редактора сцены');
   sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
     rebuildTerrain: rebuildLocationTerrain,
     getLocation: () => activeLocation, canOpen: () => !locationTransition,
     getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
     getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
     onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
+  reportLoadStage('Подключение редактора сцены', 'ready');
   if (debugMode) window.__CQ_DEBUG__ = {
     locations: Object.keys(locations),
     enter(id) { return enterLocation(id, activeLocation.id); },
@@ -2144,6 +2243,7 @@ async function start() {
     }
     renderScene();
   });
+  reportLoadStage('Игровой цикл и рендер', 'ready');
   frameWorkStarted = true;
   requestAnimationFrame(() => requestAnimationFrame(() => {
     void enableTiltShift();
@@ -2153,9 +2253,11 @@ async function start() {
 }
 
 start().catch(error => {
+  const stackLine = String(error?.stack ?? '').split('\n').find(line => /:\d+:\d+\)?$/.test(line.trim()))?.trim();
+  reportLoadStage(currentLoadStage, 'error', `${error.message || error}${stackLine ? ` · ${stackLine}` : ''}`);
   loading.hidden = true;
   document.querySelector('#error').hidden = false;
-  document.querySelector('#error').textContent = `Не удалось загрузить сцену: ${error.message || error}. Обнови страницу.`;
+  document.querySelector('#error').textContent = `Не удалось загрузить сцену на этапе «${currentLoadStage}»: ${error.message || error}. Обнови страницу.`;
   console.error(error);
 });
 

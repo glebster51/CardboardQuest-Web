@@ -58,15 +58,22 @@ function addInstances(THREE, parent, kind, marks, materials, upright = false, id
 
 /** Load shared decal resources once and build per-location instanced scenery. */
 export async function createGroundRenderer({ THREE, renderer, locations, specsByLocation,
-  pathTargets = {}, createLocationWalkPaths, scatterGroundDetails, assetBase = 'assets/', resources, geometryClient, yieldWork = async () => {} }) {
+  pathTargets = {}, createLocationWalkPaths, scatterGroundDetails, assetBase = 'assets/', resources, geometryClient,
+  yieldWork = async () => {}, reportStatus = () => {} }) {
   const textureCache = new Map();
   const loadTexture = path => {
     if (!textureCache.has(path)) {
+      const stage = `Текстура окружения: ${path.split('/').pop()}`;
+      reportStatus(stage);
       textureCache.set(path, new THREE.TextureLoader().loadAsync(`${assetBase}${path.replace(/^assets\//, '')}`).then(texture => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        return texture;
-      }));
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          reportStatus(stage, 'ready');
+          return texture;
+        }).catch(error => {
+          reportStatus(stage, 'error', error.message || String(error));
+          throw error;
+        }));
     }
     return textureCache.get(path);
   };
@@ -91,11 +98,19 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
       ...details.trail.map((mark, index) => [mark, `ground-trail:${String(index).padStart(4, '0')}`])]);
     const grassIds = new Map(details.grass.map((mark, index) => [mark, `ground-grass:${String(index).padStart(4, '0')}`]));
     for (const kind of GROUND_DECALS) {
-      addInstances(THREE, group, kind, marks.filter(mark => mark.kind === kind), materials, false, decalIds);
+      const matching = marks.filter(mark => mark.kind === kind);
+      const stage = `Декали окружения: ${location.id} · ${kind}`;
+      reportStatus(stage);
+      addInstances(THREE, group, kind, matching, materials, false, decalIds);
+      reportStatus(stage, 'ready', `${matching.length} экземпляров`);
       await yieldWork();
     }
     for (const kind of GRASS_DECALS) {
-      addInstances(THREE, group, kind, details.grass.filter(mark => mark.kind === kind), materials, true, grassIds);
+      const matching = details.grass.filter(mark => mark.kind === kind);
+      const stage = `Травинки окружения: ${location.id} · ${kind}`;
+      reportStatus(stage);
+      addInstances(THREE, group, kind, matching, materials, true, grassIds);
+      reportStatus(stage, 'ready', `${matching.length} экземпляров`);
       await yieldWork();
     }
     location.groundDetails = { ...details, paths };
