@@ -1,3 +1,6 @@
+import { EQUIPMENT_ITEMS, normalizeEquipment } from './equipment.mjs?v=1';
+import { normalizeCoins } from './currency.mjs?v=1';
+import { normalizeStatusEffects } from './status-effects.mjs?v=1';
 export const CAMPAIGN_SAVE_KEY = 'cardboardquest-campaign-v1';
 
 // Plot clues stay in the world until the player physically reaches them.
@@ -103,6 +106,11 @@ export function createCampaignState(raw = null) {
   state.collected = state.collected && typeof state.collected === 'object' ? state.collected : {};
   state.flags = state.flags && typeof state.flags === 'object' ? state.flags : {};
   state.items = state.items && typeof state.items === 'object' ? state.items : {};
+  state.equipment = normalizeEquipment(state.equipment);
+  state.coins = normalizeCoins(state.coins);
+  state.merchantPurchases = state.merchantPurchases && typeof state.merchantPurchases === 'object' ? state.merchantPurchases : {};
+  state.merchantReturns = state.merchantReturns && typeof state.merchantReturns === 'object' ? state.merchantReturns : {};
+  state.statusEffects = normalizeStatusEffects(state.statusEffects);
   state.maxHealthBonus = Math.max(0, Math.min(8, Math.trunc(Number(state.maxHealthBonus) || 0)));
   state.defenseBonus = Math.max(0, Math.min(2, Math.trunc(state.defenseBonus || 0)));
   state.damageBonus = Math.max(0, Math.min(2, Math.trunc(state.damageBonus || 0)));
@@ -197,13 +205,15 @@ export function addItems(state, items = {}) {
 export const ITEM_LABELS = Object.freeze({
   berries: 'Лесные ягоды', hardtack: 'Сухарь', jerky: 'Вяленое мясо', bandage: 'Перевязь',
   scrap: 'Медный лом', nuts: 'Орехи', bladeShard: 'Острый осколок',
+  ...Object.fromEntries(EQUIPMENT_ITEMS.map(item => [item.id, item.name])),
 });
 
 export const CONSUMABLE_HEALING = Object.freeze({ bandage: 6, jerky: 4, hardtack: 3, berries: 2 });
 
 export function consumeInventoryItem(state, item, health, maxHealth) {
   const healValue = CONSUMABLE_HEALING[item];
-  if (!healValue || !(state.items[item] > 0) || health <= 0 || health >= maxHealth)
+  const canCleanse = item === 'bandage' && state.statusEffects?.some(effect => ['poison', 'burn'].includes(effect.id));
+  if (!healValue || !(state.items[item] > 0) || health <= 0 || (health >= maxHealth && !canCleanse))
     return { health, consumed: null, healed: 0 };
   state.items[item]--;
   const nextHealth = Math.min(maxHealth, health + healValue);

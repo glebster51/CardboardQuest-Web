@@ -17,7 +17,7 @@ export function createVictoryLoop(random = Math.random) {
 }
 
 export function canCelebrateLocationVictory(location, campGoblinTotal = 8) {
-  const enemies = location?.enemies;
+  const enemies = location?.enemies?.filter(enemy => enemy.active !== false);
   if (!Array.isArray(enemies) || enemies.length === 0 || enemies.some(enemy => enemy.health > 0)) return false;
   if (location.kind === 'forest' && !location.combatTriggered) return false;
   if (location.kind === 'camp') return Boolean(location.bossSpawned)
@@ -76,7 +76,7 @@ export function advanceVictoryLoop(loop, dt, random = Math.random) {
 export function settleEnemiesForVictory(enemies) {
   let settled = 0;
   for (const enemy of enemies) {
-    if (enemy.health <= 0) continue;
+    if (enemy.active === false || enemy.health <= 0) continue;
     enemy.aiPhase = 'victory';
     enemy.aiTimer = 0;
     enemy.aiStunRemaining = 0;

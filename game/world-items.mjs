@@ -1,20 +1,25 @@
-export const WORLD_ITEM_IDS = Object.freeze([
+import { EQUIPMENT_ITEMS } from './equipment.mjs?v=1';
+import { rollCoins, validCoinDrop } from './currency.mjs?v=1';
+export const LOOT_ITEM_IDS = Object.freeze([
   'berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard',
+  ...EQUIPMENT_ITEMS.map(item => item.id),
 ]);
+export const WORLD_ITEM_IDS = Object.freeze([...LOOT_ITEM_IDS, 'coins']);
 
 export function rollEditorChestLoot(random = Math.random) {
   const rewardCount = 2 + Math.floor(Math.max(0, Math.min(.999999, random())) * 3);
   const rewards = {};
   for (let index = 0; index < rewardCount; index++) {
-    const itemId = WORLD_ITEM_IDS[Math.floor(Math.max(0, Math.min(.999999, random())) * WORLD_ITEM_IDS.length)];
+    const itemId = LOOT_ITEM_IDS[Math.floor(Math.max(0, Math.min(.999999, random())) * LOOT_ITEM_IDS.length)];
     rewards[itemId] = (rewards[itemId] ?? 0) + 1;
   }
-  return rewards;
+  return { ...rewards, coins: rollCoins('chest', random) };
 }
 
-export function rollEnemyLoot(random = Math.random) {
+export function rollEnemyLoot(random = Math.random, enemy = {}) {
   const roll = random();
-  return roll < .65 ? { berries: 1 } : roll < .93 ? { hardtack: 1 } : { jerky: 1 };
+  return { ...(roll < .65 ? { berries: 1 } : roll < .93 ? { hardtack: 1 } : { jerky: 1 }),
+    coins: rollCoins(enemy.boss ? 'boss' : enemy.archetype === 'boar' ? 'boar' : 'enemy', random) };
 }
 
 export function scatterWorldLoot({ sourceId, x, z, rewards, random = Math.random,
@@ -22,7 +27,8 @@ export function scatterWorldLoot({ sourceId, x, z, rewards, random = Math.random
   const drops = [];
   for (const [itemId, count] of Object.entries(rewards ?? {})) {
     if (!WORLD_ITEM_IDS.includes(itemId) || !Number.isFinite(count)) continue;
-    for (let index = 0; index < Math.max(0, Math.trunc(count)); index++) {
+    if (itemId === 'coins' && !validCoinDrop(count)) continue;
+    for (let index = 0; index < (itemId === 'coins' ? 1 : Math.max(0, Math.trunc(count))); index++) {
       let position = { x, z };
       for (let attempt = 0; attempt < 16; attempt++) {
         const angle = random() * Math.PI * 2;
@@ -30,7 +36,7 @@ export function scatterWorldLoot({ sourceId, x, z, rewards, random = Math.random
         const candidate = { x: x + Math.cos(angle) * radius, z: z + Math.sin(angle) * radius };
         if (isInside(candidate.x, candidate.z)) { position = candidate; break; }
       }
-      drops.push({ id: `loot-${sourceId}-${drops.length + 1}`, itemId, ...position });
+      drops.push({ id: `loot-${sourceId}-${drops.length + 1}`, itemId, ...position, ...(itemId === 'coins' ? { amount: count } : {}) });
     }
   }
   return drops;
@@ -41,9 +47,10 @@ export function normalizeWorldLoot(records) {
   const seen = new Set();
   return records.filter(item => item && typeof item.id === 'string' && item.id.length <= 140
     && !seen.has(item.id) && WORLD_ITEM_IDS.includes(item.itemId)
+    && (item.itemId !== 'coins' || validCoinDrop(item.amount ?? 1))
     && Number.isFinite(item.x) && Number.isFinite(item.z)
     && (seen.add(item.id), true))
-    .map(({ id, itemId, x, z }) => ({ id, itemId, x, z }));
+    .map(({ id, itemId, x, z, amount }) => ({ id, itemId, x, z, ...(itemId === 'coins' ? { amount: amount ?? 1 } : {}) }));
 }
 
 export function takeWorldLoot(records, id) {

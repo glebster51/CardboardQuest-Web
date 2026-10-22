@@ -28,14 +28,14 @@ body.scene-editing #hud-tools,body.scene-editing #scene-editor-toggle,body.scene
 #scene-editor .se-player-reveal{display:grid;gap:7px}
 #scene-editor .se-item-magnet{display:grid;gap:7px}
 #scene-editor .se-magnet-control{position:relative;z-index:1}
-#scene-editor .se-magnet-control:has(.se-magnet-gizmo:hover),#scene-editor .se-magnet-control:focus-within{z-index:32}
 #scene-editor .se-item-magnet label{width:100%;display:grid;grid-template-columns:1fr;gap:3px;font-size:11px;color:#d1c8b9}
 #scene-editor .se-item-magnet label>span{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
-#scene-editor .se-magnet-gizmo{position:absolute;z-index:32;left:0;top:calc(100% + 2px);width:min(268px,calc(100vw - 52px));padding:3px;border:1px solid #d6ad70;border-radius:11px;background:#20232bf5;box-shadow:0 10px 24px #0009;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .12s ease,transform .12s ease,visibility .12s;pointer-events:none}
-#scene-editor .se-magnet-control:hover .se-magnet-gizmo,#scene-editor .se-magnet-control:focus-within .se-magnet-gizmo{opacity:1;visibility:visible;transform:translateY(0)}
-#scene-editor .se-magnet-gizmo svg{display:block;width:100%;height:auto}
-#scene-editor .se-magnet-gizmo .se-gizmo-note{fill:#c8baa5;font:600 8px system-ui,sans-serif;letter-spacing:1px}
-#scene-editor .se-magnet-gizmo .se-gizmo-value{fill:#f1bd6d;font:700 10px system-ui,sans-serif}
+#se-item-magnet-preview{position:fixed;inset:0;width:100vw;height:100vh;z-index:2006;pointer-events:none}
+#se-item-magnet-preview[hidden]{display:none!important}
+#se-item-magnet-backpack{position:fixed;z-index:2007;pointer-events:none}
+#se-item-magnet-backpack[hidden]{display:none!important}
+#se-item-magnet-backpack svg,#se-item-magnet-backpack img{display:block;width:100%;height:100%}
+body.se-item-magnet-previewing #scene-editor .se-library,body.se-item-magnet-previewing #scene-editor .se-inspector{visibility:hidden;pointer-events:none}
 #scene-editor .se-item-magnet small{font-size:10px;color:#b9ac97}
 #scene-editor .se-player-reveal label{width:100%;display:grid;grid-template-columns:1fr auto;gap:3px;font-size:11px;color:#d1c8b9}
 #scene-editor .se-player-reveal label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px;cursor:pointer}
@@ -207,3 +207,8 @@ body.campaign-graph-open #interact,body.campaign-graph-open #scene-editor,body.c
 #scene-editor .se-terrain-appearance input[type=color]{width:30px;height:24px}
 #scene-editor .se-terrain-appearance output{font-size:9px}
 @media(max-width:1000px){#scene-editor .se-terrain-appearance{gap:7px 9px}#scene-editor .se-terrain-appearance label{min-width:95px}}
+#se-apply{background:#79934b;color:#fff8de;border-color:#a3bd70}
+#se-apply:disabled{opacity:.45}
+#se-apply-status{display:block;margin-top:8px;color:#ffc0a0}
+#se-apply-status[hidden]{display:none}
+.se-apply-overlay{position:fixed;inset:0;z-index:50000;display:grid;place-items:center;background:#242039e8;color:#fff0cc;font:600 18px system-ui;cursor:wait}

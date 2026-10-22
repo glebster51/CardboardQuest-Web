@@ -11,15 +11,16 @@ import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=28';
 import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
 import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=2';
+import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=149';
-import { installSceneEditor } from './editor/scene-editor.mjs?v=173';
-import { catalogAsset } from './editor/asset-catalog.mjs?v=7';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=151';
+import { connectLocalEditor, loadLocalEditorUi } from './editor/local-editor-client.mjs?v=1';
+import { catalogAsset } from './editor/asset-catalog.mjs?v=10';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
-import { advanceEnemyAI } from './game/enemy-ai.mjs?v=3';
+import { advanceEnemyAI } from './game/enemy-ai.mjs?v=4';
 import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=1';
-import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=2';
+import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=3';
 import { advanceStoneProjectile } from './game/projectiles.mjs?v=1';
 import { createPointerInput } from './game/pointer-input.mjs?v=4';
 import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=1';
@@ -30,9 +31,15 @@ import { createLocationMapView } from './render/location-map-view.mjs?v=3';
 import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=2';
 import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=2';
 import { buildLocationMapGraph } from './game/location-map-data.mjs';
-import { createInventoryPanel } from './render/inventory-panel.mjs?v=2';
+import { createInventoryPanel } from './render/inventory-panel.mjs?v=5';
+import { EQUIPMENT_ITEMS, combatBonuses, equipInventoryItem, unequipItem, grantEquipmentStarter, playerDamageTaken } from './game/equipment.mjs?v=1';
+import { createCharacterEquipment } from './render/character-equipment.mjs?v=1';
+import { COIN_SKINS, coinSkin, creditCoins, rollCoins } from './game/currency.mjs?v=1';
+import { executeMerchantTrade, canReachMerchant, merchantDefinition } from './game/merchants.mjs?v=2';
+import { createLocationMerchants, createMerchantActor } from './render/merchants.mjs?v=2';
+import { createShopPanel } from './render/shop-panel.mjs?v=2';
 import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=3';
-import { createFigureFactory } from './render/figure-factory.mjs?v=9';
+import { createFigureFactory } from './render/figure-factory.mjs?v=11';
 import { createGroundRenderer } from './render/ground-renderer.mjs?v=5';
 import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9';
 import { createScenerySystem } from './render/scenery-system.mjs?v=13';
@@ -50,11 +57,13 @@ import { recoverAfterFall } from './game/fall-recovery.mjs?v=1';
 import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, createCacheOpening } from './game/cache-animation.mjs?v=2';
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
-  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7';
-import { normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=2';
+  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=10';
+import { normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=4';
 import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
   ITEM_MAGNET_STORAGE_KEY, normalizeItemMagnetSettings } from './game/item-magnet.mjs?v=1';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=17';
+import { advanceStatusEffects, advanceStatusLocations, applyConsumableEffect, applyStatusEffect,
+  statusEffectLabels } from './game/status-effects.mjs?v=2';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,
@@ -102,6 +111,11 @@ const MAX_AIM_MARKER_EXTENSION = 5.4 * AIM_MARKER_LENGTH_SCALE;
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
 async function start() {
+  const localEditor = await connectLocalEditor();
+  let heroEquipment = null;
+  let shop = null;
+  const merchantActors = [];
+  let equipmentPosePreview = null;
   reportLoadStage('Создание WebGL-рендера');
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
   reportLoadStage('Создание WebGL-рендера', 'ready');
@@ -130,10 +144,19 @@ async function start() {
       Math.max(1, Math.round(innerHeight * scale * tiltShiftPixelRatio)));
   };
   const renderScene = () => {
+    heroEquipment?.update(elapsed);
+    const nearbyMerchant = nearestMerchant();
+    tradeButton.hidden = !nearbyMerchant || sceneEditor.active || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen();
+    if (nearbyMerchant) tradeButton.textContent = `Торговать · ${merchantDefinition(nearbyMerchant.merchantId).name}`;
+    if (!sceneEditor.active) for (const actor of merchantActors) if (actor.locationId === activeLocation.id && actor.prop.visible)
+      actor.prop.rotation.y = Math.atan2(heroBody.x - actor.body.x, heroBody.z - actor.body.z);
     if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift)) {
       return renderer.render(scene, camera);
     }
-    try { tiltShiftComposer.render(); }
+    try {
+      tiltShiftComposer.render();
+      renderSharpHudOverlay(renderer, scene, camera);
+    }
     catch (error) {
       if (ssaoPass?.enabled) {
         ssaoPass.enabled = false;
@@ -218,6 +241,8 @@ async function start() {
   reportLoadStage('Сохранение кампании и текущая локация');
   try { savedCampaign = JSON.parse(localStorage.getItem(CAMPAIGN_SAVE_KEY) || 'null'); } catch { /* Ignore a damaged local save. */ }
   const campaignState = createCampaignState(savedCampaign);
+  // One introductory set also migrates existing saves, without replacing any owned items.
+  grantEquipmentStarter(campaignState);
   campaignState.currentLocationId = campaignLocation(campaignState.currentLocationId)?.id ?? 'home';
   const locations = createCampaignLocations(createLocationNetwork(), LOCATION_SCALE, [campaignState.currentLocationId]);
   reportLoadStage('Сохранение кампании и текущая локация', 'ready', campaignState.currentLocationId);
@@ -286,7 +311,18 @@ async function start() {
   let activeLocation = locations[campaignState.currentLocationId];
   const locationTitle = document.querySelector('#location-title');
   const locationDetail = document.querySelector('#location-detail');
+  const statusEffectsHud = document.querySelector('#status-effects-hud');
+  function renderStatusEffectsHud() {
+    if (!statusEffectsHud) return;
+    statusEffectsHud.replaceChildren(...statusEffectLabels(campaignState.statusEffects).map(effect => {
+      const badge = document.createElement('span'); badge.className = 'status-effect-badge';
+      badge.dataset.kind = effect.kind; badge.textContent = `${effect.label}${effect.duration}`; return badge;
+    }));
+  }
+  let statusHudRefresh = 0;
   const interactButton = document.querySelector('#interact');
+  const tradeButton = document.createElement('button'); tradeButton.id = 'merchant-trade'; tradeButton.type = 'button'; tradeButton.hidden = true;
+  document.querySelector('#story-actions').append(tradeButton);
   const dialoguePanel = document.querySelector('#story-dialogue');
   const inventoryPanel = document.querySelector('#inventory-panel');
   const mapPanel = document.querySelector('#world-map');
@@ -364,9 +400,9 @@ async function start() {
     if (campaignGraphData) locationMap.setCampaignGraph(graph);
   }
   let inputController = null;
-  let sceneEditor = null;
+  let sceneEditor = { active: false, graphOpen: false, refreshBindings() {}, update() {} };
   const audioControls = createAudioControls({ audio, root: document.querySelector('#audio-panel'),
-    trigger: document.querySelector('#audio-toggle'), onOpen() { inputController?.cancel(); } });
+    trigger: document.querySelector('#audio-toggle'), onOpen() { inputController?.cancel(); shop?.hide(); } });
   const dialogue = createDialoguePanel({ root: dialoguePanel,
     onOpen() { inputController?.cancel(); inventory.hide(); },
     onClose() {
@@ -386,17 +422,44 @@ async function start() {
   const inventory = createInventoryPanel({ root: inventoryPanel, trigger: document.querySelector('#inventory-toggle'),
     getState: () => campaignState, getHealth: () => ({ health: heroBody.health, maxHealth: heroBody.maxHealth }),
     onOpen() { inputController?.cancel(); },
+    onEquip(id, slotIndex) {
+      const result = equipInventoryItem(campaignState, id, slotIndex);
+      if (result.changed) { heroEquipment?.update(elapsed); persistCampaign(); audio.play('pickup'); }
+      return result;
+    },
+    onUnequip(slot, index) {
+      const result = unequipItem(campaignState, slot, index);
+      if (result.changed) { heroEquipment?.update(elapsed); persistCampaign(); }
+      return result;
+    },
     onUse(id, slotIndex) {
       const result = consumeInventoryItem(campaignState, id, heroBody.health, heroBody.maxHealth);
       if (result.consumed) {
         audio.play(id === 'bandage' ? 'bandage' : 'eat');
         heroBody.health = result.health;
+        result.effectLabel = applyConsumableEffect(campaignState, id);
         campaignState.inventorySlots[slotIndex] = null;
+        renderStatusEffectsHud();
         persistCampaign();
       }
       return result;
     },
   });
+  function merchantContext(actor) {
+    return { merchantId: actor?.merchantId, locationId: actor?.locationId, health: heroBody.health,
+      enabled: merchantActors.includes(actor) && Boolean(actor?.prop.visible && actor.body.active !== false),
+      x: heroBody.x, z: heroBody.z, merchantX: actor?.body.x, merchantZ: actor?.body.z,
+      inCombat: locationHasLivingEnemies(activeLocation) };
+  }
+  function nearestMerchant() {
+    return merchantActors.filter(actor => canReachMerchant(campaignState, merchantContext(actor)))
+      .sort((a, b) => Math.hypot(a.body.x - heroBody.x, a.body.z - heroBody.z) - Math.hypot(b.body.x - heroBody.x, b.body.z - heroBody.z))[0] ?? null;
+  }
+  shop = createShopPanel({ getState: () => campaignState,
+    onOpen() { inputController?.cancel(); inventory.hide(); },
+    onTrade(actor, proposal) { return executeMerchantTrade(campaignState, actor.merchantId, proposal, merchantContext(actor)); },
+    onCommit() { audio.play('pickup'); renderInventory(); persistCampaign(); } });
+  tradeButton.addEventListener('click', () => { const actor = nearestMerchant(); if (actor) shop.open(actor); });
   const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
   playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer,
@@ -530,6 +593,10 @@ async function start() {
   const figures = [];
   reportLoadStage('Персонаж: игрок');
   const heroFigure = await createFigure(heroBody, 'hero');
+  reportLoadStage('Экипировка: картонные накладки и сферы');
+  heroEquipment = await createCharacterEquipment({ THREE, figure: heroFigure, loadTemplate: loadSceneryTemplate,
+    getEquipment: () => campaignState.equipment, sceneStencil });
+  reportLoadStage('Экипировка: картонные накладки и сферы', 'ready');
   reportLoadStage('Персонаж: игрок', 'ready');
   heroFigure.facing = 0;
   heroFigure.group.rotation.y = 0;
@@ -559,6 +626,7 @@ async function start() {
     spawnReady: stored?.spawnReady ?? options.spawnReady ?? true,
     boss: options.boss ?? false,
     archetype: options.archetype ?? 'goblin', damageQuarters: options.damageQuarters ?? 4,
+    ...(Number.isFinite(options.radius) ? { radius: options.radius } : {}), active: stored?.active ?? true,
     fell: stored?.fell ?? false,
     };
   };
@@ -629,6 +697,7 @@ async function start() {
   }]));
   refreshLocationInfo();
   const initialVisit = visitCampaignLocation(campaignState, activeLocation.id);
+  renderStatusEffectsHud();
   const initialStoryCard = initialVisit?.firstVisit ? { title: activeLocation.title, text: activeLocation.campaignIntro,
     lines: getStoryDialogue(campaignState, activeLocation.id, 'intro') } : null;
   renderInventory();
@@ -662,13 +731,13 @@ async function start() {
       const visualState = body.health <= 0 ? 'dead'
         : figure.hurtAge < .55 ? 'on-hit'
           : figure.dealDamageAge < .32 ? 'deal-damage'
-            : body.team === 'enemy' && body.aiPhase === 'aim' ? 'aiming' : 'idle';
+            : body.team === 'enemy' && ['aim', 'guard'].includes(body.aiPhase) ? 'aiming' : 'idle';
       setVisualState(figure, visualState);
       figure.healthHUD.position.set(body.x, 2.65, body.z);
       figure.healthHUD.quaternion.copy(camera.quaternion);
       if (figure.enemyMarker) {
         figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
-        figure.enemyMarker.group.rotation.y = body.aiPhase === 'aim' ? body.aiAimAngle : figure.facing;
+        figure.enemyMarker.group.rotation.y = ['aim', 'guard'].includes(body.aiPhase) ? body.aiAimAngle : figure.facing;
       }
     }
     playerMarker.group.position.set(state.x, GROUND_UI_Y, state.z);
@@ -700,7 +769,7 @@ async function start() {
   let transitionCooldown = 0;
   let locationTransition = false;
   let victorySequenceActive = false;
-  const debugMode = new URLSearchParams(location.search).has('debug');
+  const debugMode = Boolean(localEditor) && new URLSearchParams(location.search).has('debug');
   let simulationPaused = debugMode;
   const celebratedLocations = new Set();
   let protectedEntryFrom = null;
@@ -790,7 +859,7 @@ async function start() {
       lastExitPositions: location.lastExitPositions,
       openedPlacedChests: [...(location.openedPlacedChests ?? [])],
       collectedPlacedItems: [...(location.collectedPlacedItems ?? [])],
-      loot: location.loot.map(({ id, itemId, x, z }) => ({ id, itemId, x, z })),
+      loot: location.loot.map(({ id, itemId, x, z, amount }) => ({ id, itemId, x, z, ...(itemId === 'coins' ? { amount } : {}) })),
     };
   }
   function persistCampaign() {
@@ -806,10 +875,12 @@ async function start() {
   }
   document.querySelector('#inventory-toggle').addEventListener('click', () => {
     if (dialogue.isOpen() || locationTransition) return;
+    shop.hide();
     inventory.open();
   });
   mapButton.addEventListener('click', () => {
     if (dialogue.isOpen()) return;
+    shop.hide();
     inputController?.cancel(); inventory.hide();
     try {
       const graphData = ensureCampaignGraphData(campaignState, { includeVisuals: false });
@@ -866,6 +937,24 @@ async function start() {
         lootSpriteModels.set(id, await createScenerySpriteModel(canvas));
       }
       lootAtlas.dispose();
+      for (const item of EQUIPMENT_ITEMS) {
+        const source = await new THREE.TextureLoader().loadAsync(item.image);
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+        const size = Math.min(256 / source.image.width, 256 / source.image.height);
+        const width = source.image.width * size, height = source.image.height * size;
+        canvas.getContext('2d').drawImage(source.image, (256 - width) / 2, (256 - height) / 2, width, height);
+        source.dispose(); lootIconCanvases.set(item.id, canvas);
+        lootSpriteModels.set(item.id, await createScenerySpriteModel(canvas));
+      }
+      const coins = await new THREE.TextureLoader().loadAsync('assets/economy/coins.png');
+      for (const skin of COIN_SKINS) {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+        const cellWidth = coins.image.width / 3, cellHeight = coins.image.height, scale = Math.min(256 / cellWidth, 256 / cellHeight);
+        const width = cellWidth * scale, height = cellHeight * scale;
+        canvas.getContext('2d').drawImage(coins.image, skin.frame * cellWidth, 0, cellWidth, cellHeight, (256 - width) / 2, (256 - height) / 2, width, height);
+        lootIconCanvases.set(skin.id, canvas); lootSpriteModels.set(skin.id, await createScenerySpriteModel(canvas));
+      }
+      coins.dispose();
     })().catch(error => { lootAssetsPromise = null; throw error; });
     return lootAssetsPromise;
   }
@@ -967,8 +1056,10 @@ async function start() {
   function createLootVisual(location, item, source = null) {
     const group = new THREE.Group();
     group.name = item.id;
-    const model = lootSpriteModels.get(item.itemId) ?? lootSpriteModels.get('scrap');
-    const icon = model.group.clone(true), iconHeight = .54 * 3, iconScale = iconHeight / 2.05;
+    const modelKey = item.itemId === 'coins' ? coinSkin(item.amount).id : item.itemId;
+    const model = lootSpriteModels.get(modelKey) ?? lootSpriteModels.get('scrap');
+    group.userData.lootSkin = modelKey;
+    const icon = model.group.clone(true), iconHeight = item.itemId === 'coins' ? .85 : .54 * 3, iconScale = iconHeight / 2.05;
     bindSsaoSpriteAlphaCutouts(icon);
     icon.scale.set(iconScale, iconScale, 1); icon.position.y = .11 + iconHeight / 2; group.add(icon);
     const facePair = { prop: group, front: icon.getObjectByName('scenery-front'), back: icon.getObjectByName('scenery-back') };
@@ -1129,7 +1220,7 @@ async function start() {
     await ensureLootSprites();
     let pickup = location.loot.find(loot => loot.id === id);
     if (!pickup) {
-      pickup = { id, itemId: item.itemId, x: value.position[0], z: value.position[2] };
+      pickup = { id, itemId: item.itemId, x: value.position[0], z: value.position[2], ...(item.itemId === 'coins' ? { amount: item.amount } : {}) };
       location.loot.push(pickup);
     }
     pickup.x = value.position[0]; pickup.z = value.position[2];
@@ -1156,6 +1247,46 @@ async function start() {
     if (!item) throw new Error(`Unknown scene asset: ${value.asset}`);
     if (item.kind === 'chest') return createPlacedChest(location, id, value, item);
     if (item.kind === 'world-item') return createEditorWorldItem(location, id, value, item);
+    if (item.kind === 'enemy') {
+      const stats = ENEMY_STATS[item.archetype] ?? { health: 32, maxHealth: 32, damageQuarters: 4 };
+      const body = enemyBody(id, location.id, value.position[0], value.position[2], {
+        ...stats, archetype: item.archetype, combatAwake: true, radius: stats.radius,
+      });
+      body.editorPlaced = true;
+      if (item.customSprite) body.spriteAsset = item.asset;
+      body.lastSafePosition = { x: body.x, z: body.z };
+      const figure = await createFigure(body, item.archetype);
+      figure.locationId = location.id;
+      figure.group.name = id; figure.group.position.fromArray(value.position);
+      figure.group.rotation.set(...value.rotation); figure.group.scale.fromArray(value.scale);
+      figure.group.userData.sceneEditId = id;
+      figure.group.userData.sceneEditLabel = `Враг · ${item.label}`;
+      figure.group.userData.sceneEditCategory = 'enemies';
+      figure.group.userData.sceneEditAsset = item.asset;
+      figure.group.userData.sceneEditSize = value.size;
+      figure.group.userData.sceneEditBody = body;
+      figure.group.userData.sceneEditDelete = deleted => {
+        body.active = !deleted;
+        figure.group.visible = !deleted;
+        figure.healthHUD.visible = !deleted && location.id === activeLocation.id
+          && shouldShowHealthHud(body.team, body.health, body.maxHealth);
+        figure.enemyMarker.group.visible = !deleted && location.id === activeLocation.id && body.health > 0;
+      };
+      location.sceneGroup.add(figure.group);
+      location.enemies.push(body); figures.push(figure);
+      figure.group.visible = true;
+      figure.healthHUD.visible = location.id === activeLocation.id
+        && shouldShowHealthHud(body.team, body.health, body.maxHealth);
+      figure.enemyMarker.group.visible = location.id === activeLocation.id;
+      return figure.group;
+    }
+    if (item.kind === 'merchant') {
+      const actor = await createMerchantActor({ location, createScenery, definition: merchantDefinition(item.merchantId), id,
+        x: value.position[0], z: value.position[2] });
+      actor.prop.position.fromArray(value.position); actor.prop.rotation.set(...value.rotation); actor.prop.scale.fromArray(value.scale);
+      actor.body.x = actor.prop.position.x; actor.body.z = actor.prop.position.z;
+      merchantActors.push(actor); location.edgeShade?.applyTo(actor.prop); return actor.prop;
+    }
     if (item.id === 'inspect') {
       const marker = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
         { elevation: value.position[1], yaw: value.rotation[1], sceneEditId: id, sceneEditLabel: item.label });
@@ -1242,6 +1373,7 @@ async function start() {
     reportLoadStage(`Сюжетные персонажи: ${id}`);
     const actors = await createStoryActors({ locations: { [id]: location }, createScenery: createSceneryTracked, scale: LOCATION_SCALE, campaign: campaignState });
     storyActors.actors.push(...actors.actors);
+    merchantActors.push(...await createLocationMerchants({ location, createScenery: createSceneryTracked, scale: LOCATION_SCALE }));
     reportLoadStage(`Сюжетные персонажи: ${id}`, 'ready', `${actors.actors.length} актёров`);
     await checkpoint();
     reportLoadStage(`Травы и декали: ${id}`);
@@ -1277,7 +1409,7 @@ async function start() {
     await sceneRegistry.restorePlaced(location, createEditorAsset);
     sceneRegistry.prepare(location);
     reportLoadStage(`Редакторские объекты: ${id}`, 'ready', `${sceneRegistry.bindings(id).length} объектов`);
-    for (const figure of figures) if (figure.locationId === id && figure.body.team === 'enemy')
+    for (const figure of figures) if (figure.locationId === id && figure.body.team === 'enemy' && !figure.body.editorPlaced)
       sceneRegistry.bindEntity(location, `enemy:${figure.body.id}`, `Враг · ${figure.body.archetype}`, figure.group, {
         category: 'enemies', deletable: false,
         sync() { figure.body.x = figure.group.position.x; figure.body.z = figure.group.position.z; figure.facing = figure.group.rotation.y; },
@@ -1363,7 +1495,7 @@ async function start() {
       { rounded: result.rounded, depthMap: Boolean(location.art.depthMap), walkablePoints: location.walkablePoints });
     delete location.terrainHeightMap.layers;
     location.sceneGroup.userData.terrainHeightMap = location.terrainHeightMap;
-    disposeUnusedScenes([removed, result.group], [location.sceneGroup],
+    disposeUnusedScenes([...removed, result.group], [location.sceneGroup],
       [paper, cardboardGrain, corrugation, terrainCorrugation]);
     renderer.renderLists.dispose();
   }
@@ -1387,6 +1519,7 @@ async function start() {
       if (belongs(visual.group)) cache.delete(key);
     for (let index = storyActors.actors.length - 1; index >= 0; index--)
       if (storyActors.actors[index].spec.location === id) storyActors.actors.splice(index, 1);
+    for (let index = merchantActors.length - 1; index >= 0; index--) if (merchantActors[index].locationId === id) merchantActors.splice(index, 1);
     for (const [key, visual] of chestVisuals) if (visual.body.locationId === id) chestVisuals.delete(key);
     delete locationGroups[id];
     delete location.sceneGroup; delete location.terrainHeightMap; delete location.groundDetails;
@@ -1430,16 +1563,19 @@ async function start() {
       : `${activeLocation.campaignIntro} · ${progress}`;
   }
   function rebuildBodies() {
-    bodies = [heroBody, ...activeLocation.obstacles.filter(body => body.active !== false), ...activeLocation.enemies.filter(body => body.spawnReady)];
+    bodies = [heroBody, ...activeLocation.obstacles.filter(body => body.active !== false),
+      ...activeLocation.enemies.filter(body => body.spawnReady && body.active !== false && !body.burrowed)];
   }
   rebuildBodies();
   function showActiveLocationFigures() {
     for (const figure of figures) {
       const active = figure.body === heroBody || figure.locationId === activeLocation.id;
       const spawning = Boolean(figure.spawnAnimation);
-      figure.group.visible = !figure.poolDormant && !figure.body.fell && active && (!spawning || figure.spawnAnimation.age >= 0);
-      figure.healthHUD.visible = active && shouldShowHealthHud(figure.body.team, figure.body.health, figure.body.maxHealth) && !spawning;
-      if (figure.enemyMarker) figure.enemyMarker.group.visible = active && !victorySequenceActive
+      figure.group.visible = !figure.poolDormant && figure.body.active !== false && !figure.body.fell
+        && active && (!spawning || figure.spawnAnimation.age >= 0);
+      figure.healthHUD.visible = active && figure.body.active !== false
+        && shouldShowHealthHud(figure.body.team, figure.body.health, figure.body.maxHealth) && !spawning;
+      if (figure.enemyMarker) figure.enemyMarker.group.visible = active && figure.body.active !== false && !victorySequenceActive
         && figure.body.health > 0 && !spawning;
     }
     for (const [id, group] of Object.entries(locationGroups)) group.visible = id === activeLocation.id;
@@ -1507,6 +1643,7 @@ async function start() {
     return figure;
   }
   async function enterLocation(locationId, fromLocationId) {
+    shop.hide();
     const next = locations[locationId];
     if (!next || locationTransition) return;
     rememberExitPosition(activeLocation, locationId, heroBody);
@@ -1537,6 +1674,8 @@ async function start() {
       target.set(heroBody.x, .65, heroBody.z);
       transitionCooldown = .85;
       const visit = visitCampaignLocation(campaignState, activeLocation.id);
+      if (fromLocationId !== activeLocation.id) advanceStatusLocations(campaignState);
+      renderStatusEffectsHud();
       storyActors.update();
       if (activeLocation.kind === 'camp') {
         activeLocation.initialized = true;
@@ -1579,17 +1718,26 @@ async function start() {
   }
   const bursts = [];
   const projectiles = [];
+  const acidPuddles = [];
+  const acidPuddleGeometry = new THREE.CircleGeometry(.82, 28);
   const stoneGeometry = new THREE.IcosahedronGeometry(.17, 0);
   const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0xb6ac91, roughness: .86 });
   function clearProjectiles() {
-    for (const shot of projectiles) scene.remove(shot.mesh);
+    for (const shot of projectiles) { scene.remove(shot.mesh); shot.ownMaterial?.dispose(); }
     projectiles.length = 0;
+    for (const puddle of acidPuddles) { scene.remove(puddle.mesh); puddle.material.dispose(); }
+    acidPuddles.length = 0;
+    for (const enemyId of abilityTelegraphs.keys()) clearAbilityTelegraph(enemyId);
   }
   function spawnStoneProjectile(shot) {
     if (projectiles.length >= 16) return;
-    const mesh = new THREE.Mesh(stoneGeometry, stoneMaterial);
+    const isAcid = shot.sourceArchetype === 'acid-spitter';
+    const material = isAcid ? new THREE.MeshStandardMaterial({ color: 0x9dcf46, emissive: 0x33440b,
+      roughness: .38, metalness: 0 }) : stoneMaterial;
+    const mesh = new THREE.Mesh(stoneGeometry, material);
+    if (isAcid) mesh.scale.set(1.22, .85, 1.22);
     mesh.position.set(shot.x, .58, shot.z); mesh.castShadow = true; scene.add(mesh);
-    projectiles.push({ ...shot, mesh });
+    projectiles.push({ ...shot, mesh, ownMaterial: isAcid ? material : null });
   }
   function updateProjectiles(dt) {
     for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -1599,9 +1747,61 @@ async function start() {
       shot.mesh.rotation.x += dt * 7;
       if (result.hitPlayer && damage(heroBody, shot.damageQuarters, 8)) {
         heroBody.vx += shot.vx * .24; heroBody.vz += shot.vz * .24;
+        if (shot.sourceArchetype === 'slinger' || shot.sourceArchetype === 'acid-spitter') {
+          applyStatusEffect(campaignState, 'poison');
+          renderStatusEffectsHud(); persistCampaign();
+        }
         burst(heroBody.x, heroBody.z, .6); vibrate([35, 20, 35]);
       }
-      if (result.expired) { scene.remove(shot.mesh); projectiles.splice(i, 1); }
+      if (result.expired) {
+        if (shot.sourceArchetype === 'acid-spitter' && !result.hitPlayer) {
+          const material = new THREE.MeshBasicMaterial({ color: 0x9dcf46, transparent: true,
+            opacity: .2, side: THREE.DoubleSide, depthWrite: false });
+          const mesh = new THREE.Mesh(acidPuddleGeometry, material);
+          mesh.rotation.x = -Math.PI / 2; mesh.position.set(shot.x, .025, shot.z); mesh.renderOrder = 7;
+          scene.add(mesh); acidPuddles.push({ x: shot.x, z: shot.z, mesh, material, age: 0, duration: 2.6, touched: false });
+        }
+        scene.remove(shot.mesh); shot.ownMaterial?.dispose(); projectiles.splice(i, 1);
+      }
+    }
+  }
+  function updateAcidPuddles(dt) {
+    for (let index = acidPuddles.length - 1; index >= 0; index--) {
+      const puddle = acidPuddles[index]; puddle.age += dt;
+      const remaining = Math.max(0, 1 - puddle.age / puddle.duration);
+      puddle.material.opacity = .2 * remaining;
+      if (!puddle.touched && Math.hypot(heroBody.x - puddle.x, heroBody.z - puddle.z) < .95) {
+        puddle.touched = true;
+        applyStatusEffect(campaignState, 'poison'); renderStatusEffectsHud(); persistCampaign();
+      }
+      if (puddle.age >= puddle.duration) {
+        scene.remove(puddle.mesh); puddle.material.dispose(); acidPuddles.splice(index, 1);
+      }
+    }
+  }
+  const abilityTelegraphs = new Map();
+  function clearAbilityTelegraph(enemyId) {
+    const marker = abilityTelegraphs.get(enemyId);
+    if (!marker) return;
+    scene.remove(marker.group); marker.material.dispose(); marker.geometry.dispose(); abilityTelegraphs.delete(enemyId);
+  }
+  function showAbilityTelegraph(enemy, zone, duration) {
+    clearAbilityTelegraph(enemy.id);
+    const geometry = new THREE.RingGeometry(.82, 1, 40);
+    const material = new THREE.MeshBasicMaterial({ color: 0x9e58d0, transparent: true, opacity: .32,
+      side: THREE.DoubleSide, depthWrite: false });
+    const ring = new THREE.Mesh(geometry, material);
+    ring.rotation.x = -Math.PI / 2; ring.position.set(zone.x, .035, zone.z);
+    ring.scale.setScalar(zone.radius); ring.renderOrder = 8;
+    const group = new THREE.Group(); group.add(ring); scene.add(group);
+    abilityTelegraphs.set(enemy.id, { group, material, geometry, age: 0, duration, radius: zone.radius, ring });
+  }
+  function updateAbilityTelegraphs(dt) {
+    for (const marker of abilityTelegraphs.values()) {
+      marker.age = Math.min(marker.duration, marker.age + dt);
+      const progress = marker.age / marker.duration;
+      marker.ring.scale.setScalar(marker.radius * (.58 + progress * .42));
+      marker.material.opacity = .24 + progress * .48;
     }
   }
   const burstGeometry = new THREE.RingGeometry(.15, .22, 40);
@@ -1639,6 +1839,7 @@ async function start() {
     const editorChest = body.kind === 'editor-chest';
     const result = editorChest ? { rewards: rollEditorChestLoot() } : openCampaignCache(campaignState, body.locationId);
     if (!result) return false;
+    if (!editorChest) result.rewards = { ...result.rewards, coins: rollCoins('chest') };
     body.opening = true;
     if (editorChest) {
       const opened = activeLocation.openedPlacedChests ??= [];
@@ -1719,7 +1920,7 @@ async function start() {
           const backpackRect = document.querySelector('#inventory-toggle').getBoundingClientRect();
           const from = { x: (playerScreen.x + 1) * innerWidth / 2, y: (1 - playerScreen.y) * innerHeight / 2 };
           const to = { x: backpackRect.left + backpackRect.width / 2, y: backpackRect.top + backpackRect.height / 2 };
-          const icon = lootIconCanvases.get(pickup.itemId) ?? lootIconCanvases.get('scrap');
+          const icon = lootIconCanvases.get(pickup.itemId === 'coins' ? coinSkin(pickup.amount).id : pickup.itemId) ?? lootIconCanvases.get('scrap');
           if (icon) itemIconFlights.push({ icon, flight: createItemIconFlight(from, to,
             { duration: itemMagnetSettings.iconDuration, arc: itemMagnetSettings.iconArc }) });
           activeLocation.sceneGroup.remove(visual.group);
@@ -1727,7 +1928,7 @@ async function start() {
           if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
           worldItemVisuals.delete(item.id);
           for (const glint of visual.glints) glint.material.dispose();
-          addItems(campaignState, { [pickup.itemId]: 1 });
+          if (pickup.itemId === 'coins') creditCoins(campaignState, pickup.amount); else addItems(campaignState, { [pickup.itemId]: 1 });
           audio.play('pickup'); renderInventory(); burst(heroBody.x, heroBody.z, .48); vibrate(16); persistCampaign();
         }
       }
@@ -1833,15 +2034,17 @@ async function start() {
     }
     return false;
   }
-  function damage(target, damageQuarters, speed) {
-    if (target.hitCooldown > 0 || target.health <= 0) return false;
+  function damage(target, damageQuarters, speed, statusTick = false) {
+    if ((!statusTick && target.hitCooldown > 0) || target.health <= 0) return false;
     const rawDamage = Math.max(1, Math.trunc(damageQuarters));
-    const armor = target.team === 'player' ? campaignState.defenseBonus : 0;
-    target.health = Math.max(0, target.health - Math.max(1, rawDamage - armor));
+    target.health = Math.max(0, target.health - (target.team === 'player' && !statusTick ? playerDamageTaken(campaignState, rawDamage) : rawDamage));
+    if (target.team === 'enemy' && target.health <= 0) clearAbilityTelegraph(target.id);
     audio.play(target.team === 'player' ? 'hurt' : target.health <= 0 ? 'enemyDeath' : 'hit',
       { pan: (target.x - heroBody.x) / 15 });
-    target.hitCooldown = .65;
-    if (target.team === 'enemy') target.aiStunRemaining = Math.max(target.aiStunRemaining || 0, .55);
+    if (!statusTick) {
+      target.hitCooldown = .65;
+      if (target.team === 'enemy') target.aiStunRemaining = Math.max(target.aiStunRemaining || 0, .55);
+    }
     const figure = figures.find(item => item.body === target);
     if (figure) {
       figure.hitAge = 0;
@@ -1859,7 +2062,7 @@ async function start() {
     if (target.team === 'enemy' && target.health === 0 && !target.lootDropped) {
       target.lootDropped = true;
       const dropPosition = target.lootPosition ?? { x: target.x, z: target.z };
-      spawnWorldLoot(locations[target.locationId], target.id, dropPosition.x, dropPosition.z, rollEnemyLoot());
+      spawnWorldLoot(locations[target.locationId], target.id, dropPosition.x, dropPosition.z, rollEnemyLoot(Math.random, target));
     }
     persistCampaign();
     return true;
@@ -1912,11 +2115,23 @@ async function start() {
         if (target.fixed) return;
         if (!canEnemyDamagePlayer(attacker, target)) return;
         if (attacker.health <= 0 || (attacker.team === target.team && attacker.team !== 'enemy') || (attacker.attackRicochets || 0) >= 3) return;
-        const bonus = attacker.team === 'player' ? campaignState.damageBonus : 0;
-        const hitDamage = attacker.archetype === 'boar'
+        const bonus = attacker.team === 'player' ? combatBonuses(campaignState).damage : 0;
+        if (attacker.nonDamagingDash) return;
+        let hitDamage = attacker.archetype === 'boar'
           ? Math.max(1, Math.floor((attacker.damageQuarters ?? 6) / 2 ** (attacker.attackRicochets || 0)))
-          : ricochetDamageQuarters(attacker.attackRicochets || 0);
+          : ['acid-spitter', 'shellguard', 'burrower', 'flanker', 'ember-moth', 'hexer'].includes(attacker.archetype)
+            ? Math.max(1, Math.floor((attacker.damageQuarters ?? 4) / 2 ** (attacker.attackRicochets || 0)))
+            : ricochetDamageQuarters(attacker.attackRicochets || 0);
+        if (target.team === 'enemy' && target.archetype === 'shellguard' && target.aiPhase === 'guard') {
+          const incomingX = attacker.x - target.x, incomingZ = attacker.z - target.z;
+          const incomingLength = Math.hypot(incomingX, incomingZ) || 1;
+          const shieldDot = Math.sin(target.aiAimAngle ?? 0) * incomingX / incomingLength
+            + Math.cos(target.aiAimAngle ?? 0) * incomingZ / incomingLength;
+          if (shieldDot > .25) hitDamage = Math.max(1, Math.ceil(hitDamage * .3));
+        }
         if (!damage(target, hitDamage + bonus, speed)) return;
+        if (attacker === heroBody && campaignState.equipment?.orbs?.includes('emberOrb'))
+          applyStatusEffect(target, 'burn');
         markDirectPlayerHit(attacker, target);
         attacker.attackRicochets = (attacker.attackRicochets || 0) + 1;
         const attackerFigure = figures.find(item => item.body === attacker);
@@ -2068,7 +2283,7 @@ async function start() {
     host.classList.remove('aiming');
   }
   inputController = createPointerInput({ THREE, host, inputElement: renderer.domElement, camera, orbit, playerMarker,
-    isBlocked: () => sceneEditor?.active || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
+    isBlocked: () => sceneEditor?.active || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen(),
     onManualOrbit: () => { cameraManualOverride = 3; },
     getBody: () => state, getActiveFigure: () => activeFigure, hitFigure, choose, stopAim,
     groundUiY: GROUND_UI_Y, aimDragSensitivity: AIM_DRAG_SENSITIVITY,
@@ -2123,20 +2338,25 @@ async function start() {
     for (const figure of figures.filter(item => item.locationId === 'camp' && !item.poolDormant
       && !item.body.boss && item.body.health > 0 && !item.body.spawnReady)) beginSpawn(figure, figure.spawnSource);
   }
-  loading.hidden = true;
   persistCampaign();
   if (initialStoryCard) showStoryCard(initialStoryCard);
   reportLoadStage('Подключение редактора сцены');
-  sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
-    rebuildTerrain: rebuildLocationTerrain,
-    onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end' || key === 'enabled') scheduleTerrainFogRebuild(); },
-    onFogPathsChange() { scheduleTerrainFogRebuild(); },
-    getLocation: () => activeLocation, canOpen: () => !locationTransition,
-    getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
-    getItemMagnetSettings: () => ({ ...itemMagnetSettings }), onItemMagnetSettingsChange: setItemMagnetSettings,
-    getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
-    onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
+  if (localEditor) {
+    const { installSceneEditor } = await loadLocalEditorUi();
+    sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
+      applyToSource: diff => localEditor.apply(diff),
+      rebuildTerrain: rebuildLocationTerrain,
+      onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end' || key === 'enabled') scheduleTerrainFogRebuild(); },
+      onFogPathsChange() { scheduleTerrainFogRebuild(); },
+      getLocation: () => activeLocation, canOpen: () => !locationTransition && !shop.isOpen(),
+      getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
+      getItemMagnetSettings: () => ({ ...itemMagnetSettings }), onItemMagnetSettingsChange: setItemMagnetSettings,
+      getItemMagnetPlayerPosition: () => ({ x: heroBody.x, y: 0, z: heroBody.z }),
+      getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
+      onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
+  }
   reportLoadStage('Подключение редактора сцены', 'ready');
+  loading.hidden = true;
   if (debugMode) window.__CQ_DEBUG__ = {
     locations: Object.keys(locations),
     enter(id) { return enterLocation(id, activeLocation.id); },
@@ -2156,13 +2376,23 @@ async function start() {
       updateCamera();
     },
     pause(value = true) { simulationPaused = value; },
+    equipmentPose(pose = null, side = 'front') {
+      if (pose && (!heroFigure.artStates[pose] || !['front', 'back'].includes(side))) throw new Error('Invalid equipment preview pose');
+      equipmentPosePreview = pose ? { pose, side } : null;
+      if (pose) {
+        simulationPaused = true; dialogue.close(); inventory.hide();
+        heroFigure.group.traverse(object => object.layers.enable(31));
+        scene.traverse(object => { if (object.isLight) object.layers.enable(31); });
+        camera.layers.set(31);
+      } else { camera.layers.set(0); prepareScenePresentation(); }
+    },
     story(kind = 'scene') {
       const card = inspectCampaignLocation(campaignState, activeLocation.id);
       showStoryCard({ ...card, lines: getStoryDialogue(campaignState, activeLocation.id, kind) });
     },
     actorView(id, angle = 0) {
-      const actor = storyActors.actors.find(actor => actor.spec.id === id);
-      if (!actor) throw new Error(`Unknown story actor: ${id}`);
+      const actor = storyActors.actors.find(actor => actor.spec.id === id) ?? merchantActors.find(actor => actor.id === id);
+      if (!actor) throw new Error(`Unknown actor: ${id}`);
       simulationPaused = true;
       target.set(actor.body.x, .75, actor.body.z);
       orbit.distance = 6; orbit.theta = angle; orbit.phi = .95;
@@ -2205,7 +2435,7 @@ async function start() {
           screen: { x: (heroScreen.x + 1) * innerWidth / 2, y: (1 - heroScreen.y) * innerHeight / 2 },
           health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer,
           renderedX: heroFigure.group.position.x, renderedZ: heroFigure.group.position.z, viewBack: heroFigure.viewBack,
-          visualState: heroFigure.visualState },
+          visualState: heroFigure.visualState, equipment: heroEquipment.inspect(), bonuses: combatBonuses(campaignState) },
         aim: { active: Boolean(inputController.getAimingBody()), color: playerMarker.material.color.getHexString(),
           opacity: playerMarker.material.opacity, x: playerMarker.group.position.x, z: playerMarker.group.position.z,
           angle: playerMarker.group.rotation.y },
@@ -2238,7 +2468,11 @@ async function start() {
             age: item.spawn?.age ?? null, duration: item.spawn?.duration ?? null })) ?? [],
           openSprite: chestVisuals.get(activeLocation.cacheBody.id)?.stateArt[1].visible ?? false } : null,
         terrain: activeLocation.art.terrain, sceneryCount: activeLocation.sceneryCount,
-        loot: activeLocation.loot, render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
+        coins: campaignState.coins, shopOpen: shop.isOpen(),
+        merchants: merchantActors.filter(actor => actor.locationId === activeLocation.id).map(actor => ({ id: actor.id, merchantId: actor.merchantId,
+          x: actor.body.x, z: actor.body.z, visible: actor.prop.visible, active: actor.body.active })),
+        loot: activeLocation.loot.map(item => ({ ...item, skin: item.itemId === 'coins' ? coinSkin(item.amount).id : item.itemId })),
+        render: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles } };
     },
     defeatEnemy(id) {
       const enemy = activeLocation.enemies.find(body => body.id === id);
@@ -2257,18 +2491,46 @@ async function start() {
     previousTime = time;
     audio.setScene({ nextMood: audioMood(activeLocation, heroBody.health, canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL)),
       nextAmbience: audioAmbience(activeLocation),
-      paused: sceneEditor.active || simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen(),
+      paused: sceneEditor.active || simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen(),
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
     updateItemIconFlights(frameDt);
     if (sceneEditor.graphOpen) return;
+    if (equipmentPosePreview) {
+      const { pose, side } = equipmentPosePreview;
+      setVisualState(heroFigure, pose); heroFigure.viewBack = side === 'back';
+      heroFigure.group.rotation.set(0, 0, 0);
+      for (const art of Object.values(heroFigure.artStates)) {
+        art.frontArt.group.visible = side === 'front'; art.backArt.group.visible = side === 'back';
+      }
+      heroFigure.artGroup.position.y = pose === 'dead' ? heroFigure.deadGroundedY : 1.25;
+      heroFigure.artGroup.scale.setScalar(1); heroFigure.artGroup.rotation.set(0, 0, 0);
+      camera.position.set(heroBody.x, 1.45, heroBody.z + (side === 'front' ? 4.8 : -4.8));
+      camera.lookAt(heroBody.x, 1.45, heroBody.z); renderScene(); return;
+    }
     if (sceneEditor.active) {
       sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;
     }
-    updateCacheAnimation(dt);
-    if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen()) {
+    if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen()) {
       updateCamera(); updatePlayerReveal(); renderScene(); return;
     }
+    updateCacheAnimation(dt);
     elapsed += dt;
+    for (const body of [heroBody, ...activeLocation.enemies.filter(enemy => enemy.active !== false)]) {
+      if (body.health <= 0) continue;
+      const target = body === heroBody ? campaignState : body;
+      const ticks = advanceStatusEffects(target, dt);
+      if (ticks.healing) body.health = Math.min(body.maxHealth, body.health + ticks.healing);
+      if (ticks.damage) damage(body, ticks.damage, 0, true);
+      if (!ticks.healing && !ticks.damage) continue;
+      if (body === heroBody) persistCampaign();
+      const figure = figures.find(item => item.body === body);
+      if (figure) {
+        figure.hurtAge = 0; figure.flashMaterial.opacity = 1; figure.backFlashMaterial.opacity = 1;
+        figure.healthHUD.visible = shouldShowHealthHud(body.team, body.health, body.maxHealth);
+      }
+    }
+    statusHudRefresh -= dt;
+    if (statusHudRefresh <= 0) { statusHudRefresh = .5; renderStatusEffectsHud(); }
     transitionCooldown = Math.max(0, transitionCooldown - dt);
     if (heroBody.health <= 0) beginVictorySequence();
     if (!victorySequenceActive && heroBody.health > 0 && !celebratedLocations.has(activeLocation.id)
@@ -2304,7 +2566,7 @@ async function start() {
       refreshLocationInfo();
     }
     if (!victorySequenceActive && activeLocation.kind === 'camp') {
-      const living = activeLocation.enemies.filter(enemy => enemy.health > 0 && !enemy.boss).length;
+      const living = activeLocation.enemies.filter(enemy => enemy.active !== false && enemy.health > 0 && !enemy.boss).length;
       if (takeDueReinforcement(activeLocation, elapsed, living)) startQueuedReinforcement();
     }
     const aimingBody = inputController.getAimingBody();
@@ -2320,17 +2582,40 @@ async function start() {
         const mood = audioMood(activeLocation, heroBody.health, canCelebrateLocationVictory(activeLocation, CAMP_GOBLIN_TOTAL));
         audio.play(chargeReadyCue(mood));
       }
-      if (body.team !== 'enemy') continue;
-      if (victorySequenceActive) continue;
+    }
+    for (const body of activeLocation.enemies) {
+      if (!body.spawnReady || body.active === false || victorySequenceActive) continue;
       const figure = figures.find(item => item.body === body);
       const decision = advanceEnemyAI(body, state, figure, dt, randomBetween);
+      if (decision.burrowed && figure) {
+        figure.group.visible = false; figure.healthHUD.visible = false;
+        figure.enemyMarker.group.visible = false; rebuildBodies();
+      }
+      if (decision.surfaced && figure) {
+        figure.group.visible = true; figure.group.position.set(body.x, 0, body.z);
+        figure.healthHUD.visible = shouldShowHealthHud(body.team, body.health, body.maxHealth);
+        figure.enemyMarker.group.visible = body.health > 0; rebuildBodies();
+      }
       if (decision.launched) { burst(body.x, body.z, .45); audio.play('enemyDash', { pan: (body.x - heroBody.x) / 15 }); }
+      if (decision.zoneTelegraph) showAbilityTelegraph(body, decision.zoneTelegraph, decision.duration);
+      if (decision.zoneDetonated) {
+        const zone = decision.zoneDetonated;
+        clearAbilityTelegraph(body.id);
+        if (Math.hypot(heroBody.x - zone.x, heroBody.z - zone.z) <= zone.radius + .65
+            && damage(heroBody, zone.damageQuarters, 0)) {
+          applyStatusEffect(campaignState, zone.effect);
+          renderStatusEffectsHud(); persistCampaign();
+        }
+        burst(zone.x, zone.z, zone.radius * .55);
+      }
       if (decision.shot) {
         audio.play('projectile', { pan: (body.x - heroBody.x) / 15 });
+        decision.shot.sourceArchetype = body.archetype;
         spawnStoneProjectile(decision.shot);
         if (figure) figure.dealDamageAge = 0;
       }
     }
+    updateAbilityTelegraphs(dt);
     for (let remaining = dt; remaining > 0 && !dialogue.isOpen(); remaining -= 1 / 120) {
       advanceWorld(bodies, Math.min(remaining, 1 / 120), null, onImpact, activeLocation.walkablePoints, {
         fallZones: activeLocation.dropZones, hazards: activeLocation.hazards,
@@ -2342,6 +2627,7 @@ async function start() {
       clearDirectHitProtectionWhenSafe(enemy, isAttacking(enemy));
     if (dialogue.isOpen()) { updateCamera(); updatePlayerReveal(); renderScene(); return; }
     updateWorldLoot(dt);
+    updateAcidPuddles(dt);
     showCacheStoryAfterLootLands();
     updateProjectiles(dt);
     storyActors.update();
@@ -2370,7 +2656,7 @@ async function start() {
       const victoryPose = body.health > 0 && figure.victoryAnimation
         ? advanceVictoryLoop(figure.victoryAnimation, dt) : null;
       if (victoryPose) figure.group.rotation.y = figure.victoryBaseYaw + victoryPose.spinY;
-      else if (body.health > 0 && body !== aimingBody && !(body.team === 'enemy' && body.aiPhase === 'aim')) {
+      else if (body.health > 0 && body !== aimingBody && !(body.team === 'enemy' && ['aim', 'guard'].includes(body.aiPhase))) {
         figure.facing = facingAngle(body.vx, body.vz, figure.facing);
       }
       if (body.health > 0 && !victoryPose) figure.group.rotation.y = turnToward(figure.group.rotation.y, figure.facing, dt);
@@ -2390,7 +2676,7 @@ async function start() {
         : victoryPose ? victoryPose.sprite
           : figure.hurtAge < .55 ? 'on-hit'
           : figure.dealDamageAge < .32 ? 'deal-damage'
-            : body === aimingBody || (body.team === 'enemy' && body.aiPhase === 'aim') ? 'aiming'
+            : body === aimingBody || (body.team === 'enemy' && ['aim', 'guard'].includes(body.aiPhase)) ? 'aiming'
               : isAttacking(body) ? 'attack' : 'idle';
       setVisualState(figure, visualState);
       const flashOpacity = figure.hurtAge < .42 && Math.floor(figure.hurtAge / .055) % 2 === 0 ? 1 : 0;
@@ -2439,12 +2725,12 @@ async function start() {
         base.material.opacity = .4;
       });
       if (figure.enemyMarker) {
-        const aiming = !victorySequenceActive && body.health > 0 && body.aiPhase === 'aim';
+        const aiming = !victorySequenceActive && body.health > 0 && ['aim', 'guard'].includes(body.aiPhase);
         figure.enemyMarker.group.position.set(body.x, GROUND_UI_Y, body.z);
         figure.enemyMarker.group.rotation.y = aiming ? body.aiAimAngle : figure.facing;
         figure.enemyMarker.group.visible = !victorySequenceActive && body.health > 0;
         figure.enemyMarker.setExtension(aiming ? MAX_AIM_MARKER_EXTENSION : 0);
-        figure.enemyMarker.setProgress(aiming ? 1 - body.aiTimer / body.aiAimDuration : 0);
+        figure.enemyMarker.setProgress(aiming ? 1 - body.aiTimer / (body.aiAimDuration || 1) : 0);
         figure.enemyMarker.material.color.lerp(body.health > 0 && isAttacking(body) ? attackColor : enemyColor, 1 - Math.exp(-18 * dt));
         figure.enemyMarker.material.opacity = body.health > 0 ? .96 : .35;
       }
@@ -2486,7 +2772,7 @@ async function start() {
     }
     const nearInteraction = heroBody.health > 0 && Math.hypot(heroBody.x, heroBody.z) <= 2.65;
     interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive
-      || activeLocation.enemies.some(enemy => enemy.health > 0);
+      || activeLocation.enemies.some(enemy => enemy.active !== false && enemy.health > 0);
     interactButton.textContent = 'Осмотреть';
     if (activeLocation.inspectionMarker) {
       const marker = activeLocation.inspectionMarker;

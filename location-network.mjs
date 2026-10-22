@@ -92,7 +92,7 @@ export function findNearbyExit(location, body, radius = EXIT_ZONE_RADIUS) {
 }
 
 export function locationHasLivingEnemies(location) {
-  return (location?.enemies ?? []).some(enemy => enemy.health > 0 && !enemy.fell);
+  return (location?.enemies ?? []).some(enemy => enemy.active !== false && enemy.health > 0 && !enemy.fell);
 }
 
 export function createExitBarrierBodies(location) {
@@ -144,10 +144,10 @@ export function shouldIgnoreEntryExit(location, fromLocationId, body, radius = E
 
 export function wakeForestCombat(location, player, radius = FOREST_WAKE_RADIUS) {
   if (location.kind !== 'forest' || location.combatTriggered) return false;
-  if (!location.enemies.some(enemy => enemy.health > 0
+  if (!location.enemies.some(enemy => enemy.active !== false && enemy.health > 0
     && Math.hypot(player.x - enemy.x, player.z - enemy.z) <= radius)) return false;
   location.combatTriggered = true;
-  for (const enemy of location.enemies) enemy.combatAwake = true;
+  for (const enemy of location.enemies) if (enemy.active !== false) enemy.combatAwake = true;
   return true;
 }
 

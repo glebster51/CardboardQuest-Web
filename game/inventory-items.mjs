@@ -1,4 +1,5 @@
-import { ITEM_LABELS, CONSUMABLE_HEALING } from './story-campaign.mjs?v=7';
+import { ITEM_LABELS, CONSUMABLE_HEALING } from './story-campaign.mjs?v=10';
+import { EQUIPMENT_ITEMS } from './equipment.mjs?v=1';
 
 export const INVENTORY_CAPACITY = 25;
 export const INVENTORY_ITEMS = Object.freeze([
@@ -9,7 +10,8 @@ export const INVENTORY_ITEMS = Object.freeze([
   { id: 'scrap', frame: 4, description: 'Потемневший медный обломок. Небольшая находка из старых тайников.' },
   { id: 'nuts', frame: 5, description: 'Лесные орехи в крепкой скорлупе. Белка наверняка оценила бы такой запас.' },
   { id: 'bladeShard', frame: 6, description: 'Тонкий острый осколок. Трофей из гоблинских запасов.' },
-].map(item => Object.freeze({ ...item, name: ITEM_LABELS[item.id], healing: CONSUMABLE_HEALING[item.id] ?? 0 })));
+].map(item => Object.freeze({ ...item, name: ITEM_LABELS[item.id], healing: CONSUMABLE_HEALING[item.id] ?? 0 }))
+  .concat(EQUIPMENT_ITEMS.map(item => Object.freeze({ ...item, healing: 0, action: 'Надеть' }))));
 
 export function inventoryEntries(state) {
   const definitions = new Map(INVENTORY_ITEMS.map(item => [item.id, item]));
@@ -38,9 +40,12 @@ export function inventoryEntries(state) {
   slotIndex, key: `${slotIndex}:${id}`, count: 1 } : null);
 }
 
-export function inventoryItemAction(item, health, maxHealth) {
+export function inventoryItemAction(item, health, maxHealth, state = null) {
+  if (item?.slot) return { usable: health > 0 && item.count > 0, hint: item.hint };
   if (!item?.healing) return { usable: false, hint: 'Предмет из путешествия' };
   if (health <= 0) return { usable: false, hint: 'Сейчас нельзя использовать' };
-  if (health >= maxHealth) return { usable: false, hint: 'Здоровье уже полное' };
+  const canCleanse = item.id === 'bandage' && state?.statusEffects?.some(effect => ['poison', 'burn'].includes(effect.id));
+  if (health >= maxHealth && !canCleanse) return { usable: false, hint: 'Здоровье уже полное' };
+  if (canCleanse && health >= maxHealth) return { usable: item.count > 0, hint: 'Снимает яд и горение' };
   return { usable: item.count > 0, hint: `Восстанавливает ${String(item.healing / 4).replace('.', ',')} ♥` };
 }

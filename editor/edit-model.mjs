@@ -1,7 +1,7 @@
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
-export const SCENE_BUILD = '221';
+export const SCENE_BUILD = '227';
 import { FOG_DEFAULTS } from '../fog-settings.mjs?v=8';
-import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7';
+import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=10';
 import { validateFogPaths } from '../fog-paths.mjs?v=2';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';

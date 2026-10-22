@@ -1,12 +1,29 @@
-import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs';
+import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=3';
 import { heartHealthLevels } from '../heart-health.mjs';
+import { combatBonuses, equipmentItem, EQUIPMENT_SLOT_LABELS, normalizeEquipment } from '../game/equipment.mjs?v=1';
+import { normalizeCoins } from '../game/currency.mjs?v=1';
 
 /** Inventory owns only presentation; consuming and saving remain game actions. */
-export function createInventoryPanel({ root, trigger, getState, getHealth, onOpen, onUse }) {
+export function createInventoryPanel({ root, trigger, getState, getHealth, onOpen, onUse, onEquip, onUnequip }) {
   const grid = root.querySelector('#inventory-items'), sheet = root.querySelector('.inventory-sheet');
   const tooltip = root.querySelector('#inventory-tooltip'), close = root.querySelector('#inventory-close');
   const use = root.querySelector('#inventory-use'), notice = root.querySelector('#inventory-notice');
   let selected = null, entries = [], page = 0, allEntries = [], previousFocus = null, warm = false, positioning = false;
+  const equipmentBar = document.createElement('section'); equipmentBar.id = 'inventory-worn';
+  equipmentBar.setAttribute('aria-label', 'Экипировка персонажа');
+  sheet.querySelector('.inventory-heading').after(equipmentBar);
+  const wallet = document.createElement('span'); wallet.id = 'inventory-coins'; wallet.className = 'coin-balance';
+  wallet.setAttribute('aria-live', 'polite'); sheet.querySelector('.inventory-heading>div').append(wallet);
+  const equipmentSlots = ['weapon', 'helmet', 'shield', 'orb', 'orb', 'orb'].map((slot, index) => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'inventory-worn-slot';
+    button.dataset.equipmentSlot = slot; button.dataset.orbIndex = String(Math.max(0, index - 3));
+    button.innerHTML = '<span class="inventory-worn-image"></span><small></small>';
+    button.addEventListener('click', () => {
+      const result = onUnequip?.(slot, Math.max(0, index - 3));
+      render(); notice.textContent = result?.changed ? `${equipmentItem(result.unequipped).name} — в рюкзаке` : result?.error ?? '';
+    });
+    equipmentBar.append(button); return button;
+  });
   const cells = Array.from({ length: INVENTORY_CAPACITY }, (_, index) => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'inventory-slot';
     button.innerHTML = '<span class="inventory-item-icon" aria-hidden="true"><span class="inventory-healing" hidden></span></span>';
@@ -57,7 +74,7 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
       cells[index].setAttribute('aria-expanded', String(active));
     }
     if (!item) { hideTooltip(); return; }
-    const { health, maxHealth } = getHealth(), action = inventoryItemAction(item, health, maxHealth);
+    const { health, maxHealth } = getHealth(), action = inventoryItemAction(item, health, maxHealth, getState());
     tooltip.querySelector('#inventory-item-name').textContent = item.name;
     tooltip.querySelector('#inventory-item-description').textContent = item.description;
     tooltip.querySelector('#inventory-item-effect').textContent = action.hint;
@@ -66,6 +83,7 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
   }
   function render() {
     const state = getState(); allEntries = inventoryEntries(state);
+    wallet.textContent = `◈ ${normalizeCoins(state.coins).toLocaleString('ru-RU')} монет`;
     const pages = allEntries.length / INVENTORY_CAPACITY;
     page = Math.min(page, pages - 1); entries = allEntries.slice(page * INVENTORY_CAPACITY, (page + 1) * INVENTORY_CAPACITY);
     for (let index = 0; index < cells.length; index++) {
@@ -75,7 +93,9 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
       const healingLabel = item?.healing ? `, восстановление здоровья: ${String(item.healing / 4).replace('.', ',')} ♥` : '';
       cell.setAttribute('aria-label', item ? item.name + healingLabel : `Пустая ячейка ${index + 1}`);
       const icon = cell.querySelector('.inventory-item-icon'); icon.hidden = !item;
-      if (item) { icon.style.setProperty('--item-x', `${item.frame % 4 * 100 / 3}%`); icon.style.setProperty('--item-y', `${Math.floor(item.frame / 4) * 100}%`); }
+      icon.classList.toggle('is-equipment', Boolean(item?.image));
+      icon.style.backgroundImage = item?.image ? `url("${item.image}")` : '';
+      if (item && !item.image) { icon.style.setProperty('--item-x', `${item.frame % 4 * 100 / 3}%`); icon.style.setProperty('--item-y', `${Math.floor(item.frame / 4) * 100}%`); }
       const healing = icon.querySelector('.inventory-healing');
       const healingLevels = item?.healing ? heartHealthLevels(item.healing, item.healing) : [];
       healing.hidden = healingLevels.length === 0;
@@ -94,8 +114,17 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
     root.querySelector('#inventory-page-label').textContent = `${page + 1} / ${pages}`;
     root.querySelector('#inventory-previous').disabled = page === 0;
     root.querySelector('#inventory-next').disabled = page === pages - 1;
-    root.querySelector('#inventory-equipment').textContent = [state.defenseBonus > 0 ? `Защита +${state.defenseBonus}` : '',
-      state.damageBonus > 0 ? `Урон +${state.damageBonus}` : ''].filter(Boolean).join(' · ');
+    const bonus = combatBonuses(state), gear = normalizeEquipment(state.equipment);
+    root.querySelector('#inventory-equipment').textContent = `Урон +${bonus.damage} · Защита +${bonus.defense}`;
+    equipmentSlots.forEach((button, index) => {
+      const slot = button.dataset.equipmentSlot, id = slot === 'orb' ? gear.orbs[index - 3] : gear[slot];
+      const item = equipmentItem(id), label = EQUIPMENT_SLOT_LABELS[slot] + (slot === 'orb' ? ` ${index - 2}` : '');
+      button.disabled = !item; button.dataset.itemId = id ?? '';
+      button.querySelector('small').textContent = label;
+      button.querySelector('span').style.backgroundImage = item ? `url("${item.image}")` : '';
+      button.setAttribute('aria-label', item ? `Снять: ${item.name}, ${item.hint}` : `${label}: пусто`);
+      button.title = item ? `${item.name} · ${item.hint} · нажми, чтобы снять` : label;
+    });
     const { health, maxHealth } = getHealth();
     const healthBar = root.querySelector('#inventory-health');
     healthBar.setAttribute('aria-label', `Здоровье: ${health / 4} из ${maxHealth / 4} сердец`);
@@ -125,11 +154,19 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
   }
   use.addEventListener('click', () => {
     const item = entries.find(item => item?.key === selected);
-    if (!item || !inventoryItemAction(item, getHealth().health, getHealth().maxHealth).usable) return;
+    if (!item || !inventoryItemAction(item, getHealth().health, getHealth().maxHealth, getState()).usable) return;
+    if (item.slot) {
+      const result = onEquip?.(item.id, item.slotIndex);
+      if (result?.changed) { hideTooltip(); render(); notice.textContent = `Надето: ${item.name} · ${item.hint}`; }
+      else notice.textContent = result?.error ?? 'Не удалось надеть предмет';
+      return;
+    }
     const result = onUse(item.id, item.slotIndex);
     if (!result?.consumed) return;
     render();
-    notice.textContent = `Восстановлено ${String(result.healed / 4).replace('.', ',')} ♥`;
+    notice.textContent = result.healed
+      ? `Восстановлено ${String(result.healed / 4).replace('.', ',')} ♥${result.effectLabel ? ` · ${result.effectLabel} на 2 локации` : ''}`
+      : `${result.effectLabel ?? 'Перевязь использована'}`;
     if (tooltip.hidden) cells.find(cell => !cell.disabled)?.focus({ preventScroll: true });
     else if (use.hidden) cells[entries.findIndex(entry => entry?.key === selected)]?.focus({ preventScroll: true });
   });

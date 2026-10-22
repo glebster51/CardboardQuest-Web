@@ -1,5 +1,5 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=150';
-import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=152';
+import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=10';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs?v=2';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';

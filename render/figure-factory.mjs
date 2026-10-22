@@ -3,6 +3,7 @@ import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildE
 import { heartHealthLevels } from '../heart-health.mjs';
 import { enableFigurePickLayer } from '../game/pick-layers.mjs';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
+import { assignSharpHudLayer } from './sharp-hud-overlay.mjs';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 
@@ -36,6 +37,23 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
   }
 
   async function loadWorkerArt(body, prefix) {
+    if (body.spriteAsset) {
+      const spritePath = body.spriteAsset.replace(/^assets\//, '');
+      const url = new URL(`${assetBase}${spritePath}?sheet=3`, location.href).href;
+      const model = await geometryClient.run('figure', { url, player: false });
+      model.flashMaterial = model.byUuid.get(model.flashUuid).material;
+      model.backFlashMaterial = model.byUuid.get(model.backFlashUuid).material;
+      const frontArt = model, backArt = cloneSpriteModel(model);
+      frontArt.group.rotation.y = 0; backArt.group.rotation.y = Math.PI;
+      const group = new THREE.Group(); group.add(frontArt.group, backArt.group);
+      const states = Object.fromEntries(VISUAL_STATES.map(visualState => [visualState, {
+        group, frontArt, backArt, alphaPixels: model.alphaPixels, width: model.width, height: model.height,
+      }]));
+      let bottomRow = model.height - 1;
+      outer: for (let y = model.height - 1; y >= 0; y--) for (let x = 0; x < model.width; x++)
+        if (model.alphaPixels[(y * model.width + x) * 4 + 3] > 80) { bottomRow = y; break outer; }
+      return { states, deadGroundedY: .215 - (.5 - bottomRow / model.height) * 2.05 };
+    }
     const states = {};
     const prepared = await Promise.all(VISUAL_STATES.flatMap(visualState => ['front', 'back'].map(side => {
       const url = new URL(`${assetBase}${prefix}-${visualState}${side === 'back' ? '-back' : ''}.png?sheet=3`, location.href).href;
@@ -65,15 +83,18 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
   }
 
   async function loadFigureArt(body, prefix) {
-    const key = `${prefix}:${body.team === 'player' ? 'player' : 'enemy'}`;
+    const key = `${prefix}${body.spriteAsset ? `:sprite:${body.spriteAsset}` : ''}:${body.team === 'player' ? 'player' : 'enemy'}`;
     let pending = artCache.get(key);
     if (!pending) {
       pending = (async () => {
         if (geometryClient) return loadWorkerArt(body, prefix);
         const loader = new THREE.TextureLoader();
-        const frontSources = await Promise.all(VISUAL_STATES.map(state =>
+        const spritePath = body.spriteAsset?.replace(/^assets\//, '');
+        const staticSource = spritePath
+          ? await loader.loadAsync(`${assetBase}${spritePath}?sheet=3`) : null;
+        const frontSources = staticSource ? VISUAL_STATES.map(() => staticSource) : await Promise.all(VISUAL_STATES.map(state =>
           loader.loadAsync(`${assetBase}${prefix}-${state}.png?sheet=3`)));
-        const backSources = await Promise.all(VISUAL_STATES.map(state =>
+        const backSources = staticSource ? VISUAL_STATES.map(() => staticSource) : await Promise.all(VISUAL_STATES.map(state =>
           loader.loadAsync(`${assetBase}${prefix}-${state}-back.png?sheet=3`)));
         const width = frontSources[0].image.width, height = frontSources[0].image.height;
         if ([...frontSources, ...backSources].some(source => source.image.width !== width || source.image.height !== height)) {
@@ -117,8 +138,10 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
           frontArt.group.visible = true; backArt.group.visible = false;
           states[visualState] = { group, frontArt, backArt,
             alphaPixels: frontArt.alphaPixels, width, height };
-          frontSources[index].dispose(); backSources[index].dispose();
+          if (!staticSource) { frontSources[index].dispose(); backSources[index].dispose(); }
         }
+
+        if (staticSource) staticSource.dispose();
 
         let bottomRow = height - 1;
         for (let y = height - 1; y >= 0; y--) {
@@ -203,7 +226,9 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
         return { group: pip, base: baseMesh, fill };
       });
     }
-    healthHUD.position.set(body.x, 2.65, body.z); scene.add(healthHUD);
+    healthHUD.position.set(body.x, 2.65, body.z);
+    assignSharpHudLayer(healthHUD);
+    scene.add(healthHUD);
     let enemyMarker = null;
     if (body.team === 'enemy') {
       enemyMarker = createEnemyMarker(0xdf3830, 0xff887d, true);

@@ -22,7 +22,14 @@ export const STORY_ENCOUNTERS = [
 ];
 
 export const ENEMY_STATS = {
-  goblin: { health: 32, maxHealth: 32, damageQuarters: 4 },
-  slinger: { health: 24, maxHealth: 24, damageQuarters: 2 },
-  boar: { health: 24, maxHealth: 24, damageQuarters: 6 },
+  goblin: { health: 32, maxHealth: 32, damageQuarters: 4, radius: .62 },
+  slinger: { health: 24, maxHealth: 24, damageQuarters: 2, radius: .58 },
+  boar: { health: 24, maxHealth: 24, damageQuarters: 6, radius: .74 },
+  ogre: { health: 64, maxHealth: 64, damageQuarters: 8, radius: 1.02 },
+  'acid-spitter': { health: 20, maxHealth: 20, damageQuarters: 1, radius: .72 },
+  shellguard: { health: 40, maxHealth: 40, damageQuarters: 5, radius: .9 },
+  burrower: { health: 24, maxHealth: 24, damageQuarters: 4, radius: .7 },
+  flanker: { health: 28, maxHealth: 28, damageQuarters: 4, radius: .72 },
+  'ember-moth': { health: 16, maxHealth: 16, damageQuarters: 3, radius: .58 },
+  hexer: { health: 18, maxHealth: 18, damageQuarters: 2, radius: .68 },
 };

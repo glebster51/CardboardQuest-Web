@@ -10,8 +10,9 @@ export function normalizeAudioSettings(value = {}) {
 export function audioMood(location, health, encounterCleared = false) {
   if (health <= 0) return 'mystery';
   const enemies = (location?.enemies ?? []).filter(enemy => enemy.health > 0 && !enemy.fell && enemy.spawnReady !== false);
-  const fighting = !encounterCleared && enemies.some(enemy => enemy.combatAwake !== false);
-  if (fighting) return enemies.some(enemy => enemy.boss) ? 'boss' : 'battle';
+  const activeEnemies = enemies.filter(enemy => enemy.active !== false && enemy.health > 0);
+  const fighting = !encounterCleared && activeEnemies.some(enemy => enemy.combatAwake !== false);
+  if (fighting) return activeEnemies.some(enemy => enemy.boss) ? 'boss' : 'battle';
   if (!encounterCleared && location?.kind === 'camp' && ((location.pendingSpawns ?? 0) > 0 || location.reinforcementQueue?.length)) return 'battle';
   return /ruin|quarry|vault|bell|cave|crypt|mine|pass|shrine/.test(location?.id ?? '') ? 'mystery' : 'peace';
 }

@@ -1,8 +1,9 @@
-import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=150';
-import { ASSET_CATALOG } from './asset-catalog.mjs?v=7';
+import { lightingDirectionFromAngles, lightingDirectionToAngles, readTransform } from './edit-model.mjs?v=152';
+import { ASSET_CATALOG } from './asset-catalog.mjs?v=10';
 import { createRenderDebugModes } from './render-debug-modes.mjs?v=2';
 import { bindPlayerRevealSettings, createPlayerRevealSettingsMarkup } from './player-reveal-settings.mjs?v=3';
-import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=2';
+import { bindItemMagnetSettings, createItemMagnetSettingsMarkup } from './item-magnet-settings.mjs?v=3';
+import { createItemMagnetPreview } from './item-magnet-preview.mjs?v=1';
 import { applyTerrainSculptDab, terrainBrushSpacing, terrainTargetHeightAt } from '../game/terrain-sculpt.mjs?v=2';
 import { fogPathRadiusAt, setFogPathRadius } from '../fog-paths.mjs?v=2';
 
@@ -10,8 +11,10 @@ const editable = target => target instanceof HTMLElement && (target.matches('inp
 
 /** Desktop editor. Loaded controls stay dormant until the physical ~ / Ё key is pressed. */
 export function installSceneEditor({ THREE, scene, camera, renderer, registry, getLocation, canOpen, onActiveChange, createAsset, rebuildTerrain,
+  applyToSource,
   getCampaignGraphData, onCampaignGraphChange, getScreenEffects = () => ({ ssao: true, tiltShift: true }), onScreenEffectsChange = () => {},
   getItemMagnetSettings = () => ({ radius: 4, worldDuration: .48, worldArc: 3.4, iconDuration: .7, iconArc: 220 }),
+  getItemMagnetPlayerPosition = () => ({ x: 0, y: 0, z: 0 }),
   onItemMagnetSettingsChange = () => {}, onFogSettingsChange = () => {}, onFogPathsChange = () => {} }) {
   const canvas = renderer.domElement, model = registry.model;
   let active = false, opening = false, controls, panel, bindings = [], selected = null, helperRoot, box, localBox, gizmoSpace = 'world', pathRoot, renderDebug;
@@ -20,6 +23,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   let terrainStroke = null, terrainMap = null, terrainEdits = null, terrainLast = null, terrainStrokeChanged = false, terrainTimer = 0;
   let terrainRebuildPending = false, terrainRebuildTask = null;
   let campaignGraphEditor = null, graphOpen = false;
+  let itemMagnetPreview;
+  let applying = false;
   let originalCamera, pointerStart = null, right = false, middle = false, lastPointer = null;
   let yaw = 0, pitch = 0, copyPending = null, copying = false, speed = 12;
   const keys = new Set(), focusPoint = new THREE.Vector3(), direction = new THREE.Vector3();
@@ -147,8 +152,30 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   function changed() {
     ui.diff.value = model.text(); ui.count.textContent = String(model.diff().changes.length);
     refreshChangeList();
+    ui.apply.disabled = applying || !model.diff().changes.length;
     try { localStorage.setItem('cardboardquest-editor-last-diff', ui.diff.value); } catch { /* Clipboard and download still work. */ }
     void copyDiff(ui.diff.value);
+  }
+  async function applySource() {
+    if (applying || !applyToSource || addJobs.size || terrainStroke || controls?.dragging || activePath) return;
+    model.commit();
+    const diff = model.diff();
+    if (!diff.changes.length) return;
+    applying = true; ui.apply.disabled = true;
+    ui.applyStatus.hidden = true;
+    const overlay = document.createElement('div'); overlay.className = 'se-apply-overlay'; overlay.setAttribute('role', 'status');
+    overlay.textContent = 'Сохраняю изменения в исходный проект…'; document.body.append(overlay);
+    try {
+      await applyToSource(diff);
+      // A full reload starts a clean baseline and refreshes all worker/streamed scene data too.
+      // Local server sends no-store for every resource; no stale module/worker cache survives Apply.
+      overlay.textContent = 'Сохранено. Загружаю обновлённую сцену…';
+      location.reload();
+    } catch (error) {
+      overlay.remove(); applying = false; ui.apply.disabled = false;
+      ui.status.textContent = `Apply не выполнен: ${error.message}. Дифф сохранён.`;
+      ui.applyStatus.textContent = ui.status.textContent; ui.applyStatus.hidden = false;
+    }
   }
   function refreshInspector() {
     ui.selected.textContent = selected?.label ?? 'Выбери объект в сцене или списке';
@@ -457,6 +484,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   }
   async function openCampaignGraph() {
     if (graphOpen || !getCampaignGraphData) return;
+    itemMagnetPreview?.setControl(null);
     if (terrainOpen) setTerrainModeOpen(false);
     if (!campaignGraphEditor) {
       const { createCampaignGraphEditor } = await import('./campaign-graph-editor.mjs?v=2');
@@ -541,8 +569,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     const screenEffects = getScreenEffects();
     panel.innerHTML = `<div class="se-toolbar">
       <header><div><small>РЕДАКТОР СЦЕНЫ · ИГРА НА ПАУЗЕ</small><strong id="se-location"></strong></div>
-        <button id="se-space" type="button" aria-pressed="false" title="Пространство гизмо и рамки: мировое · X">World · X</button><button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть все объекты и туман к опубликованной версии">Сброс к релизу</button><button id="se-close" type="button" aria-label="Закрыть редактор сцены">Закрыть ×</button>
-      </header></div><aside class="se-controls" aria-label="Параметры сцены">
+        <button id="se-space" type="button" aria-pressed="false" title="Пространство гизмо и рамки: мировое · X">World · X</button><button id="se-overview">Вся локация</button><button id="se-fog-paths" aria-pressed="false" title="Показать и перетаскивать точки троп тумана">Линии тумана</button><button id="se-terrain" aria-pressed="false" title="Открыть мастерскую рельефа">Терраформинг</button><button id="se-level-graph" title="Открыть карту уровней и редактировать связи">Граф карты мира</button><button id="se-reset-all" title="Вернуть объекты к сохранённому состоянию исходного проекта">Сброс к сохранённому</button><button id="se-apply" type="button" title="Записать суммарный дифф в исходный проект и перезагрузить сцену" disabled>Apply · в проект</button><button id="se-close" type="button" aria-label="Закрыть редактор сцены">Закрыть ×</button>
+      </header><output id="se-apply-status" role="status" hidden></output></div><aside class="se-controls" aria-label="Параметры сцены">
       <details class="se-module" open><summary>Туман</summary><div class="se-module-content se-fog">
         <label><input data-fog="enabled" aria-label="Отображать туман" type="checkbox"> Отображать туман</label>
         <label>Начало тумана <output></output><input data-fog="start" aria-label="Начало тумана" type="range" min="-12" max="20" step=".1"></label>
@@ -628,10 +656,14 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       </section><div id="se-assets" role="tabpanel"></div></section>`;
     document.body.append(panel);
     refreshRevealSettings = bindPlayerRevealSettings({ panel, registry, model, changed });
-    bindItemMagnetSettings({ panel, getSettings: getItemMagnetSettings, onChange: onItemMagnetSettingsChange });
+    bindItemMagnetSettings({ panel, getSettings: getItemMagnetSettings, onChange: onItemMagnetSettingsChange,
+      onPreviewChange: key => itemMagnetPreview?.setControl(active && !graphOpen ? key : null) });
     new ResizeObserver(entries => panel.style.setProperty('--se-top', `${entries[0].target.getBoundingClientRect().height + 14}px`))
       .observe(panel.querySelector('.se-toolbar'));
     for (const name of ['location', 'objects', 'selected', 'fields', 'status', 'diff', 'count', 'path-hint', 'changes', 'change-count']) ui[name] = panel.querySelector(`#se-${name}`);
+    ui.apply = panel.querySelector('#se-apply');
+    ui.applyStatus = panel.querySelector('#se-apply-status');
+    ui.apply.addEventListener('click', () => void applySource());
     ui.pathHint = ui['path-hint'];
     ui.terrainLevel = panel.querySelector('#se-terrain-level');
     for (const [property, label] of [['position', 'Позиция'], ['rotation', 'Поворот °'], ['scale', 'Масштаб']]) {
@@ -752,10 +784,12 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
         button.className = placeable ? '' : 'se-library-reference';
         button.dataset.asset = item.id; button.title = `${item.label}${item.group ? ` · ${item.group}` : ''}`;
         const imagePath = item.preview ?? item.asset;
-        if (item.kind === 'world-item') {
+        if (item.kind === 'world-item' && Number.isInteger(item.frame)) {
           const image = document.createElement('span'); image.className = 'se-item-preview';
           image.style.backgroundImage = `url("${new URL(`../${imagePath}`, import.meta.url).href}")`;
-          image.style.backgroundPosition = `${(item.frame % 4) / 3 * 100}% ${Math.floor(item.frame / 4) * 100}%`;
+          const columns = item.atlasColumns ?? 4, rows = item.atlasRows ?? 2;
+          image.style.backgroundSize = `${columns * 100}% ${rows * 100}%`;
+          image.style.backgroundPosition = `${(item.frame % columns) / Math.max(1, columns - 1) * 100}% ${Math.floor(item.frame / columns) / Math.max(1, rows - 1) * 100}%`;
           button.append(image);
         } else if (imagePath) {
           const image = new Image(); image.src = new URL(`../${imagePath}`, import.meta.url).href; image.loading = 'lazy'; image.alt = ''; image.draggable = false;
@@ -874,6 +908,8 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     terrainBrush.rotation.x = -Math.PI / 2; terrainBrush.renderOrder = 10007; terrainBrush.visible = false;
     terrainBrush.userData.cqRenderDebugExclude = true; scene.add(terrainBrush);
     renderDebug = createRenderDebugModes({ THREE, scene, renderer });
+    itemMagnetPreview = createItemMagnetPreview({ THREE, scene, camera, canvas,
+      getPlayerPosition: getItemMagnetPlayerPosition, getSettings: getItemMagnetSettings });
     controls = new TransformControls(camera, canvas); controls.enabled = false; controls.setSize(.9);
     controls.setSpace(gizmoSpace);
     scene.add(controls.getHelper());
@@ -893,8 +929,10 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
     loadStatus('Редактор: создание гизмо и отладочных инструментов', 'ready');
   }
   async function toggle() {
+    if (applying) return;
     if (opening || (!active && !canOpen())) return;
     if (active) {
+      itemMagnetPreview?.setControl(null);
       if (addJobs.size) await Promise.allSettled([...addJobs]);
       active = false; pathMode = false; activePath = hoveredPath = pathDrag = null; pathRoot.visible = false;
       if (terrainOpen) setTerrainModeOpen(false);
@@ -961,6 +999,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
   });
   syncEditorToggleButton();
   addEventListener('keydown', event => {
+    if (applying) { event.preventDefault(); event.stopImmediatePropagation(); return; }
     if (graphOpen) {
       if (event.code === 'Backquote' && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); campaignGraphEditor?.close(); }
       return;
@@ -1097,6 +1136,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
       const fogMask = pathMode ? getLocation().edgeShade?.texture?.image?.data : null;
       if (fogMask) for (let index = 0; index < fogMask.length; index += 4) fogMaskSum += fogMask[index];
       return { selected: selected?.id ?? null, mode: controls?.mode ?? 'translate', renderMode: renderDebug?.mode ?? 'normal',
+        itemMagnetPreview: itemMagnetPreview?.inspect() ?? { active: false },
         fogPathHandles, fogMaskSum, fogPaths: active ? registry.fogPaths(getLocation().id) : null,
         dragging: controls?.dragging ?? false, handles };
     },
@@ -1110,6 +1150,7 @@ export function installSceneEditor({ THREE, scene, camera, renderer, registry, g
           * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 3 : 1));
       }
       camera.updateMatrixWorld(); if (selected && gizmoSpace === 'world') box.setFromObject(selected.object);
+      itemMagnetPreview?.update(dt);
     },
   };
 }

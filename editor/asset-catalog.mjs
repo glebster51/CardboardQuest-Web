@@ -1,4 +1,7 @@
 import { sceneryAsset } from '../render/location-scenery.mjs';
+import { EQUIPMENT_ITEMS } from '../game/equipment.mjs?v=1';
+import { COIN_SKINS } from '../game/currency.mjs?v=1';
+import { MERCHANTS } from '../game/merchants.mjs?v=1';
 
 const foliage = [
   ['tree', 'Дуб', 4], ['evergreen', 'Ель', 3.8], ['birch', 'Берёза', 4], ['bushes', 'Куст', 1.8],
@@ -21,7 +24,7 @@ const scenery = [
   { id: 'fortress', label: 'Крепость', size: 4, group: 'Декорации', category: 'unique', asset: 'assets/env-fortress.png' },
 ];
 
-const sprite = (id, label, category, file, size, group) => ({ id, label, category, asset: `assets/${file}.png`, size, group });
+const sprite = (id, label, category, file, size, group, extra = {}) => ({ id, label, category, asset: `assets/${file}.png`, size, group, ...extra });
 const reference = (id, label, category, preview, hint) => ({ id, label, category, preview: `assets/${preview}.png`, hint, kind: 'reference' });
 const worldItem = (itemId, label, frame) => ({ id: `world-item-${itemId}`, itemId, label, category: 'interactive',
   asset: `assets/loot-atlas.png#${itemId}`, preview: 'assets/loot-atlas.png', frame, size: .54,
@@ -46,10 +49,26 @@ export const ASSET_CATALOG = [
   worldItem('scrap', 'Медный обломок', 4),
   worldItem('nuts', 'Лесные орехи', 5),
   worldItem('bladeShard', 'Острый осколок', 6),
-  sprite('goblin', 'Гоблин', 'enemies', 'goblin-idle', 1.8, 'Враг'),
-  sprite('slinger', 'Гоблин-пращник', 'enemies', 'slinger-idle', 1.8, 'Враг'),
-  sprite('boar', 'Кабан', 'enemies', 'boar-idle', 2.1, 'Враг'),
-  sprite('ogre', 'Огр', 'enemies', 'ogre-idle', 3.2, 'Враг'),
+  ...EQUIPMENT_ITEMS.map(item => ({ id: `world-item-${item.id}`, itemId: item.id, label: item.name, category: 'interactive',
+    asset: item.image, preview: item.image, size: .54, group: 'Экипировка', kind: 'world-item',
+    hint: `${item.hint}. Подбери и надень из рюкзака.` })),
+  ...COIN_SKINS.map(skin => ({ id: `world-${skin.id}`, itemId: 'coins', amount: skin.amount,
+    label: `${skin.label} · ${skin.amount}`, category: 'interactive', asset: `assets/economy/coins.png#${skin.id}`,
+    preview: 'assets/economy/coins.png', frame: skin.frame, atlasColumns: 3, atlasRows: 1, size: .3,
+    group: 'Деньги', kind: 'world-item', hint: 'Подбираются магнитом. Сумма зачисляется в кошелёк.' })),
+  ...MERCHANTS.map(merchant => ({ id: `merchant-${merchant.id}`, merchantId: merchant.id,
+    label: `${merchant.name} · торговец`, category: 'characters', asset: `assets/economy/merchant.png#${merchant.id}`,
+    preview: 'assets/economy/merchant.png', size: 1.9, group: merchant.title, kind: 'merchant', hint: 'Подойди вне боя, чтобы открыть магазин.' })),
+  sprite('goblin', 'Гоблин', 'enemies', 'goblin-idle', 1.8, 'Враг', { kind: 'enemy', archetype: 'goblin' }),
+  sprite('slinger', 'Гоблин-пращник', 'enemies', 'slinger-idle', 1.8, 'Враг', { kind: 'enemy', archetype: 'slinger' }),
+  sprite('boar', 'Кабан', 'enemies', 'boar-idle', 2.1, 'Враг', { kind: 'enemy', archetype: 'boar' }),
+  sprite('ogre', 'Огр', 'enemies', 'ogre-idle', 3.2, 'Враг', { kind: 'enemy', archetype: 'ogre' }),
+  sprite('acid-spitter', 'Кислотник', 'enemies', 'enemies/acid-spitter', 1.9, 'Дальняя атака', { kind: 'enemy', archetype: 'acid-spitter', customSprite: true }),
+  sprite('shellguard', 'Панцирник', 'enemies', 'enemies/shellguard', 2.05, 'Защита и контратака', { kind: 'enemy', archetype: 'shellguard', customSprite: true }),
+  sprite('burrower', 'Копатель', 'enemies', 'enemies/burrower', 1.85, 'Засада', { kind: 'enemy', archetype: 'burrower', customSprite: true }),
+  sprite('flanker', 'Обходчик', 'enemies', 'enemies/flanker', 1.95, 'Обход и выпад', { kind: 'enemy', archetype: 'flanker', customSprite: true }),
+  sprite('ember-moth', 'Угольная моль', 'enemies', 'enemies/ember-moth', 1.9, 'Серия выпадов', { kind: 'enemy', archetype: 'ember-moth', customSprite: true }),
+  sprite('hexer', 'Порчевик', 'enemies', 'enemies/hexer', 1.95, 'Зональная атака', { kind: 'enemy', archetype: 'hexer', customSprite: true }),
   sprite('hero', 'Герой', 'characters', 'hero-idle', 1.8, 'Персонаж'),
   sprite('grandpa', 'Дедушка', 'characters', 'npc-grandpa-idle', 1.8, 'Персонаж'),
   sprite('cartographer', 'Картограф', 'characters', 'npc-cartographer-idle', 1.8, 'Персонаж'),
