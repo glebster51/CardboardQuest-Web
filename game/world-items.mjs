@@ -50,7 +50,16 @@ export function normalizeWorldLoot(records) {
     && (item.itemId !== 'coins' || validCoinDrop(item.amount ?? 1))
     && Number.isFinite(item.x) && Number.isFinite(item.z)
     && (seen.add(item.id), true))
-    .map(({ id, itemId, x, z, amount }) => ({ id, itemId, x, z, ...(itemId === 'coins' ? { amount: amount ?? 1 } : {}) }));
+    .map(({ id, itemId, x, z, amount, pickupBlocked }) => ({ id, itemId, x, z,
+      ...(itemId === 'coins' ? { amount: amount ?? 1 } : {}), ...(pickupBlocked === true ? { pickupBlocked: true } : {}) }));
+}
+
+/** A deliberately dropped item stays inert until the player has left its pickup radius once. */
+export function unlockDroppedLootAfterLeaving(item, playerX, playerZ, radius) {
+  if (item?.pickupBlocked !== true || ![playerX, playerZ, radius].every(Number.isFinite)) return false;
+  if (Math.hypot(playerX - item.x, playerZ - item.z) <= Math.max(0, radius)) return false;
+  item.pickupBlocked = false;
+  return true;
 }
 
 export function takeWorldLoot(records, id) {

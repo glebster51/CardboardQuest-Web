@@ -3,6 +3,12 @@ export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealEnabled: true, revea
   revealNoiseMultiply: .6, revealNoiseSpeedX: .08, revealNoiseSpeedY: .41, revealCheckerSize: 1,
   revealDepthFadeAdd: .8, revealDepthFadeMultiply: 1.25 });
 
+export function playerRevealRadiusScale(effectPixelRatio, scenePixelRatio, effectEnabled = true) {
+  if (!effectEnabled || !Number.isFinite(effectPixelRatio) || !Number.isFinite(scenePixelRatio)
+      || effectPixelRatio <= 0 || scenePixelRatio <= 0) return 1;
+  return Math.min(1, effectPixelRatio / scenePixelRatio);
+}
+
 /** Adds the screen-space dither discard to one opaque scenery shader. */
 export function applyPlayerOcclusionDitherShader(shader, uniforms) {
   Object.assign(shader.uniforms, uniforms);
@@ -61,7 +67,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
 
 /** Shares a camera-space reveal mask across opaque scenery materials. */
 export function createPlayerOcclusionDither(THREE, renderer,
-  getRenderPixelRatio = () => renderer.getPixelRatio()) {
+  getRenderPixelRatio = () => renderer.getPixelRatio(), getRadiusScale = () => 1) {
   let noiseTexture = null;
   let loadNoiseTexture = null;
   const noiseTextures = new Map();
@@ -120,6 +126,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
   let noiseSpeedY = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedY;
   let appliedPixelRatio = null;
   let appliedZoomScale = null;
+  let appliedRadiusScale = null;
   let referencePlayerDepth = null;
 
   function syncPixelRatio(zoomScale = 1) {
@@ -127,11 +134,14 @@ export function createPlayerOcclusionDither(THREE, renderer,
     const renderPixelRatio = getRenderPixelRatio();
     const pixelRatio = Number.isFinite(renderPixelRatio) && renderPixelRatio > 0
       ? renderPixelRatio : devicePixelRatio;
-    if (pixelRatio === appliedPixelRatio && zoomScale === appliedZoomScale) return pixelRatio;
+    const radiusScale = getRadiusScale();
+    if (pixelRatio === appliedPixelRatio && zoomScale === appliedZoomScale
+        && radiusScale === appliedRadiusScale) return pixelRatio;
     appliedPixelRatio = pixelRatio;
     appliedZoomScale = zoomScale;
-    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio * zoomScale;
-    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio * zoomScale;
+    appliedRadiusScale = radiusScale;
+    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio * zoomScale * radiusScale;
+    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio * zoomScale * radiusScale;
     uniforms.cqRevealCheckerSize.value = checkerSize * pixelRatio;
     uniforms.cqRevealNoiseSize.value = noiseSize * pixelRatio * zoomScale;
     return pixelRatio;

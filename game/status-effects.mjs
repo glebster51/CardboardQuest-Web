@@ -1,9 +1,9 @@
 export const STATUS_EFFECTS = Object.freeze({
-  regeneration: { label: 'Регенерация', kind: 'buff', locations: 2, tickEvery: 6, heal: 1 },
-  fortified: { label: 'Крепость', kind: 'buff', locations: 2, defense: 1 },
-  might: { label: 'Сила', kind: 'buff', locations: 2, damage: 1 },
-  poison: { label: 'Отравление', kind: 'debuff', tickEvery: 2, damage: 1, ticks: 4 },
-  burn: { label: 'Горение', kind: 'debuff', tickEvery: 1.5, damage: 1, ticks: 4 },
+  regeneration: { label: 'Регенерация', description: 'Постепенно восстанавливает четверть сердечка каждые 6 секунд.', kind: 'buff', locations: 2, tickEvery: 6, heal: 1 },
+  fortified: { label: 'Крепость', description: 'Снижает входящий урон на четверть сердечка за удар. Минимум урона — четверть сердечка.', kind: 'buff', locations: 2, defense: 1 },
+  might: { label: 'Сила', description: 'Добавляет четверть сердечка к урону каждой атаки.', kind: 'buff', locations: 2, damage: 1 },
+  poison: { label: 'Отравление', description: 'Отнимает четверть сердечка каждые 2 секунды, всего 4 раза.', kind: 'debuff', tickEvery: 2, damage: 1, ticks: 4 },
+  burn: { label: 'Горение', description: 'Отнимает четверть сердечка каждые 1,5 секунды, всего 4 раза.', kind: 'debuff', tickEvery: 1.5, damage: 1, ticks: 4 },
 });
 
 // Values are duration multipliers for enemy debuffs: 0 = immune, below 1 =
@@ -112,8 +112,14 @@ export function statusCombatBonuses(state) {
 export function statusEffectLabels(effects) {
   return normalizeStatusEffects(effects).map(effect => {
     const definition = STATUS_EFFECTS[effect.id];
+    const secondsLeft = effect.remainingTicks === undefined ? 0
+      : Math.ceil(Math.max(0, effect.remainingTicks * definition.tickEvery - (effect.tickIn ?? 0)));
+    const locationTransitionsLeft = effect.remainingLocations;
     const duration = effect.remainingLocations !== undefined ? ` · ${effect.remainingLocations} локац.`
-      : ` · ${Math.ceil(effect.remainingTicks * definition.tickEvery)}с`;
-    return { id: effect.id, label: definition.label, kind: definition.kind, duration };
+      : ` · ${secondsLeft}с`;
+    const remaining = locationTransitionsLeft !== undefined
+      ? `Действует ещё ${locationTransitionsLeft} ${locationTransitionsLeft === 1 ? 'переход' : 'перехода'} между локациями.`
+      : `Осталось примерно ${secondsLeft} сек.`;
+    return { id: effect.id, label: definition.label, description: definition.description, kind: definition.kind, duration, remaining };
   });
 }

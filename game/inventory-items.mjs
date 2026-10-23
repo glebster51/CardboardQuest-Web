@@ -49,3 +49,13 @@ export function inventoryItemAction(item, health, maxHealth, state = null) {
   if (canCleanse && health >= maxHealth) return { usable: item.count > 0, hint: 'Снимает яд и горение' };
   return { usable: item.count > 0, hint: `Восстанавливает ${String(item.healing / 4).replace('.', ',')} ♥` };
 }
+
+/** Removes exactly the dragged inventory cell, keeping its hole and neighboring slots stable. */
+export function removeInventoryItem(state, itemId, slotIndex) {
+  if (!state || !Number.isInteger(slotIndex) || slotIndex < 0
+    || state.inventorySlots?.[slotIndex] !== itemId || !(Number(state.items?.[itemId]) > 0)) return false;
+  state.inventorySlots[slotIndex] = null;
+  state.items[itemId]--;
+  if (state.items[itemId] <= 0) delete state.items[itemId];
+  return true;
+}

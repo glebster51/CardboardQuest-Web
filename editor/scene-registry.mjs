@@ -1,14 +1,26 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, readTransform, validateSceneValue, writeTransform } from './edit-model.mjs?v=154';
+import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS,
+  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './edit-model.mjs?v=155';
 import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=10';
 import { createExitBarrierBodies } from '../location-network.mjs';
 import { createDefaultFogPaths } from '../fog-paths.mjs?v=2';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=2';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
-export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog, setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {} }) {
+export function createSceneRegistry({ THREE, overrides, savedDiff = null, locationIds = [], setFog, getActiveLocationId = () => null,
+  setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {}, setScreenEffects = () => {}, setItemMagnetSettings = () => {} }) {
   const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
-  if (savedDiff) model.restore(savedDiff);
-  const fog = { ...FOG_DEFAULTS, ...overrides.fog }; model.register(null, 'fog', fog);
+  if (savedDiff) model.restore(scopeLegacyGlobalFogChanges(savedDiff, locationIds, overrides));
+  const legacyFog = { ...FOG_DEFAULTS, ...overrides.fog }, locationFogs = new Map();
+  function fogFor(locationId) {
+    if (typeof locationId !== 'string' || !locationId) return legacyFog;
+    if (!locationFogs.has(locationId)) {
+      const baseline = { ...legacyFog, ...overrides.locations?.[locationId]?.fog };
+      locationFogs.set(locationId, model.register(locationId, 'fog', baseline));
+    }
+    return locationFogs.get(locationId);
+  }
   const lighting = { ...LIGHTING_DEFAULTS, ...overrides.lighting,
     direction: [...(overrides.lighting?.direction ?? LIGHTING_DEFAULTS.direction)] };
   model.register(null, 'lighting', lighting);
@@ -18,6 +30,10 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog
   const unitPuckColors = { ...UNIT_PUCK_COLOR_DEFAULTS, ...overrides.unitPuckColors };
   validateSceneValue(unitPuckColors, false, false, false, false, false, false, true);
   model.register(null, 'unit-puck-colors', unitPuckColors);
+  const screenEffects = normalizeScreenEffects(overrides.screenEffects ?? DEFAULT_SCREEN_EFFECTS);
+  model.register(null, 'screen-effects', screenEffects);
+  const itemMagnetSettings = normalizeItemMagnetSettings(overrides.itemMagnet ?? ITEM_MAGNET_DEFAULTS);
+  model.register(null, 'item-magnet', itemMagnetSettings);
   const prefabs = new Map();
   for (const item of ASSET_CATALOG.filter(entry => entry.asset && entry.kind !== 'reference')) {
     const settings = { size: overrides.prefabs?.[item.id]?.size ?? item.size };
@@ -127,7 +143,12 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog
     return meshes;
   }
   return {
-    model, fog, lighting, terrainStyle, unitPuckColors,
+    model,
+    get fog() { return fogFor(getActiveLocationId()); },
+    fogFor,
+    scopeLegacyFogDiff(diff, ids) { return scopeLegacyGlobalFogChanges(diff, ids, overrides); },
+    activateLocation(locationId) { setFog(locationId, fogFor(locationId)); },
+    lighting, terrainStyle, unitPuckColors, screenEffects, itemMagnetSettings,
     terrainEdits(id) {
       if (model.has(id, 'terrain')) return model.get(id, 'terrain');
       const value = overrides.locations[id]?.terrain ?? { strokes: [] };
@@ -135,6 +156,7 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog
       return model.register(id, 'terrain', value);
     },
     prepare(location) {
+      setFog(location.id, fogFor(location.id));
       sources.set(location.id, { location, data: JSON.parse(JSON.stringify({
         entry: location.entry, arrivals: location.arrivals, exits: location.exits, fogPaths: location.fogPaths,
       })) });
@@ -242,9 +264,13 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog
       for (const axis of ['x', 'y', 'z']) binding.object.scale[axis] = Math.max(.001, binding.object.scale[axis]);
       binding.sync?.(); return model.set(binding.location, binding.id, snapshot(binding));
     },
-    changeFog(settings) {
+    changeFog(location, settings) {
+      const locationId = typeof location === 'string' ? location : location?.id;
+      if (!locationId) throw new Error('Fog settings require a location');
+      const fog = fogFor(locationId);
       const next = { ...fog, ...settings }; validateSceneValue(next, true);
-      Object.assign(fog, next); setFog(fog); return model.set(null, 'fog', { ...fog });
+      Object.assign(fog, next); setFog(locationId, fog);
+      return model.set(locationId, 'fog', { ...fog });
     },
     changeLighting(settings) {
       const next = { ...lighting, ...settings, direction: [...(settings.direction ?? lighting.direction)] };
@@ -262,6 +288,16 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog
       validateSceneValue(next, false, false, false, false, false, false, true);
       Object.assign(unitPuckColors, next); setUnitPuckColors(unitPuckColors);
       return model.set(null, 'unit-puck-colors', { ...unitPuckColors });
+    },
+    changeScreenEffects(settings) {
+      const next = normalizeScreenEffects({ ...screenEffects, ...settings });
+      Object.assign(screenEffects, next); setScreenEffects(screenEffects);
+      return model.set(null, 'screen-effects', { ...screenEffects });
+    },
+    changeItemMagnetSettings(settings) {
+      const next = normalizeItemMagnetSettings({ ...itemMagnetSettings, ...settings });
+      Object.assign(itemMagnetSettings, next); setItemMagnetSettings(itemMagnetSettings);
+      return model.set(null, 'item-magnet', { ...itemMagnetSettings });
     },
     prefab(id) { return model.get(null, `prefab:${id}`) ?? null; },
     prefabInstanceCount(id) {
@@ -313,10 +349,15 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, setFog
       return changed;
     },
     sync() {
-      Object.assign(fog, model.get(null, 'fog')); setFog(fog);
+      for (const [locationId, fog] of locationFogs) {
+        Object.assign(fog, model.get(locationId, 'fog'));
+        setFog(locationId, fog);
+      }
       Object.assign(lighting, model.get(null, 'lighting')); setLighting(lighting);
       Object.assign(terrainStyle, model.get(null, 'terrain-style')); setTerrainStyle(terrainStyle);
       Object.assign(unitPuckColors, model.get(null, 'unit-puck-colors')); setUnitPuckColors(unitPuckColors);
+      Object.assign(screenEffects, model.get(null, 'screen-effects')); setScreenEffects(screenEffects);
+      Object.assign(itemMagnetSettings, model.get(null, 'item-magnet')); setItemMagnetSettings(itemMagnetSettings);
       for (const item of ASSET_CATALOG) if (item.asset && item.kind !== 'reference') {
         const settings = model.get(null, `prefab:${item.id}`);
         if (settings) prefabs.set(item.id, settings);

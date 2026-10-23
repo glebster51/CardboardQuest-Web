@@ -1,11 +1,11 @@
-// Authored scene edits. Apply a pasted editor diff with tools/apply-scene-diff.mjs.
+// Authored scene edits. Saved by the local scene editor or tools/apply-scene-diff.mjs.
 export const SCENE_OVERRIDES = {
   "version": 1,
   "fog": {
     "enabled": true,
     "revealEnabled": true,
-    "start": -2.2,
-    "end": 10.9,
+    "start": 5.7,
+    "end": 16.6,
     "color": "#242039",
     "tint": 1,
     "curve": 2.1,
@@ -23,7 +23,11 @@ export const SCENE_OVERRIDES = {
     "revealDepthFadeMultiply": 1.25
   },
   "lighting": {
-    "direction": [-5, 12, 7],
+    "direction": [
+      -5,
+      12,
+      7
+    ],
     "intensity": 3,
     "color": "#ffebcb"
   },
@@ -36,8 +40,8 @@ export const SCENE_OVERRIDES = {
     "baseWidth": 0.3
   },
   "unitPuckColors": {
-    "player": "#d1e8ae",
-    "enemy": "#e9a092"
+    "player": "#fee5c3",
+    "enemy": "#6b5d57"
   },
   "locations": {
     "home": {
@@ -109,6 +113,106 @@ export const SCENE_OVERRIDES = {
           1
         ]
       }
+    },
+    "camp": {
+      "fog-paths": {
+        "paths": [
+          {
+            "id": "arrival:moss-shrine",
+            "points": [
+              [
+                0,
+                -9.5
+              ],
+              [
+                0,
+                -7.125
+              ],
+              [
+                0,
+                -4.75
+              ],
+              [
+                0,
+                -2.375
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "id": "arrival:ash-road",
+            "points": [
+              [
+                6.6155604110301365,
+                8.291543531992403
+              ],
+              [
+                5.214440421005054,
+                5.321354777110251
+              ],
+              [
+                3.335531732998876,
+                4.283602296621616
+              ],
+              [
+                1.0830203598864179,
+                4.7725168431110205
+              ],
+              [
+                0,
+                0
+              ]
+            ],
+            "radii": [
+              0.779,
+              1.033,
+              1,
+              1,
+              1
+            ]
+          }
+        ]
+      },
+      "scenery:assets/env-troll-hut.png:3": {
+        "position": [
+          -7.83317,
+          0,
+          6.09074
+        ],
+        "rotation": [
+          0,
+          -1.03364,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
     }
+  },
+  "itemMagnet": {
+    "radius": 2.7,
+    "worldDuration": 0.93,
+    "worldArc": 2.1,
+    "iconDuration": 0.8,
+    "iconArc": 283
+  },
+  "screenEffects": {
+    "ssao": false,
+    "tiltShift": true,
+    "ssaoKernelRadius": 5,
+    "ssaoMinDistance": 0.008,
+    "ssaoMaxDistance": 0.12,
+    "tiltShiftFocus": 0.48,
+    "tiltShiftBlur": 12,
+    "tiltShiftUpperGradientShift": 0,
+    "tiltShiftLowerGradientShift": 0,
+    "tiltShiftGradientMultiplier": 0.45,
+    "tiltShiftShowGradient": false
   }
 };

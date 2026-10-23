@@ -1,14 +1,15 @@
-import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=3';
+import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=4';
 import { heartHealthLevels } from '../heart-health.mjs';
 import { combatBonuses, equipmentItem, EQUIPMENT_SLOT_LABELS, normalizeEquipment } from '../game/equipment.mjs?v=1';
 import { normalizeCoins } from '../game/currency.mjs?v=1';
 
 /** Inventory owns only presentation; consuming and saving remain game actions. */
-export function createInventoryPanel({ root, trigger, getState, getHealth, onOpen, onUse, onEquip, onUnequip }) {
+export function createInventoryPanel({ root, trigger, getState, getHealth, onOpen, onUse, onEquip, onUnequip, onDrop }) {
   const grid = root.querySelector('#inventory-items'), sheet = root.querySelector('.inventory-sheet');
   const tooltip = root.querySelector('#inventory-tooltip'), close = root.querySelector('#inventory-close');
   const use = root.querySelector('#inventory-use'), notice = root.querySelector('#inventory-notice');
   let selected = null, entries = [], page = 0, allEntries = [], previousFocus = null, warm = false, positioning = false;
+  let itemDrag = null, suppressClick = false;
   const equipmentBar = document.createElement('section'); equipmentBar.id = 'inventory-worn';
   equipmentBar.setAttribute('aria-label', 'Экипировка персонажа');
   sheet.querySelector('.inventory-heading').after(equipmentBar);
@@ -27,13 +28,56 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
   const cells = Array.from({ length: INVENTORY_CAPACITY }, (_, index) => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'inventory-slot';
     button.innerHTML = '<span class="inventory-item-icon" aria-hidden="true"><span class="inventory-healing" hidden></span></span>';
-    button.addEventListener('click', () => {
+    button.addEventListener('click', event => {
+      if (suppressClick) { suppressClick = false; event.preventDefault(); return; }
       const item = entries[index];
       selected = item?.key === selected ? null : item?.key ?? null;
       notice.textContent = ''; renderTooltip();
     });
+    button.addEventListener('pointerdown', event => {
+      const item = entries[index];
+      if (!item || event.button !== 0) return;
+      itemDrag = { pointerId: event.pointerId, itemId: item.id, slotIndex: item.slotIndex,
+        startX: event.clientX, startY: event.clientY, moved: false, ghost: null, source: button };
+      button.setPointerCapture?.(event.pointerId);
+    });
     grid.append(button); return button;
   });
+  function moveItemDrag(event) {
+    if (!itemDrag || event.pointerId !== itemDrag.pointerId) return;
+    if (!itemDrag.moved && Math.hypot(event.clientX - itemDrag.startX, event.clientY - itemDrag.startY) < 8) return;
+    itemDrag.moved = true; event.preventDefault();
+    if (!itemDrag.ghost) {
+      const sourceIcon = itemDrag.source.querySelector('.inventory-item-icon');
+      const ghost = sourceIcon.cloneNode(false), style = getComputedStyle(sourceIcon);
+      ghost.classList.add('inventory-drag-ghost');
+      Object.assign(ghost.style, { position: 'fixed', left: '0', top: '0', width: '58px', height: '58px',
+        zIndex: '10001', pointerEvents: 'none', opacity: '.94', backgroundImage: style.backgroundImage,
+        backgroundSize: style.backgroundSize, backgroundPosition: style.backgroundPosition,
+        transform: 'translate(-50%, -50%) scale(1.08)', filter: 'drop-shadow(0 5px 7px #160e0acc)' });
+      document.body.append(ghost); itemDrag.ghost = ghost;
+      itemDrag.source.classList.add('is-dragging');
+    }
+    itemDrag.ghost.style.left = `${event.clientX}px`; itemDrag.ghost.style.top = `${event.clientY}px`;
+  }
+  function finishItemDrag(event, cancelled = false) {
+    if (!itemDrag || event.pointerId !== itemDrag.pointerId) return;
+    const drag = itemDrag; itemDrag = null;
+    drag.ghost?.remove(); drag.source.classList.remove('is-dragging');
+    if (!drag.moved) return;
+    suppressClick = true; setTimeout(() => { suppressClick = false; }, 0);
+    event.preventDefault();
+    if (cancelled) return;
+    const rect = sheet.getBoundingClientRect(), outside = event.clientX < rect.left || event.clientX > rect.right
+      || event.clientY < rect.top || event.clientY > rect.bottom;
+    if (!outside) return;
+    const result = onDrop?.(drag.itemId, drag.slotIndex, { x: event.clientX, y: event.clientY });
+    if (result?.dropped) { hideTooltip(); render(); notice.textContent = `Выброшено: ${result.name ?? 'предмет'}`; }
+    else if (result?.error) notice.textContent = result.error;
+  }
+  window.addEventListener('pointermove', moveItemDrag, { passive: false });
+  window.addEventListener('pointerup', event => finishItemDrag(event));
+  window.addEventListener('pointercancel', event => finishItemDrag(event, true));
   function warmArt() {
     if (warm) return; warm = true;
     root.style.setProperty('--inventory-frame', 'url("assets/ui-inventory-frame.webp")');
@@ -175,6 +219,7 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
   root.querySelector('#inventory-next').addEventListener('click', () => { page++; hideTooltip(); render(); });
   root.querySelector('#inventory-tooltip-close').addEventListener('click', hideTooltip);
   root.addEventListener('click', event => {
+    if (suppressClick) { suppressClick = false; event.preventDefault(); event.stopPropagation(); return; }
     if (event.target === root) hide();
     else if (!tooltip.contains(event.target) && !grid.contains(event.target)) hideTooltip();
   });

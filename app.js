@@ -9,16 +9,16 @@ import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mj
 import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=2';
 import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=3';
 import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=28';
-import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=13';
-import { createHexTiltShiftShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=3';
+import { createPlayerOcclusionDither, playerRevealRadiusScale } from './render/player-occlusion-dither.mjs?v=14';
+import { createHexTiltShiftShader, createPostEffectInputShader, createTiltShiftCompositeShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=6';
 import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=2';
 import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=1';
 import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
 import { SCENE_OVERRIDES as RELEASE_SCENE_OVERRIDES } from './scene-overrides.mjs?v=134';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=153';
-import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=154';
-import { isLocalEditorOrigin, readLocalEditorDraft } from './editor/local-editor-state.mjs?v=1';
-import { connectLocalEditor, loadLocalEditorUi } from './editor/local-editor-client.mjs?v=1';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=154';
+import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=155';
+import { clearLocalEditorDraft, isLocalEditorOrigin } from './editor/release-local-editor-state.mjs';
+import { connectLocalEditor, loadLocalEditorUi } from './editor/release-local-editor-client.mjs';
 import { catalogAsset } from './editor/asset-catalog.mjs?v=10';
 import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=2';
 import { advanceEnemyAI } from './game/enemy-ai.mjs?v=4';
@@ -34,7 +34,7 @@ import { createLocationMapView } from './render/location-map-view.mjs?v=3';
 import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=2';
 import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=2';
 import { buildLocationMapGraph } from './game/location-map-data.mjs';
-import { createInventoryPanel } from './render/inventory-panel.mjs?v=5';
+import { createInventoryPanel } from './render/inventory-panel.mjs?v=6';
 import { EQUIPMENT_ITEMS, combatBonuses, equipInventoryItem, unequipItem, grantEquipmentStarter, playerDamageTaken } from './game/equipment.mjs?v=1';
 import { createCharacterEquipment } from './render/character-equipment.mjs?v=1';
 import { COIN_SKINS, coinSkin, creditCoins, rollCoins } from './game/currency.mjs?v=1';
@@ -61,12 +61,14 @@ import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, crea
 import { CAMPAIGN, CAMPAIGN_SAVE_KEY, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
   visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=10';
-import { normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot } from './game/world-items.mjs?v=4';
+import { normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot, unlockDroppedLootAfterLeaving, WORLD_ITEM_IDS } from './game/world-items.mjs?v=5';
+import { INVENTORY_ITEMS, removeInventoryItem } from './game/inventory-items.mjs?v=4';
 import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
-  ITEM_MAGNET_STORAGE_KEY, normalizeItemMagnetSettings } from './game/item-magnet.mjs?v=1';
+  ITEM_MAGNET_STORAGE_KEY, itemMagnetRadiusForItem, normalizeItemMagnetSettings, sampleItemMagnetMotion } from './game/item-magnet.mjs?v=2';
 import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=17';
 import { advanceStatusEffects, advanceStatusLocations, applyConsumableEffect, applyStatusEffect,
-  statusEffectLabels } from './game/status-effects.mjs?v=2';
+  statusEffectLabels } from './game/status-effects.mjs?v=3';
+import { isMobileRenderTarget, localRenderFps, renderQualityProfile } from './game/frame-rate.mjs?v=3';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,
@@ -106,7 +108,15 @@ let bodies = [heroBody];
 let state = heroBody;
 let selected = true;
 const GROUND_UI_Y = .026;
-const MAX_RENDER_FPS = 60;
+const IS_MOBILE_RENDER_TARGET = isMobileRenderTarget({
+    userAgent: navigator.userAgent,
+    mobileHint: navigator.userAgentData?.mobile,
+    pixel7Preview: new URLSearchParams(location.search).get('pixel7Preview') === '1',
+  });
+const MAX_RENDER_FPS = localRenderFps({
+  isLocal: isLocalEditorOrigin(location.hostname), isMobile: IS_MOBILE_RENDER_TARGET,
+});
+const RENDER_QUALITY = renderQualityProfile(IS_MOBILE_RENDER_TARGET);
 const FRAME_INTERVAL_MS = 1000 / MAX_RENDER_FPS;
 const AIM_DRAG_SENSITIVITY = 1 / 3;
 const AIM_MARKER_LENGTH_SCALE = 1 / 1.3;
@@ -115,8 +125,30 @@ const randomBetween = (min, max) => min + Math.random() * (max - min);
 
 async function start() {
   const localEditor = await connectLocalEditor();
+  const pixel7Preview = Boolean(localEditor) && new URLSearchParams(location.search).get('pixel7Preview') === '1';
+  if (pixel7Preview) {
+    try { Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2.625 }); }
+    catch { /* The 412 × 915 CSS viewport still applies when DPR cannot be overridden. */ }
+  }
   const persistEditorState = Boolean(localEditor) && isLocalEditorOrigin(location.hostname);
-  let savedEditorDiff = readLocalEditorDraft(localStorage, persistEditorState), sceneOverrides = RELEASE_SCENE_OVERRIDES;
+  let savedEditorDiff = null, sceneOverrides = RELEASE_SCENE_OVERRIDES;
+  let sharedEditorDraft = null;
+  if (localEditor) {
+    try {
+      sharedEditorDraft = await localEditor.readDraft();
+      if (sharedEditorDraft.diff?.baseBuild === SCENE_BUILD) savedEditorDiff = sharedEditorDraft.diff;
+      else if (sharedEditorDraft.diff === null) {
+        savedEditorDiff = null;
+        // The shared LAN draft is authoritative. Clear any older per-device
+        // copy so it cannot reappear on this client after another device Applys.
+        clearLocalEditorDraft(localStorage, persistEditorState);
+      }
+      else if (sharedEditorDraft.diff?.baseBuild !== SCENE_BUILD) {
+        console.warn('Общий черновик редактора пропущен: версия исходной сцены изменилась');
+        savedEditorDiff = null;
+      }
+    } catch (error) { savedEditorDiff = null; console.warn('Не удалось прочитать общий черновик редактора', error); }
+  }
   if (savedEditorDiff) {
     if (savedEditorDiff.baseBuild !== SCENE_BUILD) {
       console.warn('Черновик редактора пропущен: версия исходной сцены изменилась');
@@ -133,19 +165,23 @@ async function start() {
   reportLoadStage('Создание WebGL-рендера');
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
   reportLoadStage('Создание WebGL-рендера', 'ready');
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER_QUALITY.pixelRatioCap));
   renderer.setClearColor(LOCATION_FAR_COLOR);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
-  let tiltShiftComposer = null, tiltShiftPass = null, ssaoPass = null,
+  let tiltShiftComposer = null, tiltShiftInputPass = null, tiltShiftPass = null,
+    tiltShiftCompositePass = null, ssaoPass = null,
+    sharpSceneTarget = null,
     tiltShiftPixelRatio = 1, postProcessingPromise = null;
   let screenEffects = DEFAULT_SCREEN_EFFECTS;
-  try { screenEffects = normalizeScreenEffects(JSON.parse(localStorage.getItem(SCREEN_EFFECT_SETTINGS_KEY) || 'null')); }
+  try { screenEffects = normalizeScreenEffects(persistEditorState
+    ? sceneOverrides.screenEffects ?? null : JSON.parse(localStorage.getItem(SCREEN_EFFECT_SETTINGS_KEY) || 'null')); }
   catch { screenEffects = normalizeScreenEffects(null); }
   let itemMagnetSettings = ITEM_MAGNET_DEFAULTS;
-  try { itemMagnetSettings = normalizeItemMagnetSettings(JSON.parse(localStorage.getItem(ITEM_MAGNET_STORAGE_KEY) || 'null')); }
+  try { itemMagnetSettings = normalizeItemMagnetSettings(persistEditorState
+    ? sceneOverrides.itemMagnet ?? null : JSON.parse(localStorage.getItem(ITEM_MAGNET_STORAGE_KEY) || 'null')); }
   catch { itemMagnetSettings = normalizeItemMagnetSettings(null); }
   const setItemMagnetSettings = settings => {
     itemMagnetSettings = normalizeItemMagnetSettings(settings);
@@ -159,46 +195,68 @@ async function start() {
   };
   const renderScene = () => {
     heroEquipment?.update(elapsed);
-    const nearbyMerchant = nearestMerchant();
-    tradeButton.hidden = !nearbyMerchant || sceneEditor.active || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen();
-    if (nearbyMerchant) tradeButton.textContent = `Торговать · ${merchantDefinition(nearbyMerchant.merchantId).name}`;
     if (!sceneEditor.active) for (const actor of merchantActors) if (actor.locationId === activeLocation.id && actor.prop.visible)
       actor.prop.rotation.y = Math.atan2(heroBody.x - actor.body.x, heroBody.z - actor.body.z);
-    if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift)) {
+    if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift && !screenEffects.tiltShiftShowGradient)) {
       return renderer.render(scene, camera);
     }
     try {
+      const previousTarget = renderer.getRenderTarget();
+      renderer.setRenderTarget(sharpSceneTarget);
+      renderer.clear(true, true, true);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(previousTarget);
+      tiltShiftInputPass.uniforms.sharpTexture.value = sharpSceneTarget.texture;
+      tiltShiftCompositePass.uniforms.sharpTexture.value = sharpSceneTarget.texture;
       tiltShiftComposer.render();
       renderSharpHudOverlay(renderer, scene, camera);
     }
     catch (error) {
+      renderer.setRenderTarget(null);
       if (ssaoPass?.enabled) {
         ssaoPass.enabled = false;
         console.warn('SSAO отключён после ошибки; сохраняю остальные эффекты', error);
-        try { tiltShiftComposer.render(); return; } catch { /* Fall back to the direct renderer below. */ }
+        try {
+          renderer.setRenderTarget(sharpSceneTarget);
+          renderer.clear(true, true, true);
+          renderer.render(scene, camera);
+          renderer.setRenderTarget(null);
+          tiltShiftInputPass.uniforms.sharpTexture.value = sharpSceneTarget.texture;
+          tiltShiftCompositePass.uniforms.sharpTexture.value = sharpSceneTarget.texture;
+          tiltShiftComposer.render();
+          renderSharpHudOverlay(renderer, scene, camera);
+          return;
+        } catch { renderer.setRenderTarget(null); /* Fall back to the direct renderer below. */ }
       }
       tiltShiftComposer.dispose(); tiltShiftComposer = null; ssaoPass = null;
+      tiltShiftInputPass = null; tiltShiftCompositePass = null;
+      sharpSceneTarget?.dispose(); sharpSceneTarget = null;
       console.warn('Постобработка остановлена; используется обычный рендер', error);
       renderer.render(scene, camera);
     }
   };
   async function enableTiltShift() {
-    if ((!screenEffects.ssao && !screenEffects.tiltShift) || tiltShiftComposer) return;
+    if ((!screenEffects.ssao && !screenEffects.tiltShift && !screenEffects.tiltShiftShowGradient) || tiltShiftComposer) return;
     if (postProcessingPromise) return postProcessingPromise;
     postProcessingPromise = (async () => { try {
-      const [composerModule, renderModule, ssaoModule, shaderPassModule, outputModule] = await Promise.all([
+      const [composerModule, ssaoModule, shaderPassModule] = await Promise.all([
         import('three/addons/postprocessing/EffectComposer.js'),
-        import('three/addons/postprocessing/RenderPass.js'),
         import('three/addons/postprocessing/SSAOPass.js'),
         import('three/addons/postprocessing/ShaderPass.js'),
-        import('three/addons/postprocessing/OutputPass.js'),
       ]);
       const target = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat,
         type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false });
       const composer = new composerModule.EffectComposer(renderer, target);
-      tiltShiftPixelRatio = tiltShiftRenderPixelRatio(renderer.getPixelRatio(), matchMedia('(pointer: coarse)').matches);
+      tiltShiftPixelRatio = tiltShiftRenderPixelRatio(renderer.getPixelRatio(), IS_MOBILE_RENDER_TARGET);
       composer.setPixelRatio(tiltShiftPixelRatio);
-      composer.addPass(new renderModule.RenderPass(scene, camera));
+      const drawingBufferSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+      sharpSceneTarget = new THREE.WebGLRenderTarget(Math.max(1, drawingBufferSize.x), Math.max(1, drawingBufferSize.y), {
+        format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false,
+        minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      });
+      const input = new shaderPassModule.ShaderPass(createPostEffectInputShader());
+      input.uniforms.sharpTexture.value = sharpSceneTarget.texture;
+      composer.addPass(input);
       try {
         const ssao = new ssaoModule.SSAOPass(scene, camera, innerWidth, innerHeight, 12);
         // The alpha-cutout shader made SSAO blank the framebuffer in the web
@@ -223,10 +281,19 @@ async function start() {
       tilt.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
       tilt.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
       composer.addPass(tilt);
-      composer.addPass(new outputModule.OutputPass());
+      const composite = new shaderPassModule.ShaderPass(createTiltShiftCompositeShader());
+      composite.uniforms.sharpTexture.value = sharpSceneTarget.texture;
+      composite.uniforms.focus.value = screenEffects.tiltShiftFocus;
+      composite.uniforms.upperGradientShift.value = screenEffects.tiltShiftUpperGradientShift;
+      composite.uniforms.lowerGradientShift.value = screenEffects.tiltShiftLowerGradientShift;
+      composite.uniforms.gradientMultiplier.value = screenEffects.tiltShiftGradientMultiplier;
+      composite.uniforms.tiltShiftActive.value = screenEffects.tiltShift;
+      composite.uniforms.showGradient.value = screenEffects.tiltShiftShowGradient;
+      composite.renderToScreen = true;
+      composer.addPass(composite);
       composer.setSize(innerWidth, innerHeight);
       setSsaoSize();
-      tiltShiftComposer = composer; tiltShiftPass = tilt;
+      tiltShiftComposer = composer; tiltShiftInputPass = input; tiltShiftPass = tilt; tiltShiftCompositePass = composite;
       tiltShiftPass.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
       if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
     } catch (error) {
@@ -252,6 +319,14 @@ async function start() {
       tiltShiftPass.uniforms.lowerGradientShift.value = screenEffects.tiltShiftLowerGradientShift;
       tiltShiftPass.uniforms.gradientMultiplier.value = screenEffects.tiltShiftGradientMultiplier;
       tiltShiftPass.uniforms.showGradient.value = screenEffects.tiltShiftShowGradient;
+    }
+    if (tiltShiftCompositePass) {
+      tiltShiftCompositePass.uniforms.focus.value = screenEffects.tiltShiftFocus;
+      tiltShiftCompositePass.uniforms.upperGradientShift.value = screenEffects.tiltShiftUpperGradientShift;
+      tiltShiftCompositePass.uniforms.lowerGradientShift.value = screenEffects.tiltShiftLowerGradientShift;
+      tiltShiftCompositePass.uniforms.gradientMultiplier.value = screenEffects.tiltShiftGradientMultiplier;
+      tiltShiftCompositePass.uniforms.tiltShiftActive.value = screenEffects.tiltShift;
+      tiltShiftCompositePass.uniforms.showGradient.value = screenEffects.tiltShiftShowGradient;
     }
     if (screenEffects.ssao || screenEffects.tiltShift || screenEffects.tiltShiftShowGradient) void enableTiltShift();
   }
@@ -280,8 +355,11 @@ async function start() {
   if (authoredEntry) Object.assign(locations[campaignState.currentLocationId].entry,
     { x: authoredEntry.position[0], z: authoredEntry.position[2] });
   if (activeCampaignGraph) for (const location of Object.values(locations)) applyCampaignGraphToLocation(location, activeCampaignGraph);
-  let playerOcclusionDither = null, applyUnitPuckColors = () => {};
-  const sceneRegistry = createSceneRegistry({ THREE, overrides: sceneOverrides, savedDiff: savedEditorDiff, setUnitPuckColors(settings) {
+  let playerOcclusionDither = null, applyUnitPuckColors = () => {}, activeFogLocationId = campaignState.currentLocationId;
+  const sceneRegistry = createSceneRegistry({ THREE, overrides: sceneOverrides, savedDiff: savedEditorDiff,
+    locationIds: Object.keys(locations),
+    getActiveLocationId: () => activeFogLocationId, setScreenEffects, setItemMagnetSettings,
+    setUnitPuckColors(settings) {
     applyUnitPuckColors(settings);
   }, setLighting(settings) {
     if (!sunLight) return;
@@ -291,16 +369,17 @@ async function start() {
   }, setTerrainStyle(settings) {
     for (const location of Object.values(locations)) if (location.sceneGroup)
       applyTerrainEdgeStyle(location.sceneGroup, THREE, settings);
-  }, setFog(settings) {
+  }, setFog(locationId, settings) {
+    const location = locations[locationId];
+    location?.edgeShade?.update(settings);
+    location?.exitVisuals?.shadowMaterial.color.set(settings.color);
+    if (locationId !== activeFogLocationId) return;
     scene.background.set(settings.color); renderer.setClearColor(settings.color);
     playerOcclusionDither?.updateSettings(settings);
-    for (const location of Object.values(locations)) {
-      location.edgeShade?.update(settings);
-      location.exitVisuals?.shadowMaterial.color.set(settings.color);
-    }
   } });
   reportLoadStage('Реестр сцены и релизные настройки');
   sceneRegistry.sync();
+  sceneRegistry.activateLocation(activeFogLocationId);
   reportLoadStage('Реестр сцены и релизные настройки', 'ready');
   for (const [id, stored] of Object.entries(campaignState.world ?? {})) if (locations[id] && stored) {
     const location = locations[id];
@@ -334,17 +413,71 @@ async function start() {
   const locationTitle = document.querySelector('#location-title');
   const locationDetail = document.querySelector('#location-detail');
   const statusEffectsHud = document.querySelector('#status-effects-hud');
+  const statusEffectTooltip = document.querySelector('#status-effect-tooltip');
+  let selectedStatusEffectId = null, statusTooltipPositioning = false;
+  function hideStatusEffectTooltip() {
+    selectedStatusEffectId = null;
+    if (statusEffectTooltip) statusEffectTooltip.hidden = true;
+    for (const badge of statusEffectsHud?.querySelectorAll('.status-effect-badge') ?? []) badge.setAttribute('aria-expanded', 'false');
+  }
+  function positionStatusEffectTooltip() {
+    if (!selectedStatusEffectId || !statusEffectTooltip || statusEffectTooltip.hidden) return;
+    const anchor = [...(statusEffectsHud?.querySelectorAll('.status-effect-badge') ?? [])]
+      .find(badge => badge.dataset.effectId === selectedStatusEffectId);
+    if (!anchor) { hideStatusEffectTooltip(); return; }
+    const rect = anchor.getBoundingClientRect(), box = statusEffectTooltip.getBoundingClientRect();
+    const viewport = window.visualViewport, insetX = viewport?.offsetLeft ?? 0, insetY = viewport?.offsetTop ?? 0;
+    const width = viewport?.width ?? innerWidth, height = viewport?.height ?? innerHeight;
+    const left = Math.max(insetX + 10, Math.min(insetX + width - box.width - 10, rect.x + rect.width / 2 - box.width / 2));
+    const above = rect.top - box.height - 13, below = above < insetY + 10;
+    const top = below ? Math.min(insetY + height - box.height - 10, rect.bottom + 13) : above;
+    statusEffectTooltip.style.left = `${left}px`; statusEffectTooltip.style.top = `${Math.max(insetY + 10, top)}px`;
+    statusEffectTooltip.style.setProperty('--tooltip-tip', `${Math.max(22, Math.min(box.width - 22, rect.x + rect.width / 2 - left))}px`);
+    statusEffectTooltip.classList.toggle('is-below', below);
+  }
+  function scheduleStatusTooltipPosition() {
+    if (statusTooltipPositioning || !selectedStatusEffectId) return;
+    statusTooltipPositioning = true;
+    requestAnimationFrame(() => { statusTooltipPositioning = false; positionStatusEffectTooltip(); });
+  }
+  function showStatusEffectTooltip(effect, badge) {
+    if (!statusEffectTooltip) return;
+    selectedStatusEffectId = effect.id;
+    for (const item of statusEffectsHud.querySelectorAll('.status-effect-badge')) item.setAttribute('aria-expanded', String(item === badge));
+    statusEffectTooltip.querySelector('#status-effect-name').textContent = effect.label;
+    statusEffectTooltip.querySelector('#status-effect-description').textContent = effect.description;
+    statusEffectTooltip.querySelector('#status-effect-duration').textContent = effect.remaining;
+    statusEffectTooltip.hidden = false; positionStatusEffectTooltip();
+  }
   function renderStatusEffectsHud() {
     if (!statusEffectsHud) return;
-    statusEffectsHud.replaceChildren(...statusEffectLabels(campaignState.statusEffects).map(effect => {
-      const badge = document.createElement('span'); badge.className = 'status-effect-badge';
-      badge.dataset.kind = effect.kind; badge.textContent = `${effect.label}${effect.duration}`; return badge;
+    const effects = statusEffectLabels(campaignState.statusEffects);
+    statusEffectsHud.replaceChildren(...effects.map(effect => {
+      const badge = document.createElement('button'); badge.type = 'button'; badge.className = 'status-effect-badge';
+      badge.dataset.kind = effect.kind; badge.dataset.effectId = effect.id; badge.textContent = `${effect.label}${effect.duration}`;
+      badge.setAttribute('aria-haspopup', 'dialog'); badge.setAttribute('aria-expanded', String(selectedStatusEffectId === effect.id));
+      badge.setAttribute('aria-label', `${effect.label}${effect.duration}. Показать, что делает эффект`);
+      badge.addEventListener('click', () => selectedStatusEffectId === effect.id && !statusEffectTooltip.hidden
+        ? hideStatusEffectTooltip() : showStatusEffectTooltip(effect, badge));
+      return badge;
     }));
+    if (selectedStatusEffectId) {
+      const current = effects.find(effect => effect.id === selectedStatusEffectId);
+      if (current) showStatusEffectTooltip(current, [...statusEffectsHud.querySelectorAll('.status-effect-badge')]
+        .find(badge => badge.dataset.effectId === current.id));
+      else hideStatusEffectTooltip();
+    }
   }
+  document.querySelector('#status-effect-tooltip-close')?.addEventListener('click', hideStatusEffectTooltip);
+  document.addEventListener('pointerdown', event => {
+    if (selectedStatusEffectId && !statusEffectTooltip?.contains(event.target) && !event.target.closest?.('.status-effect-badge')) hideStatusEffectTooltip();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && selectedStatusEffectId) { event.preventDefault(); hideStatusEffectTooltip(); }
+  });
+  window.addEventListener('resize', scheduleStatusTooltipPosition, { passive: true });
+  window.visualViewport?.addEventListener('resize', scheduleStatusTooltipPosition, { passive: true });
   let statusHudRefresh = 0;
-  const interactButton = document.querySelector('#interact');
-  const tradeButton = document.createElement('button'); tradeButton.id = 'merchant-trade'; tradeButton.type = 'button'; tradeButton.hidden = true;
-  document.querySelector('#story-actions').append(tradeButton);
   const dialoguePanel = document.querySelector('#story-dialogue');
   const inventoryPanel = document.querySelector('#inventory-panel');
   const mapPanel = document.querySelector('#world-map');
@@ -454,6 +587,7 @@ async function start() {
       if (result.changed) { heroEquipment?.update(elapsed); persistCampaign(); }
       return result;
     },
+    onDrop(id, slotIndex, screenPoint) { return dropInventoryItem(id, slotIndex, screenPoint); },
     onUse(id, slotIndex) {
       const result = consumeInventoryItem(campaignState, id, heroBody.health, heroBody.maxHealth);
       if (result.consumed) {
@@ -473,19 +607,15 @@ async function start() {
       x: heroBody.x, z: heroBody.z, merchantX: actor?.body.x, merchantZ: actor?.body.z,
       inCombat: locationHasLivingEnemies(activeLocation) };
   }
-  function nearestMerchant() {
-    return merchantActors.filter(actor => canReachMerchant(campaignState, merchantContext(actor)))
-      .sort((a, b) => Math.hypot(a.body.x - heroBody.x, a.body.z - heroBody.z) - Math.hypot(b.body.x - heroBody.x, b.body.z - heroBody.z))[0] ?? null;
-  }
   shop = createShopPanel({ getState: () => campaignState,
     onOpen() { inputController?.cancel(); inventory.hide(); },
     onTrade(actor, proposal) { return executeMerchantTrade(campaignState, actor.merchantId, proposal, merchantContext(actor)); },
     onCommit() { audio.play('pickup'); renderInventory(); persistCampaign(); } });
-  tradeButton.addEventListener('click', () => { const actor = nearestMerchant(); if (actor) shop.open(actor); });
   const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
-  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer,
-    () => tiltShiftComposer ? tiltShiftPixelRatio : renderer.getPixelRatio());
+  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer, () => renderer.getPixelRatio(),
+    () => playerRevealRadiusScale(tiltShiftRenderPixelRatio(renderer.getPixelRatio(), IS_MOBILE_RENDER_TARGET),
+      renderer.getPixelRatio()));
   playerOcclusionDither.updateSettings(sceneRegistry.fog);
   const target = new THREE.Vector3(0, .65, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
@@ -497,7 +627,7 @@ async function start() {
   sunLight.intensity = sceneRegistry.lighting.intensity;
   sunLight.color.set(sceneRegistry.lighting.color);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.set(2048, 2048);
+  sunLight.shadow.mapSize.set(RENDER_QUALITY.shadowMapSize, RENDER_QUALITY.shadowMapSize);
   Object.assign(sunLight.shadow.camera, { left: -25.5, right: 25.5, top: 25.5, bottom: -25.5, far: 60 });
   sunLight.shadow.normalBias = .025;
   sunLight.shadow.bias = -.0002;
@@ -887,6 +1017,16 @@ async function start() {
   function showStoryCard(card) {
     dialogue.show({ ...card, title: card.title ?? activeLocation.title });
   }
+  function inspectCurrentLocation() {
+    if (activeLocation.secret || campaignState.collected[activeLocation.id] || victorySequenceActive
+      || locationHasLivingEnemies(activeLocation) || dialogue.isOpen()) return false;
+    const result = inspectCampaignLocation(campaignState, activeLocation.id);
+    if (!result) return false;
+    persistCampaign(); renderInventory();
+    showStoryCard({ ...result, lines: campaignState.collected[activeLocation.id] ? []
+      : getStoryDialogue(campaignState, activeLocation.id) });
+    return true;
+  }
   function snapshotLocation(location) {
     if (!location.runtimeReady) return campaignState.world?.[location.id] ?? {};
     return {
@@ -899,7 +1039,8 @@ async function start() {
       lastExitPositions: location.lastExitPositions,
       openedPlacedChests: [...(location.openedPlacedChests ?? [])],
       collectedPlacedItems: [...(location.collectedPlacedItems ?? [])],
-      loot: location.loot.map(({ id, itemId, x, z, amount }) => ({ id, itemId, x, z, ...(itemId === 'coins' ? { amount } : {}) })),
+      loot: location.loot.map(({ id, itemId, x, z, amount, pickupBlocked }) => ({ id, itemId, x, z,
+        ...(itemId === 'coins' ? { amount } : {}), ...(pickupBlocked ? { pickupBlocked: true } : {}) })),
     };
   }
   function persistCampaign() {
@@ -930,13 +1071,6 @@ async function start() {
       const message = document.querySelector('#error'); message.hidden = false;
       message.textContent = `Не удалось построить карту мира: ${error.message}`;
     }
-  });
-  interactButton.addEventListener('click', () => {
-    const result = inspectCampaignLocation(campaignState, activeLocation.id);
-    if (!result) return;
-    persistCampaign(); renderInventory();
-    showStoryCard({ ...result, lines: campaignState.collected[activeLocation.id] ? []
-      : getStoryDialogue(campaignState, activeLocation.id) });
   });
   document.querySelector('#restart').addEventListener('click', () => {
     try { localStorage.removeItem(CAMPAIGN_SAVE_KEY); } catch { /* A fresh session still starts at home. */ }
@@ -1329,10 +1463,12 @@ async function start() {
     }
     if (item.id === 'inspect') {
       const marker = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
-        { elevation: value.position[1], yaw: value.rotation[1], sceneEditId: id, sceneEditLabel: item.label });
+        { elevation: value.position[1], yaw: value.rotation[1], fixedRadius: .52, sceneEditId: id, sceneEditLabel: item.label });
       if (!marker) return null;
       marker.position.fromArray(value.position); marker.rotation.set(...value.rotation); marker.scale.fromArray(value.scale);
       marker.userData.sceneEditAsset = value.asset; marker.userData.sceneEditSize = value.size;
+      Object.assign(marker.userData.sceneEditBody, { id, kind: 'inspection-marker', team: 'neutral', locationId: location.id,
+        health: 0, maxHealth: 0, fixed: true, active: true });
       decorateInspectionMarker(marker); location.edgeShade?.applyTo(marker); return marker;
     }
     const prop = await createScenery(value.asset, value.position[0], value.position[2], value.size, location.sceneGroup, true,
@@ -1364,7 +1500,7 @@ async function start() {
       exits: location.exits, dropZones: location.dropZones, hazards: location.hazards,
       fogPaths: location.fogPaths,
       art: location.art, terrainStyle: location.terrainStyle, terrainEdits: sceneRegistry.terrainEdits(id),
-      fog: { enabled: sceneRegistry.fog.enabled, start: sceneRegistry.fog.start, end: sceneRegistry.fog.end } });
+      fog: { enabled: sceneRegistry.fogFor(id).enabled, start: sceneRegistry.fogFor(id).start, end: sceneRegistry.fogFor(id).end } });
     if (terrain.layout) Object.assign(location, terrain.layout);
     if (activeCampaignGraph) { applyCampaignGraphToLocation(location, activeCampaignGraph); sceneRegistry.graphChanged(location); }
     applyTerrainEdgeStyle(terrain.group, THREE, sceneRegistry.terrainStyle);
@@ -1377,10 +1513,10 @@ async function start() {
     terrain.group.userData.terrainHeightMap = location.terrainHeightMap;
     terrain.group.userData.walkablePoints = location.walkablePoints;
     reportLoadStage(`Кромки и туман: ${id}`);
-    location.edgeShade = await createLocationEdgeShade({ THREE, location, settings: sceneRegistry.fog,
+    location.edgeShade = await createLocationEdgeShade({ THREE, location, settings: sceneRegistry.fogFor(id),
       revealUniforms: playerOcclusionDither.uniforms,
       yieldWork: checkpoint });
-    location.edgeShade?.update(sceneRegistry.fog);
+    location.edgeShade?.update(sceneRegistry.fogFor(id));
     if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
     reportLoadStage(`Кромки и туман: ${id}`, 'ready');
     await checkpoint();
@@ -1427,7 +1563,7 @@ async function start() {
     location.exitBarriers = createExitBarrierBodies(location);
     if (exitLocked) location.obstacles.push(...location.exitBarriers);
     location.exitVisuals = createLocationExitVisuals({ THREE, location, locked: exitLocked });
-    location.exitVisuals.shadowMaterial.color.set(sceneRegistry.fog.color);
+    location.exitVisuals.shadowMaterial.color.set(sceneRegistry.fogFor(id).color);
     reportLoadStage(`Выходы и барьеры: ${id}`, 'ready');
     if (location.secret) {
       reportLoadStage(`Сундук: ${id}`);
@@ -1478,7 +1614,7 @@ async function start() {
     try {
       const groundY = location.terrainHeightMap?.sample(0, 0) ?? 0;
       const marker = await createScenery('assets/poi-inspection-bark.webp', 0, 0, .72, parent, true,
-        { elevation: groundY, yaw: 0, sceneEditId: `inspection-marker:${location.id}`, sceneEditLabel: 'Знак точки интереса' });
+        { elevation: groundY, yaw: 0, fixedRadius: .52, sceneEditId: `inspection-marker:${location.id}`, sceneEditLabel: 'Знак точки интереса' });
       if (!marker || location.sceneGroup !== parent) {
         if (marker) {
           parent.remove(marker);
@@ -1490,11 +1626,16 @@ async function start() {
       marker.name = `inspection-marker:${location.id}`;
       marker.userData.sceneEditAsset = 'assets/poi-inspection-bark.webp';
       marker.userData.sceneEditSize = .72;
+      const body = marker.userData.sceneEditBody;
+      Object.assign(body, { id: `inspection-marker:${location.id}`, kind: 'inspection-marker', team: 'neutral',
+        locationId: location.id, health: 0, maxHealth: 0, fixed: true, active: true });
       decorateInspectionMarker(marker);
       location.edgeShade?.applyTo(marker);
       sceneRegistry.bindEntity(location, marker.userData.sceneEditId, marker.userData.sceneEditLabel, marker,
-        { category: 'interactive', asset: marker.userData.sceneEditAsset, size: marker.userData.sceneEditSize });
+        { category: 'interactive', asset: marker.userData.sceneEditAsset, size: marker.userData.sceneEditSize, body,
+          sync() { body.x = marker.position.x; body.z = marker.position.z; body.radius = .52 * Math.max(marker.scale.x, marker.scale.z); } });
       sceneEditor?.refreshBindings();
+      if (activeLocation === location) rebuildBodies();
       for (const resource of sceneResources([marker])) if (resource.isTexture) renderer.initTexture(resource);
       location.inspectionMarker = marker;
     } catch (error) {
@@ -1502,11 +1643,12 @@ async function start() {
     }
   }
   let terrainFogRebuildTimer = 0, terrainFogRebuildChain = Promise.resolve();
-  function scheduleTerrainFogRebuild() {
+  function scheduleTerrainFogRebuild(locationId = null) {
     clearTimeout(terrainFogRebuildTimer);
     terrainFogRebuildTimer = setTimeout(() => {
       terrainFogRebuildChain = terrainFogRebuildChain.catch(() => {}).then(async () => {
-        for (const location of Object.values(locations)) if (location.runtimeReady) {
+        const targets = locationId ? [locations[locationId]].filter(Boolean) : Object.values(locations);
+        for (const location of targets) if (location.runtimeReady) {
           try { await rebuildLocationTerrain(location, sceneRegistry.terrainEdits(location.id)); }
           catch (error) { console.warn(`Не удалось обновить отсечение террейна для ${location.id}`, error); }
         }
@@ -1520,7 +1662,7 @@ async function start() {
       walkablePoints: location.walkablePoints, exits: location.exits, dropZones: location.dropZones,
       fogPaths: location.fogPaths,
       hazards: location.hazards, art: location.art, terrainStyle: location.terrainStyle, terrainEdits: edits,
-      fog: { enabled: sceneRegistry.fog.enabled, start: sceneRegistry.fog.start, end: sceneRegistry.fog.end },
+      fog: { enabled: sceneRegistry.fogFor(location.id).enabled, start: sceneRegistry.fogFor(location.id).start, end: sceneRegistry.fogFor(location.id).end },
     });
     const isTerrain = object => /^(terrain|playfield)-top-/.test(object.name);
     const removed = location.sceneGroup.children.filter(isTerrain);
@@ -1697,6 +1839,8 @@ async function start() {
       heroFigure.victoryAnimation = null;
       clearProjectiles();
       activeLocation = next;
+      activeFogLocationId = activeLocation.id;
+      sceneRegistry.activateLocation(activeFogLocationId);
       heroFigure.locationId = activeLocation.id;
       audio.play('transition');
       dialogue.close();
@@ -1874,6 +2018,39 @@ async function start() {
     }
     return drops;
   }
+  let inventoryDropSerial = 0;
+  function findInventoryDropPosition(screenPoint) {
+    camera.updateMatrixWorld(true);
+    const projectedPlayer = new THREE.Vector3(heroBody.x, .2, heroBody.z).project(camera);
+    const playerX = (projectedPlayer.x + 1) * innerWidth / 2, playerY = (1 - projectedPlayer.y) * innerHeight / 2;
+    const dx = screenPoint.x - playerX, dy = screenPoint.y - playerY;
+    const right = new THREE.Vector3(), up = new THREE.Vector3(), back = new THREE.Vector3();
+    camera.matrixWorld.extractBasis(right, up, back);
+    const direction = right.multiplyScalar(dx).addScaledVector(up, -dy).setY(0);
+    if (direction.lengthSq() < 1e-6) direction.set(0, 0, 1);
+    direction.normalize();
+    const angles = [0, -.42, .42, -.84, .84, -1.26, 1.26];
+    for (const angle of angles) for (const distance of [2.1, 2.6, 3.1, 1.6]) {
+      const rotatedX = direction.x * Math.cos(angle) - direction.z * Math.sin(angle);
+      const rotatedZ = direction.x * Math.sin(angle) + direction.z * Math.cos(angle);
+      const point = { x: heroBody.x + rotatedX * distance, z: heroBody.z + rotatedZ * distance };
+      if (isPlayableFloor(activeLocation, point.x, point.z, .35)) return point;
+    }
+    return null;
+  }
+  function dropInventoryItem(itemId, slotIndex, screenPoint) {
+    if (!WORLD_ITEM_IDS.includes(itemId) || !Number.isInteger(slotIndex)) return { error: 'Этот предмет нельзя выбросить.' };
+    const position = findInventoryDropPosition(screenPoint);
+    if (!position) return { error: 'Рядом нет свободного места, куда можно выбросить предмет.' };
+    if (!removeInventoryItem(campaignState, itemId, slotIndex)) return { error: 'Предмет уже переместился из этой ячейки.' };
+    const definition = INVENTORY_ITEMS.find(item => item.id === itemId);
+    const item = { id: `loot-drop-${Date.now().toString(36)}-${(++inventoryDropSerial).toString(36)}`,
+      itemId, ...position, pickupBlocked: true };
+    activeLocation.loot.push(item);
+    createLootVisual(activeLocation, item, { x: heroBody.x, z: heroBody.z });
+    persistCampaign();
+    return { dropped: true, name: definition?.name ?? itemId };
+  }
   function openCache(body) {
     if (!body || body.opened || body.opening || body.locationId !== activeLocation.id) return false;
     const editorChest = body.kind === 'editor-chest';
@@ -1937,10 +2114,18 @@ async function start() {
         glint.scale.setScalar(.07 + flash * .19);
       }
       if (visual.spawn) continue;
+      const radiusSignature = `${itemMagnetSettings.radius}:${itemMagnetSettings.radiusSpread}`;
+      if (visual.magnetRadiusSignature !== radiusSignature) {
+        visual.magnetRadiusSignature = radiusSignature;
+        visual.magnetRadius = itemMagnetRadiusForItem(item.id, itemMagnetSettings);
+      }
+      if (unlockDroppedLootAfterLeaving(item, heroBody.x, heroBody.z, visual.magnetRadius)) persistCampaign();
+      if (item.pickupBlocked) continue;
       if (!visual.magnet && heroBody.health > 0
-        && Math.hypot(heroBody.x - item.x, heroBody.z - item.z) <= itemMagnetSettings.radius) {
+        && Math.hypot(heroBody.x - item.x, heroBody.z - item.z) <= visual.magnetRadius) {
+        const motion = sampleItemMagnetMotion(itemMagnetSettings);
         visual.magnet = { from: { x: visual.group.position.x, y: visual.group.position.y, z: visual.group.position.z }, age: 0,
-          duration: itemMagnetSettings.worldDuration, arc: itemMagnetSettings.worldArc };
+          duration: motion.worldDuration, arc: motion.worldArc };
       }
       if (visual.magnet) {
         visual.magnet.age += dt;
@@ -1961,8 +2146,11 @@ async function start() {
           const from = { x: (playerScreen.x + 1) * innerWidth / 2, y: (1 - playerScreen.y) * innerHeight / 2 };
           const to = { x: backpackRect.left + backpackRect.width / 2, y: backpackRect.top + backpackRect.height / 2 };
           const icon = lootIconCanvases.get(pickup.itemId === 'coins' ? coinSkin(pickup.amount).id : pickup.itemId) ?? lootIconCanvases.get('scrap');
-          if (icon) itemIconFlights.push({ icon, flight: createItemIconFlight(from, to,
-            { duration: itemMagnetSettings.iconDuration, arc: itemMagnetSettings.iconArc }) });
+          if (icon) {
+            const motion = sampleItemMagnetMotion(itemMagnetSettings);
+            itemIconFlights.push({ icon, flight: createItemIconFlight(from, to,
+              { duration: motion.iconDuration, arc: motion.iconArc }) });
+          }
           activeLocation.sceneGroup.remove(visual.group);
           const facePairIndex = sceneryFacePairs.indexOf(visual.facePair);
           if (facePairIndex >= 0) sceneryFacePairs.splice(facePairIndex, 1);
@@ -2150,6 +2338,18 @@ async function start() {
         if (attacker.fixed) return;
         if (target.kind === 'cache-chest' || target.kind === 'editor-chest') {
           if (attacker.team === 'player' && attacker.health > 0) openCache(target);
+          return;
+        }
+        if (target.kind === 'inspection-marker') {
+          if (attacker === heroBody && attacker.team === 'player' && attacker.health > 0) inspectCurrentLocation();
+          return;
+        }
+        if (target.kind === 'merchant') {
+          if (attacker === heroBody && attacker.team === 'player' && attacker.health > 0
+            && !dialogue.isOpen() && !shop.isOpen()) {
+            const actor = merchantActors.find(candidate => candidate.body === target && candidate.locationId === activeLocation.id);
+            if (actor && canReachMerchant(campaignState, merchantContext(actor))) shop.open(actor);
+          }
           return;
         }
         if (target.fixed) return;
@@ -2362,6 +2562,8 @@ async function start() {
     camera.updateProjectionMatrix(); updateCamera();
     if (tiltShiftComposer) {
       tiltShiftComposer.setSize(innerWidth, innerHeight);
+      const drawingBufferSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+      sharpSceneTarget?.setSize(Math.max(1, drawingBufferSize.x), Math.max(1, drawingBufferSize.y));
       tiltShiftPass.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
       setSsaoSize();
     }
@@ -2382,18 +2584,25 @@ async function start() {
   if (initialStoryCard) showStoryCard(initialStoryCard);
   reportLoadStage('Подключение редактора сцены');
   if (localEditor) {
-    const { installSceneEditor } = await loadLocalEditorUi();
+    const { installSceneEditor, installPixel7Preview } = await loadLocalEditorUi();
     sceneEditor = installSceneEditor({ THREE, scene, camera, renderer, registry: sceneRegistry, createAsset: createEditorAsset,
       applyToSource: diff => localEditor.apply(diff),
+      saveSharedDraft: diff => localEditor.writeDraft(diff), loadSharedDraft: () => localEditor.readDraft(),
+      clearSharedDraft: () => localEditor.clearDraft(), sharedRevision: sharedEditorDraft?.revision ?? '',
+      sharedWriter: localEditor.clientId,
       rebuildTerrain: rebuildLocationTerrain,
-      onFogSettingsChange(_settings, key) { if (key === 'start' || key === 'end' || key === 'enabled') scheduleTerrainFogRebuild(); },
+      onFogSettingsChange(_settings, key, location) {
+        if (key === 'start' || key === 'end' || key === 'enabled') scheduleTerrainFogRebuild(location?.id);
+      },
       onFogPathsChange() { scheduleTerrainFogRebuild(); },
-      getLocation: () => activeLocation, canOpen: () => !locationTransition && !shop.isOpen(),
+      getLocation: () => activeLocation, getLocationIds: () => Object.keys(locations),
+      canOpen: () => !locationTransition && !shop.isOpen(),
       getScreenEffects: () => ({ ...screenEffects }), onScreenEffectsChange: setScreenEffects,
       getItemMagnetSettings: () => ({ ...itemMagnetSettings }), onItemMagnetSettingsChange: setItemMagnetSettings,
       getItemMagnetPlayerPosition: () => ({ x: heroBody.x, y: 0, z: heroBody.z }),
       getCampaignGraphData: state => ensureCampaignGraphData(state), onCampaignGraphChange: applyCampaignGraph,
       onActiveChange(editing) { inputController.cancel(); if (!editing) rebuildBodies(); } });
+    installPixel7Preview({ editor: sceneEditor });
   }
   reportLoadStage('Подключение редактора сцены', 'ready');
   loading.hidden = true;
@@ -2523,6 +2732,7 @@ async function start() {
   let nextFrameAt = 0;
   let previousAim = false;
   renderer.setAnimationLoop(time => {
+    if (window.__CQ_PIXEL7_PREVIEW_ACTIVE__) { previousTime = time; return; }
     if (time < nextFrameAt) return;
     if (time - nextFrameAt > FRAME_INTERVAL_MS * 4) nextFrameAt = time;
     nextFrameAt += FRAME_INTERVAL_MS;
@@ -2534,6 +2744,7 @@ async function start() {
       paused: sceneEditor.active || simulationPaused || locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen(),
       speed: Math.hypot(heroBody.vx, heroBody.vz) });
     updateItemIconFlights(frameDt);
+    sceneEditor?.update(frameDt);
     if (sceneEditor.graphOpen) return;
     if (equipmentPosePreview) {
       const { pose, side } = equipmentPosePreview;
@@ -2548,7 +2759,7 @@ async function start() {
       camera.lookAt(heroBody.x, 1.45, heroBody.z); renderScene(); return;
     }
     if (sceneEditor.active) {
-      sceneEditor.update(frameDt); updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;
+      updateEditorPresentation(); updatePlayerReveal(); renderScene(); return;
     }
     if (locationTransition || dialogue.isOpen() || !inventoryPanel.hidden || locationMap.isOpen() || audioControls.isOpen() || shop.isOpen()) {
       updateCamera(); updatePlayerReveal(); renderScene(); return;
@@ -2819,10 +3030,6 @@ async function start() {
       else if (protectedEntryFrom) protectedEntryFrom = null;
       if (exit && !exitsLocked) enterLocation(exit.to, activeLocation.id);
     }
-    const nearInteraction = heroBody.health > 0 && Math.hypot(heroBody.x, heroBody.z) <= 2.65;
-    interactButton.hidden = activeLocation.secret || !nearInteraction || Boolean(campaignState.collected[activeLocation.id]) || victorySequenceActive
-      || activeLocation.enemies.some(enemy => enemy.active !== false && enemy.health > 0);
-    interactButton.textContent = 'Осмотреть';
     if (activeLocation.inspectionMarker) {
       const marker = activeLocation.inspectionMarker;
       marker.visible = !marker.userData.sceneEditDeleted

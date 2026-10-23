@@ -1,10 +1,77 @@
+import { MOBILE_RENDER_PIXEL_RATIO_CAP, MOBILE_POST_EFFECT_SCALE } from '../game/frame-rate.mjs';
+export { MOBILE_POST_EFFECT_SCALE };
+
 export const HEX_BOKEH_DIRECTIONS = Object.freeze([
   [1, 0], [0.5, Math.sqrt(3) / 2], [-0.5, Math.sqrt(3) / 2],
   [-1, 0], [-0.5, -Math.sqrt(3) / 2], [0.5, -Math.sqrt(3) / 2],
 ]);
 
-export function tiltShiftRenderPixelRatio(rendererPixelRatio, isCoarsePointer = false) {
-  return Math.min(rendererPixelRatio, isCoarsePointer ? 1.5 : 2);
+export function createPostEffectInputShader() {
+  return {
+    uniforms: { tDiffuse: { value: null }, sharpTexture: { value: null } },
+    vertexShader,
+    fragmentShader: /* glsl */`
+      uniform sampler2D sharpTexture;
+      varying vec2 vUv;
+      void main() { gl_FragColor = texture2D(sharpTexture, vUv); }
+    `,
+  };
+}
+
+export function tiltShiftRenderPixelRatio(rendererPixelRatio, isMobile = false) {
+  return isMobile
+    ? Math.min(rendererPixelRatio, MOBILE_RENDER_PIXEL_RATIO_CAP) * MOBILE_POST_EFFECT_SCALE
+    : Math.min(rendererPixelRatio, 2);
+}
+
+export const tiltShiftGradientGLSL = /* glsl */`
+  float tiltShiftGradient(vec2 uv, float focus, float upperGradientShift,
+      float lowerGradientShift, float gradientMultiplier) {
+    float signedDistanceFromFocus = uv.y - focus;
+    float distanceFromFocus = signedDistanceFromFocus >= 0.0
+      ? max(0.0, signedDistanceFromFocus - upperGradientShift)
+      : max(0.0, -signedDistanceFromFocus - lowerGradientShift);
+    return smoothstep(0.035, 0.24, distanceFromFocus) * gradientMultiplier;
+  }
+`;
+
+export function createTiltShiftCompositeShader() {
+  return {
+    uniforms: {
+      tDiffuse: { value: null },
+      sharpTexture: { value: null },
+      focus: { value: 0.48 },
+      upperGradientShift: { value: 0 },
+      lowerGradientShift: { value: 0 },
+      gradientMultiplier: { value: 1 },
+      tiltShiftActive: { value: true },
+      showGradient: { value: false },
+    },
+    vertexShader,
+    fragmentShader: /* glsl */`
+      uniform sampler2D tDiffuse;
+      uniform sampler2D sharpTexture;
+      uniform float focus;
+      uniform float upperGradientShift;
+      uniform float lowerGradientShift;
+      uniform float gradientMultiplier;
+      uniform bool tiltShiftActive;
+      uniform bool showGradient;
+      varying vec2 vUv;
+      ${tiltShiftGradientGLSL}
+      void main() {
+        vec4 sharp = texture2D(sharpTexture, vUv);
+        vec4 processed = texture2D(tDiffuse, vUv);
+        float mask = tiltShiftActive
+          ? tiltShiftGradient(vUv, focus, upperGradientShift, lowerGradientShift, gradientMultiplier)
+          : 1.0;
+        if (showGradient) mask = 1.0;
+        gl_FragColor = mix(sharp, processed, mask);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+  };
 }
 
 const vertexShader = /* glsl */`
@@ -26,6 +93,7 @@ const fragmentShader = /* glsl */`
   uniform float pixelRatio;
   uniform vec2 resolution;
   varying vec2 vUv;
+  ${tiltShiftGradientGLSL}
 
   vec4 sampleHexRing(float radiusPixels) {
     vec2 r = vec2(radiusPixels) / resolution;
@@ -42,11 +110,7 @@ const fragmentShader = /* glsl */`
 
   void main() {
     vec4 sharp = texture2D(tDiffuse, vUv);
-    float signedDistanceFromFocus = vUv.y - focus;
-    float distanceFromFocus = signedDistanceFromFocus >= 0.0
-      ? max(0.0, signedDistanceFromFocus - upperGradientShift)
-      : max(0.0, -signedDistanceFromFocus - lowerGradientShift);
-    float blurAmount = clamp(smoothstep(0.035, 0.24, distanceFromFocus) * gradientMultiplier, 0.0, 1.0);
+    float blurAmount = tiltShiftGradient(vUv, focus, upperGradientShift, lowerGradientShift, gradientMultiplier);
     if (showGradient) {
       gl_FragColor = vec4(vec3(blurAmount), 1.0);
       return;

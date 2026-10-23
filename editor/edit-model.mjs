@@ -5,7 +5,23 @@ import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=10';
 import { validateFogPaths } from '../fog-paths.mjs?v=2';
 import { validateCampaignGraph } from '../game/campaign-graph.mjs';
 import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=2';
 export { FOG_DEFAULTS };
+export function scopeLegacyGlobalFogChanges(diff, locationIds, overrides = {}) {
+  if (!diff || !Array.isArray(diff.changes)) return diff;
+  const changes = [], fogChanges = diff.changes.filter(change => change.object === 'fog' && change.location === null);
+  for (const change of diff.changes) {
+    if (change.object !== 'fog' || change.location !== null) { changes.push(change); continue; }
+    for (const location of new Set(locationIds)) {
+      if (typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)) continue;
+      const localFog = overrides.locations?.[location]?.fog ?? {};
+      const current = { ...FOG_DEFAULTS, ...overrides.fog, ...localFog };
+      changes.push({ ...change, location, before: current, after: { ...current, ...change.after, ...localFog } });
+    }
+  }
+  return fogChanges.length ? { ...diff, changes } : diff;
+}
 export const LIGHTING_DEFAULTS = { direction: [-5, 12, 7], intensity: 3, color: '#ffebcb' };
 export function lightingDirectionToAngles(direction) {
   const [x, y, z] = direction, magnitude = Math.hypot(x, y, z);
@@ -37,8 +53,8 @@ export function writeTransform(object, value) {
   for (const key of ['position', 'rotation', 'scale']) object[key].set(...value[key]);
   object.updateMatrixWorld(true);
 }
-export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false, globalTerrainStyle = false, unitPuckColors = false, prefabId = null) {
-  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain && !globalTerrainStyle && !unitPuckColors && !prefabId) return value;
+export function validateSceneValue(value, fog = false, fogPaths = false, graph = false, lighting = false, terrain = false, globalTerrainStyle = false, unitPuckColors = false, prefabId = null, screenEffects = false, itemMagnet = false) {
+  if (value === null && !fog && !fogPaths && !graph && !lighting && !terrain && !globalTerrainStyle && !unitPuckColors && !prefabId && !screenEffects && !itemMagnet) return value;
   if (!value || typeof value !== 'object') throw new Error('Scene value must be an object');
   if (fogPaths) return validateFogPaths(value);
   if (graph) return validateCampaignGraph(value);
@@ -58,6 +74,22 @@ export function validateSceneValue(value, fog = false, fogPaths = false, graph =
     if (Object.keys(value).some(key => !Object.hasOwn(UNIT_PUCK_COLOR_DEFAULTS, key))
       || !/^#[0-9a-f]{6}$/i.test(value.player) || !/^#[0-9a-f]{6}$/i.test(value.enemy))
       throw new Error('Invalid unit puck colors');
+    return value;
+  }
+  if (screenEffects) {
+    const normalized = normalizeScreenEffects(value);
+    if (Object.keys(value).some(key => !Object.hasOwn(DEFAULT_SCREEN_EFFECTS, key))
+      || Object.keys(DEFAULT_SCREEN_EFFECTS).some(key => !Object.hasOwn(value, key))
+      || Object.keys(DEFAULT_SCREEN_EFFECTS).some(key => normalized[key] !== value[key]))
+      throw new Error('Invalid screen effects');
+    return value;
+  }
+  if (itemMagnet) {
+    const normalized = normalizeItemMagnetSettings(value);
+    if (Object.keys(value).some(key => !Object.hasOwn(ITEM_MAGNET_DEFAULTS, key))
+      || Object.keys(ITEM_MAGNET_DEFAULTS).some(key => !Object.hasOwn(value, key))
+      || Object.keys(ITEM_MAGNET_DEFAULTS).some(key => normalized[key] !== value[key]))
+      throw new Error('Invalid item magnet settings');
     return value;
   }
   if (prefabId) {
@@ -134,19 +166,48 @@ export function createEditModel() {
         const prefabId = object.startsWith('prefab:') ? object.slice(7) : null;
         const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
           lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style',
-          unitPuckColors = object === 'unit-puck-colors';
-        validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
-        validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
+          unitPuckColors = object === 'unit-puck-colors', screenEffects = object === 'screen-effects', itemMagnet = object === 'item-magnet';
+        validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId, screenEffects, itemMagnet);
+        validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId, screenEffects, itemMagnet);
         restored.push({ location, object, before: clone(before), after: clone(after) });
       }
       for (const entry of restored) records.set(id(entry.location, entry.object), entry);
       return restored.length;
     },
+    replace(diff) {
+      this.commit();
+      if (diff?.format !== SCENE_DIFF_FORMAT || diff.baseBuild !== SCENE_BUILD || !Array.isArray(diff.changes) || diff.changes.length > 5000)
+        throw new Error('Incompatible shared scene diff');
+      const replacement = [], seen = new Set();
+      for (const change of diff.changes) {
+        if (!change || typeof change.object !== 'string') throw new Error('Invalid shared scene change');
+        const { location, object, before, after } = change, key = id(location, object);
+        if (seen.has(key)) throw new Error(`Duplicate shared scene change: ${object}`);
+        seen.add(key);
+        const prefabId = object.startsWith('prefab:') ? object.slice(7) : null;
+        const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
+          lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style',
+          unitPuckColors = object === 'unit-puck-colors', screenEffects = object === 'screen-effects', itemMagnet = object === 'item-magnet';
+        validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId, screenEffects, itemMagnet);
+        validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId, screenEffects, itemMagnet);
+        const current = records.get(key);
+        if (current && !equal(current.before, before)) throw new Error(`Shared scene baseline mismatch: ${object}`);
+        replacement.push({ key, change: { location, object, before: clone(before), after: clone(after) } });
+      }
+      for (const entry of records.values()) entry.after = clone(entry.before);
+      undo.length = 0; redo.length = 0;
+      for (const { key, change } of replacement) {
+        const current = records.get(key);
+        if (current) current.after = clone(change.after);
+        else records.set(key, change);
+      }
+      return replacement.length;
+    },
     has(location, object) { return records.has(id(location, object)); },
     get(location, object) { const entry = records.get(id(location, object)); return entry ? clone(entry.after) : null; },
     begin() { if (!transaction) transaction = new Map(); },
     set(location, object, value) {
-      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain', object === 'terrain-style', object === 'unit-puck-colors', object.startsWith('prefab:') ? object.slice(7) : null);
+      validateSceneValue(value, object === 'fog', object === 'fog-paths', object === 'campaign-graph', object === 'lighting', object === 'terrain', object === 'terrain-style', object === 'unit-puck-colors', object.startsWith('prefab:') ? object.slice(7) : null, object === 'screen-effects', object === 'item-magnet');
       const key = id(location, object), entry = records.get(key);
       if (!entry) throw new Error(`Unregistered scene object: ${object}`);
       if (equal(entry.after, value)) return false;
@@ -200,28 +261,34 @@ export function mergeSceneDiff(overrides, diff) {
     const prefabId = object.startsWith('prefab:') ? object.slice(7) : null;
     const fog = object === 'fog', fogPaths = object === 'fog-paths', graph = object === 'campaign-graph',
       lighting = object === 'lighting', terrain = object === 'terrain', globalTerrainStyle = object === 'terrain-style',
-      unitPuckColors = object === 'unit-puck-colors';
-    if (fog || graph || lighting || globalTerrainStyle || unitPuckColors || prefabId ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
+      unitPuckColors = object === 'unit-puck-colors', screenEffects = object === 'screen-effects', itemMagnet = object === 'item-magnet';
+    if (fog ? location !== null && (typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location))
+      : graph || lighting || globalTerrainStyle || unitPuckColors || screenEffects || itemMagnet || prefabId ? location !== null : typeof location !== 'string' || !/^[a-z0-9-]+$/.test(location)
       || ['constructor', 'prototype'].includes(location)) throw new Error('Invalid scene location');
-    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
-    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId);
+    validateSceneValue(before, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId, screenEffects, itemMagnet);
+    validateSceneValue(after, fog, fogPaths, graph, lighting, terrain, globalTerrainStyle, unitPuckColors, prefabId, screenEffects, itemMagnet);
     if (before === null && after === null) throw new Error('An empty edit has no effect');
     if (before === null && (!object.startsWith('placed:') || !after.asset)) throw new Error('New objects must come from the asset library');
-    const current = fog ? { ...FOG_DEFAULTS, ...result.fog } : lighting ? { ...LIGHTING_DEFAULTS, ...result.lighting }
+    const current = fog ? { ...FOG_DEFAULTS, ...result.fog, ...(location === null ? {} : result.locations[location]?.fog) } : lighting ? { ...LIGHTING_DEFAULTS, ...result.lighting }
       : globalTerrainStyle ? { ...TERRAIN_STYLE_DEFAULTS, ...result.terrainStyle }
       : unitPuckColors ? { ...UNIT_PUCK_COLOR_DEFAULTS, ...result.unitPuckColors }
+      : screenEffects ? { ...DEFAULT_SCREEN_EFFECTS, ...result.screenEffects }
+      : itemMagnet ? normalizeItemMagnetSettings(result.itemMagnet ?? ITEM_MAGNET_DEFAULTS)
         : prefabId ? result.prefabs?.[prefabId] ?? { size: catalogPrefab(prefabId)?.size }
       : graph ? result.graph ?? before : terrain ? result.locations[location]?.terrain ?? { strokes: [] }
         : result.locations[location]?.[object];
     const matches = (value, expected) => fog
       ? Object.keys(expected).every(key => equal(value?.[key], expected[key]))
       : equal(value, expected);
-    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || prefabId || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
+    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || screenEffects || itemMagnet || prefabId || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
       throw new Error(`Scene edit conflict: ${location}/${object}`);
-    if (fog) result.fog = { ...current, ...clone(after) };
+    if (fog && location === null) result.fog = { ...current, ...clone(after) };
+    else if (fog) { result.locations[location] ??= {}; result.locations[location].fog = { ...current, ...clone(after) }; }
     else if (lighting) result.lighting = clone(after);
     else if (globalTerrainStyle) result.terrainStyle = clone(after);
     else if (unitPuckColors) result.unitPuckColors = clone(after);
+    else if (screenEffects) result.screenEffects = clone(after);
+    else if (itemMagnet) result.itemMagnet = clone(after);
     else if (prefabId) { result.prefabs ??= {}; result.prefabs[prefabId] = clone(after); }
     else if (graph) result.graph = clone(after);
     else { result.locations[location] ??= {}; result.locations[location][object] = clone(after); }
