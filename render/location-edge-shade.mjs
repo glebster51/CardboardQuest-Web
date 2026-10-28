@@ -1,6 +1,6 @@
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=6';
-import { fogPathRadiusAt } from '../fog-paths.mjs?v=2';
-import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=10';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=7c14a71de3a9af87';
+import { fogPathRadiusAt } from '../fog-paths.mjs?v=7c14a71de3a9af87';
+import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=7c14a71de3a9af87';
 export const LOCATION_FAR_COLOR = 0x242039;
 const originalMaterialHooks = new WeakMap();
 
@@ -135,7 +135,13 @@ export function locationEdgeShadeAt(x, z, points, settings = FOG_DEFAULTS) {
 }
 
 export function applyLocationEdgeShade(root, patchMaterial) {
-  const disablePlayerReveal = Boolean(root.userData?.disablePlayerReveal);
+  const playerRevealDisabled = object => {
+    for (let ancestor = object; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.userData?.disablePlayerReveal) return true;
+      if (ancestor === root) break;
+    }
+    return false;
+  };
   const isScenerySprite = object => {
     for (let parent = object.parent; parent && parent !== root; parent = parent.parent)
       if (parent.name === 'scenery-front' || parent.name === 'scenery-back') return true;
@@ -148,13 +154,25 @@ export function applyLocationEdgeShade(root, patchMaterial) {
     const terrainSurface = Boolean(object.userData?.terrainSurface)
       || /^(playfield|terrain)-/.test(object.name)
       || /^(playfield|terrain)-/.test(object.parent?.name ?? '');
-    const revealableScenery = scenerySprite && !terrainSurface && !fogSurface && !disablePlayerReveal;
+    const revealableScenery = scenerySprite && !terrainSurface && !fogSurface && !playerRevealDisabled(object);
     if (!terrainSurface && !scenerySprite && !fogSurface) return;
     const materials = [object.material].flat();
     const patchedMaterials = materials.map(material => {
-      if ((revealableScenery && material?.isMeshStandardMaterial || fogSurface && material?.isMeshBasicMaterial)
-        && !material.userData.locationEdgeShadePatched)
+      const revealVariantMismatch = material?.userData?.locationEdgeShadePatched
+        && Boolean(material.userData.locationPlayerReveal) !== revealableScenery;
+      const needsRevealPatch = revealableScenery && material?.isMeshStandardMaterial
+        || fogSurface && material?.isMeshBasicMaterial;
+      if ((needsRevealPatch && !material.userData.locationEdgeShadePatched) || revealVariantMismatch) {
+        const source = material;
         material = material.clone();
+        if (revealVariantMismatch) {
+          const original = originalMaterialHooks.get(source);
+          material.onBeforeCompile = original?.onBeforeCompile;
+          material.customProgramCacheKey = original?.customProgramCacheKey;
+          material.userData.locationEdgeShadePatched = false;
+          delete material.userData.locationPlayerReveal;
+        }
+      }
       patchMaterial(material, revealableScenery);
       return material;
     });
@@ -197,6 +215,7 @@ export async function createLocationEdgeShade({ THREE, location, resolution = 25
     if (!material?.isMeshStandardMaterial && !material?.isMeshBasicMaterial) return;
     if (material.userData.locationEdgeShadePatched) return;
     material.userData.locationEdgeShadePatched = true;
+    material.userData.locationPlayerReveal = reveal;
     material.userData.locationEdgeShadeTexture = texture;
     if (!originalMaterialHooks.has(material)) originalMaterialHooks.set(material, {
       onBeforeCompile: material.onBeforeCompile, customProgramCacheKey: material.customProgramCacheKey,

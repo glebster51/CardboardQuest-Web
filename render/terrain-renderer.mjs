@@ -1,8 +1,58 @@
-import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs';
-import { exitRoadContinuation } from '../game/location-art.mjs';
-import { coarsenClosedTerrainContour, smoothClosedContour } from '../terrain-shapes.mjs?v=3';
-import { terrainLevelCenter, terrainSideTriangleMask } from '../terrain-side-culling.mjs?v=4';
-import { buildFogPathTopology } from './location-edge-shade.mjs?v=28';
+import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs?v=7c14a71de3a9af87';
+import { exitRoadContinuation } from '../game/location-art.mjs?v=7c14a71de3a9af87';
+import { coarsenClosedTerrainContour, smoothClosedContour, createTerrainHeightMap as defaultHeightMap,
+  createTerrainHeightMapFromDepthMap as defaultDepthMap, extractTerrainContours as defaultContours } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
+import { terrainLevelCenter, terrainSideTriangleMask } from '../terrain-side-culling.mjs?v=7c14a71de3a9af87';
+import { buildFogPathTopology } from './location-edge-shade.mjs?v=7c14a71de3a9af87';
+import { terrainSurfaceContours } from './terrain-cutouts.mjs?v=7c14a71de3a9af87';
+import { createTerrainVolume, createVolumeCollisionField } from '../game/terrain-volume.mjs?v=7c14a71de3a9af87';
+import {createVisibleTerrainSlices} from './terrain-visibility.mjs?v=7c14a71de3a9af87';
+import {createTerrainSafetyFloor} from './terrain-safety-floor.mjs?v=7c14a71de3a9af87';
+import {terrainOperations,isHeightStroke} from '../game/terrain-brush.mjs?v=7c14a71de3a9af87';
+import {simpleTerrainLayout} from '../game/terrain-base.mjs?v=7c14a71de3a9af87';
+
+const TERRACE_HEIGHT_SCALE = 3;
+
+/** Shared by the renderer and Apply: bake exactly the same terrain data. */
+export function createLocationTerrainData(location,{createTerrainHeightMap=defaultHeightMap,
+  createTerrainHeightMapFromDepthMap=defaultDepthMap,extractTerrainContours=defaultContours,maxHeight=3.6}={}) {
+  const seed=location.heightSeed??(location.id==='home'?8128:location.id==='forest'?42119:99731);
+  const bounds=location.walkablePoints.reduce((r,p)=>({minX:Math.min(r.minX,p.x),maxX:Math.max(r.maxX,p.x),
+    minZ:Math.min(r.minZ,p.z),maxZ:Math.max(r.maxZ,p.z)}),{minX:Infinity,maxX:-Infinity,minZ:Infinity,maxZ:-Infinity});
+  const simple=location.terrainEdits?.base==='simple'?simpleTerrainLayout(location):null;
+  const terraceStep=simple ? .72 : (location.art?.depthMap?.elevation?.step??location.art?.terrain?.step??.24)*TERRACE_HEIGHT_SCALE;
+  const operations=terrainOperations(location.terrainEdits),firstVolume=operations.findIndex(stroke=>!isHeightStroke(stroke));
+  const prefix=location.terrainBake?.volume?0:firstVolume<0?operations.length:firstVolume;
+  const sculpt={sculptEdits:{...location.terrainEdits,strokes:operations.slice(0,prefix),volumeStrokes:[]},bakedHeight:location.terrainBake?.height,step:terraceStep};
+  const heightMap=simple?createTerrainHeightMap(9137,location.walkablePoints,{...simple.bounds,cellSize:.7,step:terraceStep,
+      maxHeight:3.6,edgeHeight:0,peakCount:0,heightAt:simple.heightAt,...sculpt}):location.art?.depthMap
+    ?createTerrainHeightMapFromDepthMap(location.art.depthMap,location.walkablePoints,sculpt)
+    :createTerrainHeightMap(seed,location.walkablePoints,{minX:bounds.minX-30,maxX:bounds.maxX+30,
+      minZ:bounds.minZ-30,maxZ:bounds.maxZ+30,cellSize:.7,maxHeight,...location.art?.terrain,
+      exits:location.exits,dropZones:location.dropZones,...sculpt});
+  let backingOutline;
+  heightMap.baseKind=simple?'simple':'authored';
+  if(simple){
+    // Keep scenery's authored height reference stable when replacing the base.
+    // Only the new simple height field is used to build visible terrain.
+    const reference=location.art?.depthMap?createTerrainHeightMapFromDepthMap(location.art.depthMap,location.walkablePoints,{step:terraceStep})
+      :createTerrainHeightMap(seed,location.walkablePoints,{...simple.bounds,cellSize:.7,maxHeight,...location.art?.terrain,
+        exits:location.exits,dropZones:location.dropZones,step:terraceStep});
+    heightMap.baseValues=Float32Array.from(heightMap.values,(_,i)=>reference.sample(heightMap.minX+i%heightMap.columns*heightMap.cellSize,
+      heightMap.minZ+Math.floor(i/heightMap.columns)*heightMap.cellSize));
+    const mask={...heightMap,values:Float32Array.from(heightMap.values,(_,i)=>simple.footprintAt(heightMap.minX+i%heightMap.columns*heightMap.cellSize,
+      heightMap.minZ+Math.floor(i/heightMap.columns)*heightMap.cellSize))};
+    backingOutline=extractTerrainContours(mask,0).map(contour=>smoothClosedContour(contour,4)).sort((a,b)=>b.length-a.length)[0]??[];
+  }else backingOutline=createTerrainBackingOutline(extractTerrainContours(heightMap,.001));
+  heightMap.volume=createTerrainVolume(heightMap,backingOutline.length>=3?backingOutline:location.walkablePoints,
+    operations.slice(prefix),location.terrainBake?.volume);
+  // Height-only edits used to fall back to separate playfield, backing and
+  // exit-road meshes. Their independently cut/coarsened borders leave cracks.
+  // Every edited surface must use the same density slices as volume brushes.
+  heightMap.volume.renderUnified=Boolean(simple)||heightMap.volume.edited||operations.length>0||Boolean(location.terrainBake);
+  if(heightMap.volume.edited)heightMap.volume.clearance=createVolumeCollisionField(heightMap.volume);
+  return {heightMap,backingOutline,terraceStep};
+}
 
 function terrainShape(THREE, outerPoints, holes = []) {
   const shape = new THREE.Shape();
@@ -22,9 +72,9 @@ function terrainShape(THREE, outerPoints, holes = []) {
   return shape;
 }
 
-function shapesFromContours(THREE, contours) {
+function shapesFromContours(THREE, contours, reduction = 3) {
   const records = contours.map(contour => {
-    const points = coarsenClosedTerrainContour(contour, 3);
+    const points = coarsenClosedTerrainContour(contour, reduction);
     let area = 0;
     for (let i = 0; i < points.length; i++) {
       const a = points[i], b = points[(i + 1) % points.length];
@@ -184,28 +234,17 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
   for (const location of Object.values(locations)) {
     const levelCenter = terrainLevelCenter(location.walkablePoints);
     const fogTopology = buildFogPathTopology(location.fogPaths?.paths ?? []);
-    const seed = location.heightSeed ?? (location.id === 'home' ? 8128 : location.id === 'forest' ? 42119 : 99731);
-    const bounds = location.walkablePoints.reduce((result, point) => ({
-      minX: Math.min(result.minX, point.x), maxX: Math.max(result.maxX, point.x),
-      minZ: Math.min(result.minZ, point.z), maxZ: Math.max(result.maxZ, point.z),
-    }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
-    const terrainMargin = 30;
-    const heightMap = location.art?.depthMap
-      ? createTerrainHeightMapFromDepthMap(location.art.depthMap, location.walkablePoints,
-        { sculptEdits: location.terrainEdits })
-      : createTerrainHeightMap(seed, location.walkablePoints,
-      { minX: bounds.minX - terrainMargin, maxX: bounds.maxX + terrainMargin,
-        minZ: bounds.minZ - terrainMargin, maxZ: bounds.maxZ + terrainMargin,
-        cellSize: .7, step: .24, maxHeight, ...location.art?.terrain,
-        exits: location.exits, dropZones: location.dropZones, sculptEdits: location.terrainEdits });
+    const {heightMap,backingOutline,terraceStep}=createLocationTerrainData(location,
+      {createTerrainHeightMap,createTerrainHeightMapFromDepthMap,extractTerrainContours,maxHeight});
     location.terrainHeightMap = heightMap;
     location.sceneGroup.userData.terrainHeightMap = heightMap;
     const palette = TERRAIN_PALETTES[location.terrainStyle ?? location.id] ?? TERRAIN_PALETTES.forest;
-    const backingOutline = createTerrainBackingOutline(extractTerrainContours(heightMap, .001));
-    if (backingOutline.length >= 3) {
-      const shape = terrainShape(THREE, backingOutline, [location.walkablePoints, ...(heightMap.negativeContours ?? [])]);
+    const hasPits = Boolean(heightMap.negativeContours?.length);
+    if (!heightMap.volume.renderUnified && backingOutline.length >= 3) {
+      const shapes = hasPits ? shapesFromContours(THREE,terrainSurfaceContours(heightMap,[backingOutline],[location.walkablePoints]))
+        : [terrainShape(THREE,backingOutline,[location.walkablePoints])];
       const depth = .3;
-      let backingGeometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 });
+      let backingGeometry = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, steps: 1 });
       backingGeometry.rotateX(-Math.PI / 2);
       backingGeometry = cullFogHiddenOutwardWalls(THREE, backingGeometry, levelCenter, fogTopology, fogSettings);
       const backing = new THREE.Mesh(backingGeometry, [
@@ -217,19 +256,52 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       backing.name = `terrain-top-backing-${location.id}`;
       location.sceneGroup.add(backing);
     }
-    const layers = [{
-      shapes: [terrainShape(THREE, location.walkablePoints, (location.hazards ?? [])
-        .filter(hazard => hazard.kind !== 'depth-water').map(hazard => hazard.points))], depth: .3, top: 0,
+    const hazards=(location.hazards??[]).filter(hazard=>hazard.kind!=='depth-water').map(hazard=>hazard.points);
+    let layers = [{
+      shapes: hasPits ? shapesFromContours(THREE,terrainSurfaceContours(heightMap,[location.walkablePoints],hazards))
+        : [terrainShape(THREE,location.walkablePoints,hazards)], depth: .3, top: 0,
       topColor: palette.tops[0], sideColor: palette.side,
     }, ...heightMap.layers.filter(layer => layer.contours.length).map((layer, index) => ({
-      shapes: shapesFromContours(THREE, layer.contours),
+      // Descending terraces are bands, not lids over every deeper pit floor.
+      shapes: shapesFromContours(THREE, [...layer.contours,...(layer.height<0
+        ? heightMap.layers.find(next=>Math.abs(next.height-(layer.height-heightMap.step))<1e-6)?.contours??[] : [])],layer.height<0?1:3),
       depth: heightMap.step, top: layer.height,
       topColor: palette.tops[(index + 2) % palette.tops.length],
       sideColor: index % 2 ? palette.side : 0x9c7243,
     }))];
 
-    if (location.art) layers.push({ shapes: location.exits.map(exit => terrainShape(THREE, exitRoadContinuation(exit))),
+    if (location.art) layers.push({ shapes: hasPits
+      ? shapesFromContours(THREE,terrainSurfaceContours(heightMap,location.exits.map(exit=>exitRoadContinuation(exit))))
+      : location.exits.map(exit => terrainShape(THREE, exitRoadContinuation(exit))),
       depth: .3, top: 0, topColor: palette.tops[0], sideColor: palette.side });
+
+    if(heightMap.volume.renderUnified) {
+      layers=[];const volume=heightMap.volume;
+      heightMap.groundDomain={floor:[],blockers:[]};
+      const visible=createVisibleTerrainSlices(volume);
+      heightMap.visibility=visible.stats;
+      const referenceHeight=heightMap.values.reduce((low,height)=>Math.min(low,height),Infinity);
+      heightMap.safetyFloor=createTerrainSafetyFloor(volume,visible,referenceHeight);
+      if(heightMap.safetyFloor) {
+        const floor=heightMap.safetyFloor;
+        if(Math.abs(floor.top)<1e-6)heightMap.groundDomain.floor=[floor.contour];
+        layers.push({shapes:[terrainShape(THREE,floor.contour)],top:floor.top,depth:floor.depth,
+          topColor:palette.tops[0],sideColor:palette.side,safety:true});
+      }
+      for(let index=0;index<visible.slices.length;index++) {
+        const layer=visible.firstLayer+index,slice=visible.slices[index];
+        if(heightMap.safetyFloor&&(layer+1)*terraceStep<=heightMap.safetyFloor.top+1e-6)continue;
+        // Caps and side walls use this same smoothed contour. Never replace
+        // smoothing with a separate coarse floor to repair seams.
+        const contours=extractTerrainContours(slice,0).map(contour=>smoothClosedContour(contour,4));
+        const bottom=layer*terraceStep,top=(layer+1)*terraceStep;
+        if(Math.abs(top)<1e-6)heightMap.groundDomain.floor=contours;
+        if(bottom>=-1e-6&&bottom<2.25)heightMap.groundDomain.blockers.push(contours);
+        if(!contours.length)continue;
+        layers.push({shapes:shapesFromContours(THREE,contours,1),depth:terraceStep,top:(layer+1)*terraceStep,
+          topColor:(layer+1)===0?palette.tops[0]:palette.tops[((layer%palette.tops.length)+palette.tops.length)%palette.tops.length],sideColor:palette.side});
+      }
+    }
 
     for (const layer of layers) {
       if (!layer.shapes.length) continue;
@@ -261,7 +333,7 @@ export function createTerrainRenderer({ THREE, locations, createTerrainHeightMap
       mesh.position.y = layer.top - layer.depth;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.name = `${layer.top === 0 ? 'playfield' : 'terrain'}-top-${location.id}-${location.sceneGroup.children.length}`;
+      mesh.name = layer.safety?`terrain-top-safety-${location.id}`:`${layer.top === 0 ? 'playfield' : 'terrain'}-top-${location.id}-${location.sceneGroup.children.length}`;
       location.sceneGroup.add(mesh);
     }
     addDropZoneUnderside(THREE, location);

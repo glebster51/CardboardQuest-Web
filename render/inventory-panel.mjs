@@ -1,12 +1,15 @@
-import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=4';
-import { heartHealthLevels } from '../heart-health.mjs';
-import { combatBonuses, equipmentItem, EQUIPMENT_SLOT_LABELS, normalizeEquipment } from '../game/equipment.mjs?v=1';
-import { normalizeCoins } from '../game/currency.mjs?v=1';
+import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=7c14a71de3a9af87';
+import { heartHealthLevels } from '../heart-health.mjs?v=7c14a71de3a9af87';
+import { combatBonuses, equipmentItem, EQUIPMENT_SLOT_LABELS, normalizeEquipment } from '../game/equipment.mjs?v=7c14a71de3a9af87';
+import { normalizeCoins } from '../game/currency.mjs?v=7c14a71de3a9af87';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=7c14a71de3a9af87';
 
 /** Inventory owns only presentation; consuming and saving remain game actions. */
 export function createInventoryPanel({ root, trigger, getState, getHealth, onOpen, onUse, onEquip, onUnequip, onDrop }) {
+  root.dataset.uiAnchor ??= 'center';
   const grid = root.querySelector('#inventory-items'), sheet = root.querySelector('.inventory-sheet');
   const tooltip = root.querySelector('#inventory-tooltip'), close = root.querySelector('#inventory-close');
+  tooltip.dataset.uiAnchor = 'center'; tooltip.dataset.uiMotionSurface = '';
   const use = root.querySelector('#inventory-use'), notice = root.querySelector('#inventory-notice');
   let selected = null, entries = [], page = 0, allEntries = [], previousFocus = null, warm = false, positioning = false;
   let itemDrag = null, suppressClick = false;
@@ -86,7 +89,7 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
     root.querySelector('#inventory-backpack').src = 'assets/ui-inventory-backpack.webp';
   }
   function hideTooltip() {
-    selected = null; tooltip.hidden = true;
+    selected = null; void hideUIWindow(tooltip);
     for (const cell of cells) { cell.setAttribute('aria-expanded', 'false'); cell.classList.remove('is-selected'); }
   }
   function positionTooltip() {
@@ -123,7 +126,8 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
     tooltip.querySelector('#inventory-item-description').textContent = item.description;
     tooltip.querySelector('#inventory-item-effect').textContent = action.hint;
     use.hidden = !action.usable; use.textContent = item.action ?? 'Использовать';
-    tooltip.hidden = false; positionTooltip();
+    if (tooltip.hidden || tooltip.dataset.uiMotionState === 'closing') void showUIWindow(tooltip);
+    positionTooltip();
   }
   function render() {
     const state = getState(); allEntries = inventoryEntries(state);
@@ -132,7 +136,10 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
     page = Math.min(page, pages - 1); entries = allEntries.slice(page * INVENTORY_CAPACITY, (page + 1) * INVENTORY_CAPACITY);
     for (let index = 0; index < cells.length; index++) {
       const cell = cells[index], item = entries[index];
+      const previousItemId = cell.dataset.itemId ?? '';
       cell.dataset.itemId = item?.id ?? '';
+      if (!root.hidden && root.dataset.uiMotionState === 'open' && previousItemId !== cell.dataset.itemId)
+        indicateUIChange(cell, 'inventory');
       cell.disabled = !item; cell.classList.toggle('is-empty', !item);
       const healingLabel = item?.healing ? `, восстановление здоровья: ${String(item.healing / 4).replace('.', ',')} ♥` : '';
       cell.setAttribute('aria-label', item ? item.name + healingLabel : `Пустая ячейка ${index + 1}`);
@@ -169,7 +176,8 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
       button.setAttribute('aria-label', item ? `Снять: ${item.name}, ${item.hint}` : `${label}: пусто`);
       button.title = item ? `${item.name} · ${item.hint} · нажми, чтобы снять` : label;
     });
-    const { health, maxHealth } = getHealth();
+    const healthState = getHealth(), { health, maxHealth } = healthState;
+    const restoredHearts = new Map((healthState.restoredHearts ?? []).map(pulse => [pulse.index, pulse]));
     const healthBar = root.querySelector('#inventory-health');
     healthBar.setAttribute('aria-label', `Здоровье: ${health / 4} из ${maxHealth / 4} сердец`);
     const levels = heartHealthLevels(health, maxHealth);
@@ -178,22 +186,44 @@ export function createInventoryPanel({ root, trigger, getState, getHealth, onOpe
       let heart = healthBar.children[index];
       if (!heart) { heart = document.createElement('span'); heart.className = 'inventory-heart'; heart.setAttribute('aria-hidden', 'true'); healthBar.append(heart); }
       heart.dataset.level = String(level);
-      heart.style.backgroundPosition = `${level * 25}% 50%`;
+      const position = `${level * 25}% 50%`;
+      heart.style.backgroundPosition = position;
+      heart.style.maskPosition = position;
+      heart.style.webkitMaskPosition = position;
+      heart.style.setProperty('--heart-mask-position', position);
+      const restore = restoredHearts.get(index);
+      const restoreAge = restore ? performance.now() - restore.startedAt : Infinity;
+      const restoreActive = Boolean(restore && restoreAge < 500);
+      heart.classList.toggle('is-healed', restoreActive);
+      if (restore) {
+        const token = String(restore.token);
+        if (heart.dataset.restoreToken !== token) {
+          heart.dataset.restoreToken = token;
+          heart.classList.remove('restore-pulse');
+          void heart.offsetWidth;
+          if (restoreActive) heart.classList.add('restore-pulse');
+        }
+        if (!restoreActive) heart.classList.remove('restore-pulse');
+      } else {
+        delete heart.dataset.restoreToken;
+        heart.classList.remove('restore-pulse');
+      }
     });
     const carried = Object.values(state.items).reduce((total, count) => total + Math.max(0, Math.trunc(Number(count) || 0)), 0);
-    const badge = trigger.querySelector('#inventory-count'); badge.hidden = carried === 0;
+    const badge = trigger.querySelector('#inventory-count'), previousCount = badge.textContent; badge.hidden = carried === 0;
     badge.textContent = carried > 99 ? '99+' : String(carried);
+    if (previousCount !== badge.textContent) indicateUIChange(badge, 'count');
     trigger.setAttribute('aria-label', carried ? `Рюкзак, предметов: ${carried}` : 'Рюкзак');
     if (!root.hidden) renderTooltip();
   }
   function open() {
-    if (!root.hidden) return;
+    if (!root.hidden && root.dataset.uiMotionState !== 'closing') return;
     onOpen?.(); previousFocus = document.activeElement; warmArt(); hideTooltip(); notice.textContent = '';
-    root.hidden = false; trigger.setAttribute('aria-expanded', 'true'); render(); close.focus({ preventScroll: true });
+    void showUIWindow(root); trigger.setAttribute('aria-expanded', 'true'); render(); close.focus({ preventScroll: true });
   }
   function hide() {
     if (root.hidden) return;
-    root.hidden = true; hideTooltip(); trigger.setAttribute('aria-expanded', 'false');
+    void hideUIWindow(root); hideTooltip(); trigger.setAttribute('aria-expanded', 'false');
     (previousFocus?.isConnected ? previousFocus : trigger)?.focus({ preventScroll: true });
   }
   use.addEventListener('click', () => {

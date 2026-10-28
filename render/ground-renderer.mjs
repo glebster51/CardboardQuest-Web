@@ -1,4 +1,4 @@
-import { markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
+import { markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
 
 const GROUND_DECALS = [
   'ground-v2-pit', 'ground-v2-grass-ring', 'ground-v2-dirt-patch', 'ground-v2-footprints',
@@ -59,7 +59,7 @@ function addInstances(THREE, parent, kind, marks, materials, upright = false, id
 /** Load shared decal resources once and build per-location instanced scenery. */
 export async function createGroundRenderer({ THREE, renderer, locations, specsByLocation,
   pathTargets = {}, createLocationWalkPaths, scatterGroundDetails, assetBase = 'assets/', resources, geometryClient,
-  yieldWork = async () => {}, reportStatus = () => {} }) {
+  yieldWork = async () => {}, reportStatus = () => {}, renderDetails = false }) {
   const textureCache = new Map();
   const loadTexture = path => {
     if (!textureCache.has(path)) {
@@ -77,18 +77,26 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
     }
     return textureCache.get(path);
   };
-  const textures = resources?.textures ?? new Map(await Promise.all(DECAL_ASSETS.map(async name =>
-    [name, await loadTexture(`assets/${name}.png`)])));
-  const materials = resources?.materials ?? new Map(DECAL_ASSETS.map(name => [name,
-    makeMarkMaterial(THREE, textures.get(name), name.startsWith('grass-tuft-v2-') ? .94 : .8)]));
+  const textures = resources?.textures ?? new Map();
+  const materials = resources?.materials ?? new Map();
+  if (renderDetails && !resources?.textures) {
+    for (const [name, texture] of await Promise.all(DECAL_ASSETS.map(async name =>
+      [name, await loadTexture(`assets/${name}.png`)]))) textures.set(name, texture);
+  }
+  if (renderDetails && !resources?.materials) {
+    for (const name of DECAL_ASSETS) materials.set(name,
+      makeMarkMaterial(THREE, textures.get(name), name.startsWith('grass-tuft-v2-') ? .94 : .8));
+  }
 
   for (const location of Object.values(locations)) {
     const generated = geometryClient ? await geometryClient.run('ground', {
       location: { walkablePoints: location.walkablePoints, hazards: location.hazards, dropZones: location.dropZones,
-        exits: location.exits, arrivals: location.arrivals, obstacles: location.obstacles, entry: location.entry },
+        exits: location.exits, arrivals: location.arrivals, entry: location.entry },
       specs: specsByLocation[location.id], targets: pathTargets[location.id] ?? [] }) : null;
     const paths = generated?.paths ?? createLocationWalkPaths(location, pathTargets[location.id] ?? []);
     const details = generated?.details ?? scatterGroundDetails({ location, ...specsByLocation[location.id], paths });
+    location.groundDetails = { ...details, paths };
+    if (!renderDetails) { await yieldWork(); continue; }
     const group = new THREE.Group();
     group.name = `ground-details-${location.id}`;
     group.userData.walkPaths = paths;
@@ -113,7 +121,6 @@ export async function createGroundRenderer({ THREE, renderer, locations, specsBy
       reportStatus(stage, 'ready', `${matching.length} экземпляров`);
       await yieldWork();
     }
-    location.groundDetails = { ...details, paths };
   }
   return { textures, materials, textureCache };
 }

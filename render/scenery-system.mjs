@@ -1,13 +1,24 @@
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=8';
-import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=2';
-import { WALKABLE_POINTS } from '../physics.mjs';
-import { nearestPointOnPath } from '../terrain-shapes.mjs';
-import { sceneResources } from './scene-resources.mjs';
-import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=1';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=7c14a71de3a9af87';
+import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=7c14a71de3a9af87';
+import { WALKABLE_POINTS } from '../physics.mjs?v=7c14a71de3a9af87';
+import { nearestPointOnPath } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
+import { sceneResources } from './scene-resources.mjs?v=7c14a71de3a9af87';
+import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
+import { attachSceneryToTerrain } from './scenery-grounding.mjs?v=7c14a71de3a9af87';
+
+function propSeed(value) {
+  let hash = 2166136261;
+  for (const character of String(value)) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return (hash >>> 0) / 4294967295 * 1000;
+}
 
 /** Own scenery asset templates and construct location props from them. */
 export function createScenerySystem({ THREE, renderer, scene, locations, corrugation, paper,
-  terrainCorrugation, sceneStencil, assetBase = 'assets/', geometryClient }) {
+  terrainCorrugation, sceneStencil, assetBase = 'assets/', geometryClient, cardboardDamageTexture, cardboardVoronoiTexture,
+  cardboardTearNoiseTexture, cardboardPerlinTexture,
+  revealUniforms,
+  getCardboardDamageSettings = () => ({}) }) {
   const templates = new Map();
   const stateTemplates = new Map();
   const facePairs = [];
@@ -79,6 +90,14 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
   async function create(path, x, z, size, parent = scene, allowFlat = false, options = {}) {
     const template = await loadTemplate(path);
     const art = template.clone(true);
+    art.traverse(object => {
+      if (!object.isMesh || !(object.userData.cardboardSurface || object.name.startsWith('cardboard-'))) return;
+      object.material = Array.isArray(object.material) ? object.material.map(material => material.clone()) : object.material.clone();
+    });
+    const damageSeed = propSeed(`${options.sceneEditId ?? path}:${x.toFixed(3)}:${z.toFixed(3)}`);
+    const damageMaterials = bindCardboardDamageTree(art, { THREE, texture: cardboardDamageTexture, noiseTexture: cardboardVoronoiTexture,
+      displacementNoiseTexture: cardboardPerlinTexture, tearNoiseTexture: cardboardTearNoiseTexture,
+      settings: getCardboardDamageSettings(), seed: damageSeed, kind: 'environment', revealUniforms });
     bindSsaoSpriteAlphaCutouts(art);
     const layout = sceneryTokenLayout(size, options.base ? options.fixedRadius ?? 0 : 0);
     art.scale.set(layout.scale, layout.scale, layout.depthScale);
@@ -96,7 +115,9 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
     const instance = options.sceneEditId ? 0 : (counters[path] = (counters[path] ?? 0) + 1);
     prop.userData.sceneEditId = options.sceneEditId ?? `scenery:${path}:${instance}`;
     prop.userData.sceneEditLabel = options.sceneEditLabel ?? `${path.replace(/^assets\//, '').replace(/\.png$/, '')} · ${instance}`;
+    prop.userData.cardboardDamageMaterials = damageMaterials;
     prop.position.set(x, elevation, z);
+    attachSceneryToTerrain(prop,terrain);
     prop.add(art);
     if (options.fixedRadius) {
       if (options.base) {
@@ -109,12 +130,15 @@ export function createScenerySystem({ THREE, renderer, scene, locations, corruga
         base.castShadow = true; base.receiveShadow = true;
         prop.add(base);
       }
-      const owner = Object.values(locations).find(location => location.sceneGroup === parent);
-      if (owner) {
-        const body = { id: `obstacle-${owner.id}-${owner.obstacles.length + 1}`,
-          x, z, vx: 0, vz: 0, radius: options.fixedRadius, fixed: true, team: 'obstacle' };
-        owner.obstacles.push(body); prop.userData.sceneEditBody = body;
-      }
+    }
+
+    const owner = Object.values(locations).find(location => location.sceneGroup === parent);
+    if (owner && !options.flat) {
+      const hitPoints = 3;
+      const body = { id: `cardboard-${owner.id}-${owner.obstacles.length + 1}`, kind: 'cardboard-prop',
+        team: 'prop', x, z, vx: 0, vz: 0, radius: options.fixedRadius ?? Math.max(.24, Math.min(.85, size * .22)),
+        fixed: true, active: true, health: hitPoints, maxHealth: hitPoints, prop, cardboardDamageMaterials: damageMaterials };
+      owner.obstacles.push(body); prop.userData.sceneEditBody = body;
     }
 
     const inward = nearestPointOnPath(x, z, parent.userData.walkablePoints ?? WALKABLE_POINTS);

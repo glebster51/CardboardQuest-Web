@@ -1,18 +1,28 @@
-import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs';
+import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=7c14a71de3a9af87';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /** Bind the tabletop pointer, drag-to-aim, orbit, and zoom gestures. */
 export function createPointerInput({ THREE, host, inputElement = host, camera, orbit, playerMarker, windowRef = window,
   getBody, getActiveFigure, hitFigure, choose, stopAim, onLaunch,
-  groundUiY, aimDragSensitivity = 1 / 3, maxAimMarkerExtension, isBlocked = () => false, onManualOrbit = () => {} }) {
+  groundUiY, aimDragSensitivity = 1 / 3, maxAimMarkerExtension, isBlocked = () => false, onManualOrbit = () => {},
+  onHover = () => {} }) {
   const pointers = new Map();
   let gesture = null;
+  let hoveredFigure = null;
+
+  function setHoveredFigure(figure) {
+    const next = figure?.body.team === 'player' && figure.body.health > 0 ? figure : null;
+    if (next === hoveredFigure) return;
+    hoveredFigure = next;
+    onHover(next);
+  }
 
   function cancel() {
     stopAim();
     gesture = null;
     pointers.clear();
+    setHoveredFigure(null);
   }
 
   function release(event, cancelled) {
@@ -31,12 +41,14 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
     if (gesture?.mode === 'touchOrbit') gesture = null;
     pointers.delete(event.pointerId);
     if (pointers.size === 0) gesture = null;
+    setHoveredFigure(null);
   }
 
   inputElement.addEventListener('pointerdown', event => {
     if (isBlocked()) return;
     if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
     event.preventDefault();
+    setHoveredFigure(null);
     try { event.target.setPointerCapture(event.pointerId); } catch { /* Window listeners still track the drag. */ }
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size > 1) {
@@ -70,6 +82,11 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
 
   windowRef.addEventListener('pointermove', event => {
     if (isBlocked()) { cancel(); return; }
+    if (pointers.size === 0 && !gesture && event.pointerType === 'mouse') {
+      setHoveredFigure(event.target === inputElement || event.target === inputElement.canvas
+        ? hitFigure(event.clientX, event.clientY) : null);
+      return;
+    }
     if (!pointers.has(event.pointerId) || !gesture) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (gesture.mode === 'touchOrbit') {
@@ -131,7 +148,10 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
     if (Number.isFinite(pixels)) orbit.distance = clamp(orbit.distance * Math.exp(clamp(pixels, -240, 240) * .0012), 4.5, 27);
   }, { passive: false });
   windowRef.addEventListener('blur', cancel);
+  inputElement.addEventListener('pointerleave', () => setHoveredFigure(null));
 
-  return { cancel, getAimingBody: () => gesture?.mode === 'aim' && gesture.moved ? getBody() : null,
+  return { cancel, isAiming: () => gesture?.mode === 'aim',
+    getAimingBody: () => gesture?.mode === 'aim' && gesture.moved ? getBody() : null,
+    isHoveringPlayer: () => !isBlocked() && hoveredFigure?.body.team === 'player' && hoveredFigure.body.health > 0,
     isOrbiting: () => gesture?.mode === 'orbit' || gesture?.mode === 'touchOrbit' };
 }

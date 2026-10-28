@@ -1,13 +1,18 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=12';
-import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=1';
-import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=1';
-import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=1';
+import * as THREE from './vendor/three/build/three.module.js?v=7c14a71de3a9af87';
+import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=7c14a71de3a9af87';
+import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=7c14a71de3a9af87';
+import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
+import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=7c14a71de3a9af87';
+import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=7c14a71de3a9af87';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);
   for (let i = 0; i < alpha.length; i++) alpha[i] = alphaPixels[i * 4 + 3];
   const contours = traceSpriteContours(alpha, width, height, worldWidth, worldHeight);
+  // Face geometry follows a coarser, slightly expanded silhouette than the
+  // recessed cardboard wall. The texture alpha still defines the printed edge.
+  const faceContours = traceSpriteContours(alpha, width, height, worldWidth, worldHeight,
+    { maxDimension: 112, insetPixels: 0 });
   const smoothingAnchors = contours.flatMap(contour => contour.concaveAnchors);
   const contains = (point, polygon) => {
     let inside = false;
@@ -23,7 +28,7 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
     for (let i = 1; i < points.length; i++) path.lineTo(points[i].x, points[i].y);
     path.closePath(); return path;
   };
-  const shapes = contours.filter(contour => contour.depth % 2 === 0).map(contour => {
+  const buildShapes = source => source.filter(contour => contour.depth % 2 === 0).map(contour => {
     const shape = new THREE.Shape(), path = pathFrom(contour, false);
     shape.moveTo(path.curves[0].v1.x, path.curves[0].v1.y);
     for (const curve of path.curves) shape.lineTo(curve.v2.x, curve.v2.y);
@@ -31,14 +36,42 @@ export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHe
     for (const hole of contours) if (hole.depth === contour.depth + 1 && contains(hole.points[0], contour.points)) shape.holes.push(pathFrom(hole, true));
     return shape;
   });
+  const shapes = buildShapes(contours), faceShapes = buildShapes(faceContours);
   // The inset contour is only for the cardboard side profile. Keep the print
   // at its original alpha silhouette so it slightly overhangs and hides the
   // recessed cardboard edge instead of being clipped down with the mesh.
   const rasterMask = createSpriteCapMask(alpha, width, height);
-  return { shapes, rasterMask, smoothingAnchors };
+  return { shapes, faceShapes, rasterMask, smoothingAnchors };
 }
 
-export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels, smoothingAnchors = []) {
+function subdivideFaceGeometry(geometry) {
+  const position = geometry.attributes.position, uv = geometry.attributes.uv;
+  const subdivided = subdivideTriangleMesh(position.array, uv.array, geometry.index?.array ?? null);
+  const refined = new THREE.BufferGeometry();
+  refined.setAttribute('position', new THREE.BufferAttribute(subdivided.positions, 3));
+  refined.setAttribute('uv', new THREE.BufferAttribute(subdivided.uvs, 2));
+  refined.computeVertexNormals(); refined.computeBoundingSphere(); geometry.dispose();
+  return refined;
+}
+
+function createArtworkCap(shapes, worldWidth, worldHeight, material, name, z, flash = false) {
+  let geometry = new THREE.ShapeGeometry(shapes);
+  geometry = subdivideFaceGeometry(geometry);
+  const positions = geometry.attributes.position, uv = new Float32Array(positions.count * 2);
+  for (let i = 0; i < positions.count; i++) {
+    uv[i * 2] = positions.getX(i) / worldWidth + .5;
+    uv[i * 2 + 1] = positions.getY(i) / worldHeight + .5;
+  }
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name; mesh.userData.cardboardSurface = !flash; mesh.userData.print = true;
+  mesh.userData.cardboardDamageWorldWidth = worldWidth; mesh.userData.cardboardDamageWorldHeight = worldHeight;
+  mesh.position.z = z;
+  if (!flash) mesh.castShadow = true;
+  return mesh;
+}
+
+export function makeExtrudedSprite(alphaPixels, width, height, front, back, corrugation, stencilPlayer = false, shapes, backAlphaPixels = alphaPixels, smoothingAnchors = [], faceShapes = shapes) {
   const worldWidth = 2.05 * width / height, worldHeight = 2.05, depth = CARDBOARD_EXTRUSION_DEPTH;
   const uv = (vertices, index) => new THREE.Vector2(vertices[index * 3] / worldWidth + .5, vertices[index * 3 + 1] / worldHeight + .5);
   const uvGenerator = {
@@ -64,24 +97,24 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   const stencil = { stencilWrite: true, stencilRef: stencilPlayer ? 1 : 0, stencilFunc: THREE.AlwaysStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp };
   // Artwork caps only render from outside. DoubleSide on both caps exposes
   // the inward print through cutouts and at oblique angles.
-  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide, shadowSide: THREE.DoubleSide, ...stencil });
-  const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide, ...stencil });
-  const body = new THREE.Mesh(sideGeometry, sideMaterial); body.castShadow = true; body.userData.sideWall = true;
-  const capGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight), frontCap = new THREE.Mesh(capGeometry, frontMaterial);
-  frontCap.position.z = depth / 2 + .001; frontCap.castShadow = true; frontCap.userData.print = true;
+  const frontMaterial = new THREE.MeshStandardMaterial({ map: front, alphaTest: .5, roughness: 1, side: THREE.FrontSide, shadowSide: THREE.DoubleSide, vertexColors: true, ...stencil });
+  const sideMaterial = new THREE.MeshStandardMaterial({ map: corrugation, color: 0xc39658, roughness: 1, vertexColors: true, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide, ...stencil });
+  const body = new THREE.Mesh(sideGeometry, sideMaterial); body.name = 'cardboard-side'; body.castShadow = true; body.userData.sideWall = true; body.userData.cardboardSurface = true;
+  body.userData.cardboardDamageWorldWidth = worldWidth; body.userData.cardboardDamageWorldHeight = worldHeight;
+  const capShapes = faceShapes?.length ? faceShapes : shapes;
+  const frontCap = createArtworkCap(capShapes, worldWidth, worldHeight, frontMaterial, 'cardboard-front', depth / 2 + .001);
   markSsaoSpriteAlphaCutout(frontCap, front, frontMaterial.alphaTest);
-  const backMaterial = new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, shadowSide: THREE.DoubleSide, ...stencil });
-  const backPlane = new THREE.Mesh(new THREE.PlaneGeometry(worldWidth, worldHeight), backMaterial);
-  backPlane.position.z = -depth / 2 - .001; backPlane.userData.print = true;
+  const backMaterial = new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, shadowSide: THREE.DoubleSide, vertexColors: true, ...stencil });
+  const backPlane = createArtworkCap(capShapes, worldWidth, worldHeight, backMaterial, 'cardboard-back', -depth / 2 - .001);
   markSsaoSpriteAlphaCutout(backPlane, back, backMaterial.alphaTest);
-  const flashGeometry = new THREE.PlaneGeometry(worldWidth, worldHeight), whiteMask = document.createElement('canvas'); whiteMask.width = width; whiteMask.height = height;
+  const whiteMask = document.createElement('canvas'); whiteMask.width = width; whiteMask.height = height;
   const whiteContext = whiteMask.getContext('2d'); whiteContext.fillStyle = '#fff'; whiteContext.fillRect(0, 0, width, height);
   const alphaCanvas = document.createElement('canvas'); alphaCanvas.width = width; alphaCanvas.height = height;
   const imageData = alphaCanvas.getContext('2d').createImageData(width, height);
   for (let i = 0; i < width * height; i++) imageData.data[i * 4 + 3] = alphaPixels[i * 4 + 3];
   alphaCanvas.getContext('2d').putImageData(imageData, 0, 0); whiteContext.globalCompositeOperation = 'destination-in'; whiteContext.drawImage(alphaCanvas, 0, 0);
   const flashTexture = new THREE.CanvasTexture(whiteMask), flashMaterial = new THREE.MeshBasicMaterial({ map: flashTexture, transparent: true, opacity: 0, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false, ...stencil });
-  const frontFlash = new THREE.Mesh(flashGeometry, flashMaterial), backAlphaCanvas = document.createElement('canvas'); backAlphaCanvas.width = width; backAlphaCanvas.height = height;
+  const frontFlash = createArtworkCap(capShapes, worldWidth, worldHeight, flashMaterial, 'cardboard-front-flash', depth / 2 + .002, true), backAlphaCanvas = document.createElement('canvas'); backAlphaCanvas.width = width; backAlphaCanvas.height = height;
   const backAlphaImage = backAlphaCanvas.getContext('2d').createImageData(width, height);
   for (let i = 0; i < width * height; i++) backAlphaImage.data[i * 4 + 3] = backAlphaPixels[i * 4 + 3];
   backAlphaCanvas.getContext('2d').putImageData(backAlphaImage, 0, 0);
@@ -89,10 +122,9 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   const backWhiteContext = backWhiteMask.getContext('2d'); backWhiteContext.fillStyle = '#fff'; backWhiteContext.fillRect(0, 0, width, height);
   backWhiteContext.globalCompositeOperation = 'destination-in'; backWhiteContext.drawImage(backAlphaCanvas, 0, 0);
   const backFlashTexture = new THREE.CanvasTexture(backWhiteMask), backFlashMaterial = new THREE.MeshBasicMaterial({ map: backFlashTexture, transparent: true, opacity: 0, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false, ...stencil });
-  const backFlash = new THREE.Mesh(flashGeometry, backFlashMaterial);
+  const backFlash = createArtworkCap(capShapes, worldWidth, worldHeight, backFlashMaterial, 'cardboard-back-flash', -depth / 2 - .002, true);
   markSsaoSpriteAlphaCutout(frontFlash, flashTexture, flashMaterial.alphaTest);
   markSsaoSpriteAlphaCutout(backFlash, backFlashTexture, backFlashMaterial.alphaTest);
-  frontFlash.position.z = depth / 2 + .002; backFlash.position.z = -depth / 2 - .002; frontFlash.userData.print = backFlash.userData.print = true;
   const group = new THREE.Group(); group.add(body, frontCap, backPlane, frontFlash, backFlash);
   return { group, body, geometry: sideGeometry, frontMaterial, sideMaterial, frontCap, backPlane, flashMaterial, flashTexture, backFlashMaterial, backFlashTexture, alphaPixels, width, height };
 }

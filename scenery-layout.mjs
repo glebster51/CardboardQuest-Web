@@ -1,5 +1,8 @@
 export const SPRITE_REFERENCE_HEIGHT = 2.05;
 export const CARDBOARD_EXTRUSION_DEPTH = .144;
+export function cardboardFallGroundOffset(progress) {
+  return CARDBOARD_EXTRUSION_DEPTH * .5 * Math.min(1, Math.max(0, progress));
+}
 export const PUCK_HEIGHT = .2;
 export const PUCK_CENTER_Y = .11;
 

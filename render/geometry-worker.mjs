@@ -1,13 +1,14 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { createTerrainRenderer } from './terrain-renderer.mjs?v=6';
-import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=6';
-import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=12';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=12';
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=8';
-import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=2';
-import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs';
-import { createCampaignLocations } from '../game/story-world.mjs?v=17';
-import { createLocationNetwork } from '../location-network.mjs';
+import * as THREE from '../vendor/three/build/three.module.js?v=7c14a71de3a9af87';
+import { createTerrainRenderer } from './terrain-renderer.mjs?v=7c14a71de3a9af87';
+import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
+import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=7c14a71de3a9af87';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=7c14a71de3a9af87';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=7c14a71de3a9af87';
+import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=7c14a71de3a9af87';
+import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs?v=7c14a71de3a9af87';
+import { createCampaignLocations } from '../game/story-world.mjs?v=7c14a71de3a9af87';
+import { createLocationNetwork } from '../location-network.mjs?v=7c14a71de3a9af87';
+import { decodeTerrainBake } from '../game/terrain-bake.mjs?v=7c14a71de3a9af87';
 
 globalThis.document = { createElement: () => new OffscreenCanvas(1, 1) };
 const shared = Object.fromEntries(['paper', 'grain', 'corrugation', 'terrainCorrugation'].map(key => [key, new THREE.Texture()]));
@@ -27,6 +28,7 @@ self.onmessage = async ({ data: { id, kind, payload } }) => {
         Object.assign(payload, extra.layout);
       }
       const location = { ...payload, sceneGroup: new THREE.Group() };
+      location.terrainBake=await decodeTerrainBake(location.terrainEdits?.baked);
       createTerrainRenderer({ THREE, locations: { [location.id]: location }, createTerrainHeightMap,
         createTerrainHeightMapFromDepthMap, extractTerrainContours, paper: shared.paper,
         playfieldCardboard: shared.grain, roughCardboard: shared.grain,
@@ -35,7 +37,7 @@ self.onmessage = async ({ data: { id, kind, payload } }) => {
           stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.ReplaceStencilOp } });
       const { sample, ...heightMap } = location.terrainHeightMap;
       extra.heightMap = heightMap;
-      extra.rounded = Boolean(location.art.depthMap || Number.isFinite(location.art.terrain?.edgeHeight));
+      extra.rounded = Boolean(location.terrainEdits?.base==='simple' || location.art.depthMap || Number.isFinite(location.art.terrain?.edgeHeight));
       root = location.sceneGroup;
     } else if (kind === 'ground') {
       const paths = createLocationWalkPaths(payload.location, payload.targets);
@@ -63,10 +65,11 @@ self.onmessage = async ({ data: { id, kind, payload } }) => {
       context.putImageData(new ImageData(alphaPixels, width, height), 0, 0);
       const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
       const model = makeExtrudedSprite(alphaPixels, width, height, texture, texture, shared.corrugation,
-        payload.player, geometry.shapes, alphaPixels, geometry.smoothingAnchors);
+        payload.player, geometry.shapes, alphaPixels, geometry.smoothingAnchors, geometry.faceShapes);
       root = model.group;
       extra = { width, height, alphaPixels, flashUuid: root.children.find(child => child.material === model.flashMaterial).uuid,
-        backFlashUuid: root.children.find(child => child.material === model.backFlashMaterial).uuid };
+        backFlashUuid: root.children.find(child => child.material === model.backFlashMaterial).uuid,
+        frontCapUuid: model.frontCap.uuid };
     } else throw new Error(`Unknown geometry job: ${kind}`);
     const { packet, transfers } = await packScene(root, shared);
     if (extra.alphaPixels) transfers.push(extra.alphaPixels.buffer);

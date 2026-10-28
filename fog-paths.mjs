@@ -36,6 +36,42 @@ export function createDefaultFogPaths(location) {
   return { paths };
 }
 
+/** Keep edited branches while reconciling legacy paths with the actual entrances. */
+export function reconcileFogPaths(location, saved = null) {
+  const result = createDefaultFogPaths(location);
+  if (!saved) return result;
+  const previous = validateFogPaths(saved).paths;
+  const expectedIds = new Set(result.paths.map(path => path.id)), used = new Set();
+  const matches = new Map();
+  // Stable IDs have priority even if another entrance shares the same position.
+  for (const path of result.paths) {
+    const old = previous.find(candidate => candidate.id === path.id);
+    if (old) { matches.set(path.id, old); used.add(old); }
+  }
+  const near = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1]) < .001;
+  for (const path of result.paths.filter(path => !matches.has(path.id))) {
+    const candidates = previous.filter(old => !used.has(old) && !expectedIds.has(old.id) && near(old.points[0],path.points[0]));
+    const targets = result.paths.filter(other => !matches.has(other.id) && near(other.points[0],path.points[0]));
+    // A renamed connection can reuse its old curve only if the mapping is unique.
+    if (candidates.length === 1 && targets.length === 1) {
+      matches.set(path.id,candidates[0]); used.add(candidates[0]);
+    }
+  }
+  const reference = matches.values().next().value ?? previous[0];
+  const center = reference?.points.at(-1), centerRadius = reference ? fogPathRadiusAt(reference,reference.points.length-1) : 1;
+  result.paths = result.paths.map(path => {
+    const old = matches.get(path.id), start = path.points[0];
+    if (old) return { ...structuredClone(old), id:path.id,
+      points:[start,...old.points.slice(1).map(point => [...point])] };
+    if (center) {
+      path.points = [start,...[.25,.5,.75].map(t => [start[0]+(center[0]-start[0])*t,start[1]+(center[1]-start[1])*t]),[...center]];
+      if (centerRadius !== 1) path.radii = path.points.map((_,index) => index === path.points.length-1 ? centerRadius : 1);
+    }
+    return path;
+  });
+  return validateFogPaths(result);
+}
+
 export function validateFogPaths(value) {
   if (!value || typeof value !== 'object' || Object.keys(value).some(key => key !== 'paths')
     || !Array.isArray(value.paths) || value.paths.length > 64) throw new Error('Invalid fog paths');

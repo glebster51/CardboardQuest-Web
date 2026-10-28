@@ -1,11 +1,11 @@
-import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=6';
-import { createLocationArt } from './location-art.mjs?v=3';
-import { createAuthoredLayout } from './location-layout.mjs?v=5';
-import { SCENE_OVERRIDES } from '../scene-overrides.mjs?v=129';
-import { hazardAtPoint } from './world-hazards.mjs';
-import { extractDepthMapMaskContours } from '../terrain-shapes.mjs?v=2';
-import { EXIT_FOG_ENTRY_CROSS_LIMIT, EXIT_FOG_ENTRY_MAX, EXIT_FOG_ENTRY_MIN, EXIT_FOG_ENTRY_OFFSET } from '../exit-fog.mjs';
-import { createDefaultFogPaths, validateFogPaths } from '../fog-paths.mjs?v=2';
+import { CAMPAIGN, CAMPAIGN_EDGES, CAMPAIGN_STORY_PICKUPS } from './story-campaign.mjs?v=7c14a71de3a9af87';
+import { createLocationArt } from './location-art.mjs?v=7c14a71de3a9af87';
+import { createAuthoredLayout } from './location-layout.mjs?v=7c14a71de3a9af87';
+import { SCENE_OVERRIDES } from '../scene-overrides.mjs?v=7c14a71de3a9af87';
+import { hazardAtPoint } from './world-hazards.mjs?v=7c14a71de3a9af87';
+import { extractDepthMapMaskContours } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
+import { EXIT_FOG_ENTRY_CROSS_LIMIT, EXIT_FOG_ENTRY_MAX, EXIT_FOG_ENTRY_MIN, EXIT_FOG_ENTRY_OFFSET } from '../exit-fog.mjs?v=7c14a71de3a9af87';
+import { reconcileFogPaths } from '../fog-paths.mjs?v=7c14a71de3a9af87';
 
 function findExitCascadeArrival(location, exit) {
   const alongOffsets = [EXIT_FOG_ENTRY_OFFSET];
@@ -55,11 +55,11 @@ export function isCampaignPositionSafe(location, point, clearance = 1.2) {
     && !(location.exits ?? []).some(exit => Math.hypot(point.x - exit.x, point.z - exit.z) <= 2.1));
 }
 
-/** Restore a save without starting the player dead, outside the field, or inside an exit trigger. */
+/** Restore a saved health value and move unsafe positions back onto playable ground. */
 export function resolveCampaignPlayerStart(location, { health, maxHealth, position } = {}) {
   const maximum = Math.max(1, Math.trunc(Number.isFinite(maxHealth) ? maxHealth : 20));
   const numericHealth = Number.isFinite(health) ? Math.trunc(health) : maximum;
-  const restoredHealth = numericHealth <= 0 ? maximum : Math.min(numericHealth, maximum);
+  const restoredHealth = Math.max(0, Math.min(numericHealth, maximum));
   const points = location?.walkablePoints ?? [];
   const isSafe = candidate => isCampaignPositionSafe(location, candidate);
 
@@ -82,11 +82,11 @@ export function resolveCampaignPlayerStart(location, { health, maxHealth, positi
     }
     spawn = best;
   }
-  return { health: restoredHealth, position: spawn ?? { x: 0, z: 0 }, recovered: numericHealth <= 0 || !isSafe(position) };
+  return { health: restoredHealth, position: spawn ?? { x: 0, z: 0 }, recovered: !isSafe(position) };
 }
 
 /** Expand the authored story graph into small playable arenas and throat exits. */
-export function createCampaignLocations(locations, scale = 1.5, ids = null) {
+export function createCampaignLocations(locations, scale = 1.5, ids = null, overrides = SCENE_OVERRIDES) {
   if (!locations || !locations.home || !Number.isFinite(scale) || scale <= 0) {
     throw new TypeError('Campaign locations need the base game world and a positive scale');
   }
@@ -132,7 +132,7 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
     }
     // Keep the walkable floor and surrounding terrain connected to authored gates.
     const exitTargets = neighbors.map(to => {
-      const transform = SCENE_OVERRIDES.locations[authored.id]?.[`exit:${to}:trigger`];
+      const transform = overrides.locations[authored.id]?.[`exit:${to}:trigger`];
       return transform ? { x: transform.position[0], z: transform.position[2] } : null;
     });
     const layout = createAuthoredLayout(authored.id, art, scale, exitTargets);
@@ -184,7 +184,7 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
     // Generate default fog routes only after the real campaign arrivals exist.
     // The lightweight catalog's arrival data is incomplete and can collapse
     // multiple spawn branches onto the same stale line.
-    const sceneEdits = SCENE_OVERRIDES.locations[authored.id] ?? {};
+    const sceneEdits = overrides.locations[authored.id] ?? {};
     const pathArrivals = Object.fromEntries(Object.entries(arrivals).map(([from, point]) => {
       const saved = sceneEdits[`arrival:${from}`];
       return [from, saved ? { x: saved.position[0], z: saved.position[2] } : point];
@@ -192,9 +192,7 @@ export function createCampaignLocations(locations, scale = 1.5, ids = null) {
     const pathEntry = sceneEdits.entry
       ? { x: sceneEdits.entry.position[0], z: sceneEdits.entry.position[2] }
       : layout.entry;
-    location.fogPaths = sceneEdits['fog-paths']
-      ? validateFogPaths(sceneEdits['fog-paths'])
-      : createDefaultFogPaths({ entry: pathEntry, arrivals: pathArrivals });
+    location.fogPaths = reconcileFogPaths({ entry:pathEntry, arrivals:pathArrivals },sceneEdits['fog-paths']);
     locations[authored.id] = location;
   }
   return locations;

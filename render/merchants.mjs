@@ -1,5 +1,5 @@
-import { MERCHANTS } from '../game/merchants.mjs?v=1';
-import { isPlayableFloor } from '../game/world-hazards.mjs';
+import { MERCHANTS } from '../game/merchants.mjs?v=7c14a71de3a9af87';
+import { isPlayableFloor } from '../game/world-hazards.mjs?v=7c14a71de3a9af87';
 
 export async function createMerchantActor({ location, definition, createScenery, id = `merchant:${definition.id}`, x, z, scale = 1.5 }) {
   const safe = (px, pz) => isPlayableFloor(location, px, pz, .8)

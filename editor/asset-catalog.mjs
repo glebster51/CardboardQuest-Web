@@ -1,7 +1,7 @@
-import { sceneryAsset } from '../render/location-scenery.mjs';
-import { EQUIPMENT_ITEMS } from '../game/equipment.mjs?v=1';
-import { COIN_SKINS } from '../game/currency.mjs?v=1';
-import { MERCHANTS } from '../game/merchants.mjs?v=1';
+import { sceneryAsset } from '../render/location-scenery.mjs?v=7c14a71de3a9af87';
+import { EQUIPMENT_ITEMS } from '../game/equipment.mjs?v=7c14a71de3a9af87';
+import { COIN_SKINS } from '../game/currency.mjs?v=7c14a71de3a9af87';
+import { MERCHANTS } from '../game/merchants.mjs?v=7c14a71de3a9af87';
 
 const foliage = [
   ['tree', 'Дуб', 4], ['evergreen', 'Ель', 3.8], ['birch', 'Берёза', 4], ['bushes', 'Куст', 1.8],
@@ -24,7 +24,7 @@ const scenery = [
   { id: 'fortress', label: 'Крепость', size: 4, group: 'Декорации', category: 'unique', asset: 'assets/env-fortress.png' },
 ];
 
-const sprite = (id, label, category, file, size, group, extra = {}) => ({ id, label, category, asset: `assets/${file}.png`, size, group, ...extra });
+const sprite = (id, label, category, file, size, group, extra = {}) => ({ id, label, category, asset: `${id === 'ogre' ? 'bosses/ogre/textures/' : 'assets/'}${file}.png`, size, group, ...extra });
 const reference = (id, label, category, preview, hint) => ({ id, label, category, preview: `assets/${preview}.png`, hint, kind: 'reference' });
 const worldItem = (itemId, label, frame) => ({ id: `world-item-${itemId}`, itemId, label, category: 'interactive',
   asset: `assets/loot-atlas.png#${itemId}`, preview: 'assets/loot-atlas.png', frame, size: .54,
@@ -34,6 +34,10 @@ const worldItem = (itemId, label, frame) => ({ id: `world-item-${itemId}`, itemI
 // never the contents currently spawned in a particular location.
 export const ASSET_CATALOG = [
   ...scenery,
+  { id: 'environment-placeholder', label: 'Пустышка окружения', category: 'unique', asset: 'editor-placeholder', size: 2.2,
+    group: 'Заметки локации', kind: 'placeholder', icon: '✎', hint: 'Аморфная картонка с именем и описанием недостающего окружения.' },
+  { id: 'enemy-spawner', label: 'Спавнер врагов', category: 'technical', asset: 'editor-spawner', size: 1.15,
+    group: 'Спавнеры', kind: 'spawner', icon: '👺', hint: 'Настраиваемая точка появления врагов.' },
   reference('exit', 'Выход: триггер и листва', 'technical', 'location-exit-foliage-v4', 'Настраивается связью локаций и параметрами выхода.'),
   reference('entry', 'Точка входа', 'technical', 'hero-idle', 'Точка задаётся в свойствах локации или редакторе карты.'),
   { id: 'fog-paths', label: 'Линии тумана', category: 'technical', icon: '〰', hint: 'Включает редактирование троп тумана.', kind: 'tool' },

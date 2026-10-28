@@ -1,9 +1,10 @@
-import { AUDIO_SETTINGS_KEY, normalizeAudioSettings } from './audio-rules.mjs';
-import { MUSIC_TRACKS } from './music-tracks.mjs';
-import { SOUND_RECIPES } from './sound-recipes.mjs?v=2';
+import { AUDIO_SETTINGS_KEY, normalizeAudioSettings } from './audio-rules.mjs?v=7c14a71de3a9af87';
+import { MUSIC_TRACKS } from './music-tracks.mjs?v=7c14a71de3a9af87';
+import { SOUND_RECIPES } from './sound-recipes.mjs?v=7c14a71de3a9af87';
+import { getBrowserStorage } from '../storage.mjs?v=7c14a71de3a9af87';
 
 /** Lazy audio: no context, music requests or decoded music before a user gesture. */
-export function createGameAudio({ windowRef = window, documentRef = document, storage = windowRef.localStorage,
+export function createGameAudio({ windowRef = window, documentRef = document, storage = getBrowserStorage(windowRef),
   tracks = MUSIC_TRACKS, AudioClass = windowRef.Audio, ContextClass = windowRef.AudioContext ?? windowRef.webkitAudioContext } = {}) {
   let stored; try { stored = JSON.parse(storage.getItem(AUDIO_SETTINGS_KEY) || 'null'); } catch { /* Defaults work without storage. */ }
   let settings = normalizeAudioSettings(stored), context = null, master, effects, music, ambient, noiseBuffer, meter;

@@ -1,16 +1,25 @@
 // Original dialogue: a small domestic mystery becomes a debt inherited from adults.
-// Portraits are game sprites, not unrelated generated headshots.
-import { hasGrandpaDied } from './story-campaign.mjs?v=5';
+// Dialogue busts share the cut-paper character art used throughout the game.
+import { hasGrandpaDied } from './story-campaign.mjs?v=7c14a71de3a9af87';
+const portraitSet = key => Object.freeze({
+  calm: `assets/dialogue-portraits/${key}-calm.png`,
+  bold: `assets/dialogue-portraits/${key}-bold.png`,
+  worried: `assets/dialogue-portraits/${key}-worried.png`,
+});
+export const ENEMY_PORTRAITS = Object.freeze(Object.fromEntries(
+  ['acid-spitter', 'boar', 'burrower', 'ember-moth', 'flanker', 'hexer', 'ogre', 'shellguard', 'slinger']
+    .map(key => [key, portraitSet(key)]),
+));
 export const SPEAKERS = Object.freeze({
-  narrator: { name: 'Лесная тишина', sprite: null },
-  hero: { name: 'Внук', sprite: 'assets/hero-idle.png' },
-  grandpa: { name: 'Дед Егор', sprite: 'assets/npc-grandpa-idle.png' },
-  scout: { name: 'Щепка · разведчик', sprite: 'assets/goblin-idle.png' },
-  carrier: { name: 'Бирка · носильщик', sprite: 'assets/goblin-idle.png' },
-  slinger: { name: 'Сивый · пращник', sprite: 'assets/slinger-idle.png' },
-  ogre: { name: 'Кряж · вожак', sprite: 'assets/ogre-idle.png' },
-  cartographer: { name: 'Мартын · картограф', sprite: 'assets/npc-cartographer-idle.png' },
-  echo: { name: 'Чужой голос деда', sprite: 'assets/npc-grandpa-idle.png' },
+  narrator: { name: 'Лесная тишина', portraits: null },
+  hero: { name: 'Внук', portraits: portraitSet('hero') },
+  grandpa: { name: 'Дед Егор', portraits: portraitSet('grandpa') },
+  scout: { name: 'Щепка · разведчик', portraits: portraitSet('scout') },
+  carrier: { name: 'Бирка · носильщик', portraits: portraitSet('carrier') },
+  slinger: { name: 'Сивый · пращник', portraits: ENEMY_PORTRAITS.slinger },
+  ogre: { name: 'Кряж · вожак', portraits: ENEMY_PORTRAITS.ogre },
+  cartographer: { name: 'Мартын · картограф', portraits: portraitSet('cartographer') },
+  echo: { name: 'Чужой голос деда', portraits: portraitSet('grandpa') },
 });
 const lines = (...pairs) => pairs.map(([speaker, text]) => ({ speaker, text }));
 const H = text => ['hero', text], N = text => ['narrator', text];

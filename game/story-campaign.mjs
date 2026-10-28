@@ -1,6 +1,7 @@
-import { EQUIPMENT_ITEMS, normalizeEquipment } from './equipment.mjs?v=1';
-import { normalizeCoins } from './currency.mjs?v=1';
-import { normalizeStatusEffects } from './status-effects.mjs?v=1';
+import { EQUIPMENT_ITEMS, normalizeEquipment } from './equipment.mjs?v=7c14a71de3a9af87';
+import { normalizeCoins } from './currency.mjs?v=7c14a71de3a9af87';
+import { normalizeStatusEffects } from './status-effects.mjs?v=7c14a71de3a9af87';
+import { finiteNumber, isRecord, normalizeCampaignSaveFields } from './campaign-state-validation.mjs?v=7c14a71de3a9af87';
 export const CAMPAIGN_SAVE_KEY = 'cardboardquest-campaign-v1';
 
 // Plot clues stay in the world until the player physically reaches them.
@@ -97,8 +98,10 @@ const CAMPAIGN_BY_ID = new Map(CAMPAIGN.map(entry => [entry.id, entry]));
 export const CAMPAIGN_LOCATION_COUNT = CAMPAIGN.length;
 
 export function createCampaignState(raw = null) {
-  const state = raw && raw.version === 1 ? structuredClone(raw) : {};
+  const state = isRecord(raw) && raw.version === 1 ? structuredClone(raw) : {};
   state.version = 1;
+  state.timeState = Math.max(0, Math.min(5, Math.trunc(finiteNumber(state.timeState))));
+  state.dayNumber = Math.max(1, Math.trunc(finiteNumber(state.dayNumber, 1)));
   state.currentLocationId = CAMPAIGN_BY_ID.has(state.currentLocationId) ? state.currentLocationId : 'home';
   state.visited = Array.isArray(state.visited) ? [...new Set(state.visited.filter(id => CAMPAIGN_BY_ID.has(id)))] : [];
   state.introSeen = state.introSeen && typeof state.introSeen === 'object' ? state.introSeen : {};
@@ -111,10 +114,10 @@ export function createCampaignState(raw = null) {
   state.merchantPurchases = state.merchantPurchases && typeof state.merchantPurchases === 'object' ? state.merchantPurchases : {};
   state.merchantReturns = state.merchantReturns && typeof state.merchantReturns === 'object' ? state.merchantReturns : {};
   state.statusEffects = normalizeStatusEffects(state.statusEffects);
-  state.maxHealthBonus = Math.max(0, Math.min(8, Math.trunc(Number(state.maxHealthBonus) || 0)));
-  state.defenseBonus = Math.max(0, Math.min(2, Math.trunc(state.defenseBonus || 0)));
-  state.damageBonus = Math.max(0, Math.min(2, Math.trunc(state.damageBonus || 0)));
-  return state;
+  state.maxHealthBonus = Math.max(0, Math.min(8, Math.trunc(finiteNumber(state.maxHealthBonus))));
+  state.defenseBonus = Math.max(0, Math.min(2, Math.trunc(finiteNumber(state.defenseBonus))));
+  state.damageBonus = Math.max(0, Math.min(2, Math.trunc(finiteNumber(state.damageBonus))));
+  return normalizeCampaignSaveFields(state, CAMPAIGN_BY_ID);
 }
 
 export function campaignLocation(id) { return CAMPAIGN_BY_ID.get(id) ?? null; }

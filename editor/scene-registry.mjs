@@ -1,47 +1,89 @@
-import { createEditModel, FOG_DEFAULTS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS,
-  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './edit-model.mjs?v=155';
-import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=10';
-import { createExitBarrierBodies } from '../location-network.mjs';
-import { createDefaultFogPaths } from '../fog-paths.mjs?v=2';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=2';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs';
-import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=2';
+import { OGRE_DEFAULTS, normalizeOgreSettings } from '../bosses/ogre/settings.mjs?v=7c14a71de3a9af87';
+import { createEditModel, FOG_DEFAULTS, PLAYER_REVEAL_DEFAULTS, PLAYER_REVEAL_KEYS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT,
+  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './edit-model.mjs?v=7c14a71de3a9af87';
+import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7c14a71de3a9af87';
+import { createExitBarrierBodies } from '../location-network.mjs?v=7c14a71de3a9af87';
+import { createDefaultFogPaths } from '../fog-paths.mjs?v=7c14a71de3a9af87';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=7c14a71de3a9af87';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=7c14a71de3a9af87';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=7c14a71de3a9af87';
+import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
+import { sceneryAuthoredY, applySceneryGrounding } from '../render/scenery-grounding.mjs?v=7c14a71de3a9af87';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
 export function createSceneRegistry({ THREE, overrides, savedDiff = null, locationIds = [], setFog, getActiveLocationId = () => null,
-  setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {}, setScreenEffects = () => {}, setItemMagnetSettings = () => {} }) {
+  setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {}, setScreenEffects = () => {}, setOgreSettings = () => {}, setItemMagnetSettings = () => {},
+  setGroundGrid = () => {}, setGroundGridColor = () => {}, setCardboardDamage = () => {} }) {
   const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
   if (savedDiff) model.restore(scopeLegacyGlobalFogChanges(savedDiff, locationIds, overrides));
-  const legacyFog = { ...FOG_DEFAULTS, ...overrides.fog }, locationFogs = new Map();
-  function fogFor(locationId) {
+  const legacyFog = { ...FOG_DEFAULTS, ...overrides.fog }, locationFogs = new Map(), nightFogs = new Map();
+  const revealBaseline = { ...PLAYER_REVEAL_DEFAULTS, ...Object.fromEntries(PLAYER_REVEAL_KEYS
+    .filter(key => Object.hasOwn(overrides.playerReveal ?? overrides.fog ?? {}, key))
+    .map(key => [key, (overrides.playerReveal ?? overrides.fog)[key]])) };
+  validateSceneValue(revealBaseline, false, false, false, false, false, false, false, null, false, false, false, false, false, true);
+  const playerReveal = model.register(null, 'player-reveal', revealBaseline);
+  let activeTimeOfDay = 'day';
+  function fogFor(locationId, timeOfDay = activeTimeOfDay) {
     if (typeof locationId !== 'string' || !locationId) return legacyFog;
-    if (!locationFogs.has(locationId)) {
-      const baseline = { ...legacyFog, ...overrides.locations?.[locationId]?.fog };
-      locationFogs.set(locationId, model.register(locationId, 'fog', baseline));
+    const night = timeOfDay === 'night', cache = night ? nightFogs : locationFogs, object = night ? 'fog-night' : 'fog';
+    if (!cache.has(locationId)) {
+      const dayBaseline = { ...legacyFog, ...overrides.locations?.[locationId]?.fog };
+      const nightBaseline = { ...dayBaseline, color: '#25213b', tint: Math.min(dayBaseline.tint ?? 1, .72),
+        ...(overrides.locations?.[locationId]?.fogNight ?? {}) };
+      const baseline = night ? nightBaseline : dayBaseline;
+      for (const key of PLAYER_REVEAL_KEYS) baseline[key] = playerReveal[key];
+      const fog = model.register(locationId, object, baseline);
+      Object.assign(fog, Object.fromEntries(PLAYER_REVEAL_KEYS.map(key => [key, playerReveal[key]])));
+      cache.set(locationId, fog);
     }
-    return locationFogs.get(locationId);
+    return cache.get(locationId);
   }
   const lighting = { ...LIGHTING_DEFAULTS, ...overrides.lighting,
     direction: [...(overrides.lighting?.direction ?? LIGHTING_DEFAULTS.direction)] };
-  model.register(null, 'lighting', lighting);
+  Object.assign(lighting, model.register(null, 'lighting', lighting));
+  const nightLighting = { ...lighting, intensity: Math.min(lighting.intensity, 1.35), color: '#a8b9e8',
+    ...(overrides.lightingNight ?? {}), direction: [...(overrides.lightingNight?.direction ?? lighting.direction)] };
+  Object.assign(nightLighting, model.register(null, 'lighting-night', nightLighting));
   const terrainStyle = { ...TERRAIN_STYLE_DEFAULTS, ...overrides.terrainStyle };
   validateSceneValue(terrainStyle, false, false, false, false, false, true);
   model.register(null, 'terrain-style', terrainStyle);
   const unitPuckColors = { ...UNIT_PUCK_COLOR_DEFAULTS, ...overrides.unitPuckColors };
   validateSceneValue(unitPuckColors, false, false, false, false, false, false, true);
   model.register(null, 'unit-puck-colors', unitPuckColors);
+  const groundGrid = { ...GROUND_GRID_DEFAULTS, ...overrides.groundGrid };
+  validateSceneValue(groundGrid, false, false, false, false, false, false, false, null, false, false, true);
+  Object.assign(groundGrid, model.register(null, 'ground-grid', groundGrid));
+  const groundGridColors = new Map();
+  function groundGridColor(locationId) {
+    if (typeof locationId !== 'string' || !/^[a-z0-9-]+$/.test(locationId)) throw new Error('Ground grid color requires a location');
+    if (!groundGridColors.has(locationId)) {
+      const baseline = { color: overrides.locations?.[locationId]?.groundGridColor ?? GROUND_GRID_COLOR_DEFAULT };
+      groundGridColors.set(locationId, model.register(locationId, 'ground-grid-color', baseline));
+    }
+    return groundGridColors.get(locationId).color;
+  }
+  for (const locationId of locationIds) groundGridColor(locationId);
+  const bossSettings = normalizeOgreSettings(overrides.bossSettings ?? OGRE_DEFAULTS);
+  model.register(null, 'ogre-boss', bossSettings);
   const screenEffects = normalizeScreenEffects(overrides.screenEffects ?? DEFAULT_SCREEN_EFFECTS);
   model.register(null, 'screen-effects', screenEffects);
   const itemMagnetSettings = normalizeItemMagnetSettings(overrides.itemMagnet ?? ITEM_MAGNET_DEFAULTS);
   model.register(null, 'item-magnet', itemMagnetSettings);
+  const cardboardDamage = normalizeCardboardDamageSettings(overrides.cardboardDamage ?? CARDBOARD_DAMAGE_DEFAULTS);
+  model.register(null, 'cardboard-damage', cardboardDamage);
+  setCardboardDamage(cardboardDamage);
   const prefabs = new Map();
   for (const item of ASSET_CATALOG.filter(entry => entry.asset && entry.kind !== 'reference')) {
     const settings = { size: overrides.prefabs?.[item.id]?.size ?? item.size };
     validateSceneValue(settings, false, false, false, false, false, false, false, item.id);
     prefabs.set(item.id, settings); model.register(null, `prefab:${item.id}`, settings);
   }
-  const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.asset
-    ? { scale: readTransform(binding.object).scale.map(value => value / binding.prefabScale), asset: binding.asset, prefabId: binding.prefabId } : {}) });
+  const snapshot = binding => ({ ...readTransform(binding.object), ...(binding.object.userData.terrainPlacement
+    ? {position:[binding.object.position.x,sceneryAuthoredY(binding.object,sources.get(binding.location)?.location.terrainHeightMap),binding.object.position.z].map(value=>Math.round(value*1e5)/1e5)} : {}), ...(binding.asset
+    ? { scale: readTransform(binding.object).scale.map(value => value / binding.prefabScale), asset: binding.asset, prefabId: binding.prefabId } : {}),
+  ...(binding.editableNote ? { name: binding.object.userData.sceneNoteName ?? 'Новая идея',
+    description: binding.object.userData.sceneNoteDescription ?? '' } : {}),
+  ...(binding.object.userData.sceneSpawner ? { spawn: structuredClone(binding.object.userData.sceneSpawner) } : {}) });
   function fogPathsMatchLocation(paths, location) {
     try {
       const expected = createDefaultFogPaths(location).paths;
@@ -59,13 +101,26 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, locati
     if (binding.body) binding.body.active = !deleted && binding.bodyActive;
     binding.onDelete?.(deleted);
     if (!deleted) {
+      if (binding.editableNote) {
+        binding.object.userData.sceneNoteName = value.name ?? 'Новая идея';
+        binding.object.userData.sceneNoteDescription = value.description ?? '';
+        binding.label = binding.object.userData.sceneEditLabel = binding.object.userData.sceneNoteName;
+        binding.object.userData.sceneEditSync?.();
+      }
+      if (binding.object.userData.sceneEditAsset === 'editor-spawner' || value.asset === 'editor-spawner') {
+        binding.object.userData.sceneSpawner = structuredClone(value.spawn);
+        binding.object.userData.sceneSpawnerSync?.();
+      }
       const transform = binding.prefabId ? { ...value, scale: value.scale.map(scale => scale * binding.prefabScale) } : value;
-      writeTransform(binding.object, transform); binding.sync?.();
+      writeTransform(binding.object, transform);
+      applySceneryGrounding(binding.object,sources.get(binding.location)?.location.terrainHeightMap,value.position[1]);
+      binding.sync?.();
     }
   }
   function bind(location, bindings, id, label, object, options = {}, born = false) {
     const binding = { id, label, object, location: location.id, visible: object.visible,
       bodyActive: options.body?.active !== false, ...options };
+    binding.editableNote = object.userData.sceneEditKind === 'placeholder';
     if (binding.asset) {
       const prefab = catalogAsset(binding.asset);
       binding.prefabId = object.userData.sceneEditPrefabId ?? prefab?.id;
@@ -146,9 +201,17 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, locati
     model,
     get fog() { return fogFor(getActiveLocationId()); },
     fogFor,
+    get timeOfDay() { return activeTimeOfDay; },
+    setTimeOfDay(mode) {
+      activeTimeOfDay = mode === 'night' ? 'night' : 'day';
+      setLighting(activeTimeOfDay === 'night' ? nightLighting : lighting);
+      const locationId = getActiveLocationId(); if (locationId) setFog(locationId, fogFor(locationId));
+      return activeTimeOfDay;
+    },
+    playerReveal,
     scopeLegacyFogDiff(diff, ids) { return scopeLegacyGlobalFogChanges(diff, ids, overrides); },
-    activateLocation(locationId) { setFog(locationId, fogFor(locationId)); },
-    lighting, terrainStyle, unitPuckColors, screenEffects, itemMagnetSettings,
+    activateLocation(locationId) { setFog(locationId, fogFor(locationId)); setLighting(activeTimeOfDay === 'night' ? nightLighting : lighting); },
+    get lighting() { return activeTimeOfDay === 'night' ? nightLighting : lighting; }, terrainStyle, unitPuckColors, screenEffects, itemMagnetSettings, bossSettings,
     terrainEdits(id) {
       if (model.has(id, 'terrain')) return model.get(id, 'terrain');
       const value = overrides.locations[id]?.terrain ?? { strokes: [] };
@@ -262,20 +325,35 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, locati
     },
     change(binding) {
       for (const axis of ['x', 'y', 'z']) binding.object.scale[axis] = Math.max(.001, binding.object.scale[axis]);
+      if (binding.editableNote) binding.label = binding.object.userData.sceneEditLabel = binding.object.userData.sceneNoteName ?? 'Новая идея';
       binding.sync?.(); return model.set(binding.location, binding.id, snapshot(binding));
     },
     changeFog(location, settings) {
       const locationId = typeof location === 'string' ? location : location?.id;
       if (!locationId) throw new Error('Fog settings require a location');
-      const fog = fogFor(locationId);
+      const fog = fogFor(locationId), object = activeTimeOfDay === 'night' ? 'fog-night' : 'fog';
       const next = { ...fog, ...settings }; validateSceneValue(next, true);
       Object.assign(fog, next); setFog(locationId, fog);
-      return model.set(locationId, 'fog', { ...fog });
+      return model.set(locationId, object, { ...fog });
+    },
+    changePlayerReveal(settings) {
+      const next = { ...playerReveal, ...settings };
+      validateSceneValue(next, false, false, false, false, false, false, false, null, false, false, false, false, false, true);
+      Object.assign(playerReveal, next);
+      const changed = model.set(null, 'player-reveal', { ...playerReveal });
+      for (const [locationId, fog] of [...locationFogs, ...nightFogs]) {
+        for (const key of PLAYER_REVEAL_KEYS) fog[key] = playerReveal[key];
+      }
+      for (const locationId of new Set([...locationFogs.keys(), ...nightFogs.keys()]))
+        setFog(locationId, fogFor(locationId));
+      return changed;
     },
     changeLighting(settings) {
-      const next = { ...lighting, ...settings, direction: [...(settings.direction ?? lighting.direction)] };
+      const target = activeTimeOfDay === 'night' ? nightLighting : lighting;
+      const object = activeTimeOfDay === 'night' ? 'lighting-night' : 'lighting';
+      const next = { ...target, ...settings, direction: [...(settings.direction ?? target.direction)] };
       validateSceneValue(next, false, false, false, true);
-      Object.assign(lighting, next); setLighting(lighting); return model.set(null, 'lighting', { ...lighting, direction: [...lighting.direction] });
+      Object.assign(target, next); setLighting(target); return model.set(null, object, { ...target, direction: [...target.direction] });
     },
     changeTerrainStyle(settings) {
       const next = { ...terrainStyle, ...settings };
@@ -289,6 +367,25 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, locati
       Object.assign(unitPuckColors, next); setUnitPuckColors(unitPuckColors);
       return model.set(null, 'unit-puck-colors', { ...unitPuckColors });
     },
+    groundGrid,
+    groundGridColor,
+    changeGroundGrid(settings) {
+      const next = { ...groundGrid, ...settings };
+      validateSceneValue(next, false, false, false, false, false, false, false, null, false, false, true);
+      Object.assign(groundGrid, next); setGroundGrid(groundGrid);
+      return model.set(null, 'ground-grid', { ...groundGrid });
+    },
+    changeGroundGridColor(locationId, color) {
+      const next = { color };
+      validateSceneValue(next, false, false, false, false, false, false, false, null, false, false, false, true);
+      groundGridColor(locationId);
+      groundGridColors.set(locationId, next); setGroundGridColor(locationId, color);
+      return model.set(locationId, 'ground-grid-color', next);
+    },
+    changeBossSettings(settings) {
+      Object.assign(bossSettings, normalizeOgreSettings({ ...bossSettings, ...settings })); setOgreSettings(bossSettings);
+      return model.set(null, 'ogre-boss', { ...bossSettings });
+    },
     changeScreenEffects(settings) {
       const next = normalizeScreenEffects({ ...screenEffects, ...settings });
       Object.assign(screenEffects, next); setScreenEffects(screenEffects);
@@ -298,6 +395,12 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, locati
       const next = normalizeItemMagnetSettings({ ...itemMagnetSettings, ...settings });
       Object.assign(itemMagnetSettings, next); setItemMagnetSettings(itemMagnetSettings);
       return model.set(null, 'item-magnet', { ...itemMagnetSettings });
+    },
+    cardboardDamage,
+    changeCardboardDamage(settings) {
+      const next = normalizeCardboardDamageSettings({ ...cardboardDamage, ...settings });
+      Object.assign(cardboardDamage, next); setCardboardDamage(cardboardDamage);
+      return model.set(null, 'cardboard-damage', { ...cardboardDamage });
     },
     prefab(id) { return model.get(null, `prefab:${id}`) ?? null; },
     prefabInstanceCount(id) {
@@ -349,15 +452,30 @@ export function createSceneRegistry({ THREE, overrides, savedDiff = null, locati
       return changed;
     },
     sync() {
+      Object.assign(playerReveal, model.get(null, 'player-reveal'));
       for (const [locationId, fog] of locationFogs) {
         Object.assign(fog, model.get(locationId, 'fog'));
-        setFog(locationId, fog);
+        for (const key of PLAYER_REVEAL_KEYS) fog[key] = playerReveal[key];
       }
-      Object.assign(lighting, model.get(null, 'lighting')); setLighting(lighting);
+      for (const [locationId, fog] of nightFogs) {
+        Object.assign(fog, model.get(locationId, 'fog-night'));
+        for (const key of PLAYER_REVEAL_KEYS) fog[key] = playerReveal[key];
+      }
+      for (const locationId of new Set([...locationFogs.keys(), ...nightFogs.keys()])) setFog(locationId, fogFor(locationId));
+      Object.assign(lighting, model.get(null, 'lighting'));
+      Object.assign(nightLighting, model.get(null, 'lighting-night'));
+      setLighting(activeTimeOfDay === 'night' ? nightLighting : lighting);
       Object.assign(terrainStyle, model.get(null, 'terrain-style')); setTerrainStyle(terrainStyle);
       Object.assign(unitPuckColors, model.get(null, 'unit-puck-colors')); setUnitPuckColors(unitPuckColors);
+      Object.assign(groundGrid, model.get(null, 'ground-grid')); setGroundGrid(groundGrid);
+      for (const locationId of locationIds) {
+        const value = model.get(locationId, 'ground-grid-color');
+        if (value) { groundGridColors.set(locationId, value); setGroundGridColor(locationId, value.color); }
+      }
+      Object.assign(bossSettings, model.get(null, 'ogre-boss')); setOgreSettings(bossSettings);
       Object.assign(screenEffects, model.get(null, 'screen-effects')); setScreenEffects(screenEffects);
       Object.assign(itemMagnetSettings, model.get(null, 'item-magnet')); setItemMagnetSettings(itemMagnetSettings);
+      Object.assign(cardboardDamage, model.get(null, 'cardboard-damage')); setCardboardDamage(cardboardDamage);
       for (const item of ASSET_CATALOG) if (item.asset && item.kind !== 'reference') {
         const settings = model.get(null, `prefab:${item.id}`);
         if (settings) prefabs.set(item.id, settings);

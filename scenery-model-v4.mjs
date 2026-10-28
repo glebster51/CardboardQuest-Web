@@ -1,5 +1,5 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=12';
+import * as THREE from './vendor/three/build/three.module.js?v=7c14a71de3a9af87';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=7c14a71de3a9af87';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -79,9 +79,9 @@ export function makeScenerySprite(image, corrugation, maxAnisotropy = 4) {
     2.05 * sprite.width / sprite.height, 2.05);
   const { shapes: backShapes } = backOutline;
   const frontArt = makeExtrudedSprite(sprite.alphaPixels, sprite.width, sprite.height,
-    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels, outline.smoothingAnchors);
+    frontTexture, backTexture, corrugation, false, shapes, sprite.alphaPixels, outline.smoothingAnchors, outline.faceShapes);
   const backArt = makeExtrudedSprite(backAlphaPixels, sprite.width, sprite.height,
-    backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels, backOutline.smoothingAnchors);
+    backTexture, frontTexture, corrugation, false, backShapes, backAlphaPixels, backOutline.smoothingAnchors, backOutline.faceShapes);
   // The shared extrusion factory configures both artwork faces and the cardboard edge
   // for two-sided rendering and shadow-map passes (characters use it too).
   const group = new THREE.Group();

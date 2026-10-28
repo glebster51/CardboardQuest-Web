@@ -1,5 +1,8 @@
+import { hideUIWindow, indicateUIChange, showUIWindow } from '../render/ui-window-motion.mjs?v=7c14a71de3a9af87';
+
 /** Game settings panel; settings are independent of campaign saves and restart. */
 export function createAudioControls({ audio, root, trigger, onOpen }) {
+  root.dataset.uiAnchor ??= 'top';
   const close = root.querySelector('#audio-close'), mute = root.querySelector('#audio-mute');
   const sliders = [...root.querySelectorAll('input[data-audio-setting]')];
   function render(settings) {
@@ -7,14 +10,16 @@ export function createAudioControls({ audio, root, trigger, onOpen }) {
     mute.textContent = settings.muted ? 'Включить звук' : 'Выключить звук';
     mute.setAttribute('aria-pressed', String(settings.muted));
     for (const slider of sliders) {
+      const output = root.querySelector(`#${slider.id}-value`), previousValue = output.textContent;
       slider.value = String(Math.round(settings[slider.dataset.audioSetting] * 100));
-      root.querySelector(`#${slider.id}-value`).textContent = `${slider.value}%`;
+      output.textContent = `${slider.value}%`;
+      if (previousValue !== output.textContent) indicateUIChange(output, 'value');
     }
   }
-  function hide() { if (root.hidden) return; root.hidden = true; trigger.setAttribute('aria-expanded', 'false'); trigger.focus(); }
+  function hide() { if (root.hidden) return; void hideUIWindow(root); trigger.setAttribute('aria-expanded', 'false'); trigger.focus(); }
   function show() {
-    if (!root.hidden) { hide(); return; }
-    onOpen?.(); root.hidden = false; trigger.setAttribute('aria-expanded', 'true'); close.focus();
+    if (!root.hidden && root.dataset.uiMotionState !== 'closing') { hide(); return; }
+    onOpen?.(); void showUIWindow(root); trigger.setAttribute('aria-expanded', 'true'); close.focus();
   }
   trigger.addEventListener('click', show); close.addEventListener('click', hide);
   mute.addEventListener('click', () => audio.setSettings({ muted: !audio.getSettings().muted }));

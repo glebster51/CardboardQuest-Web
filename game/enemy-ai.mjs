@@ -1,4 +1,8 @@
-import { facingAngle, launch, GOBLIN_DASH_MAX_POWER } from '../physics.mjs';
+import { OGRE_SETTINGS as bossSettings } from '../bosses/ogre/settings.mjs?v=7c14a71de3a9af87';
+import { facingAngle, launch, GOBLIN_DASH_MAX_POWER } from '../physics.mjs?v=7c14a71de3a9af87';
+import { earthShatterPositions } from './earth-shatter.mjs?v=7c14a71de3a9af87';
+import { groundSlamPositions } from '../bosses/ogre/ground-slam.mjs?v=7c14a71de3a9af87';
+import { takeBossSeriesAttack, bossDashAngle, createBossWaveLeap, bossWaveLeapPose } from '../bosses/ogre/attacks.mjs?v=7c14a71de3a9af87';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 function beginAim(enemy, player, figure, duration) {
@@ -15,10 +19,12 @@ function beginAim(enemy, player, figure, duration) {
 function launchAtTarget(enemy, player, power) {
   const dx = enemy.aiTargetX - enemy.x, dz = enemy.aiTargetZ - enemy.z;
   const length = Math.hypot(dx, dz);
+  const directionX = length > 0 ? dx / length : Math.sin(enemy.aiAimAngle ?? 0);
+  const directionZ = length > 0 ? dz / length : Math.cos(enemy.aiAimAngle ?? 0);
   enemy.charges--;
   enemy.aiPhase = 'dash';
   enemy.attackRicochets = 0;
-  launch(enemy, { x: -dx / Math.max(.001, length) * power, z: -dz / Math.max(.001, length) * power });
+  launch(enemy, { x: -directionX * power, z: -directionZ * power });
   if (enemy.archetype === 'ember-moth') enemy.comboRemaining = Math.max(0, (enemy.comboRemaining ?? 3) - 1);
   return { launched: true };
 }
@@ -41,15 +47,94 @@ export function advanceEnemyAI(enemy, player, figure, dt, randomBetween = (min, 
   }
 
   if (enemy.aiPhase !== 'dash') enemy.aiTimer -= dt;
-  if (!['aim', 'guard', 'burrow', 'surface', 'zone'].includes(enemy.aiPhase)
+  if (!['aim', 'guard', 'burrow', 'surface', 'zone', 'earth-windup', 'earth-slam-windup', 'earth-recover', 'earth-retreat'].includes(enemy.aiPhase)
       && player.health > 0 && distanceToPlayer > .001 && speed < .05 && figure) {
     figure.facing = facingAngle(dx, dz, figure.facing);
+  }
+
+  if (enemy.boss) {
+    enemy.bossGroundCooldown = Math.max(0, (enemy.bossGroundCooldown ?? 0) - dt);
+    if (enemy.aiPhase === 'earth-retreat') {
+      if (speed < .2) {
+        enemy.aiPhase = 'earth-recover'; enemy.aiTimer = bossSettings.recoveryDuration; enemy.nonDamagingDash = false;
+      }
+      return { launched: false };
+    }
+    if (enemy.aiPhase === 'earth-slam-windup') {
+      const zone = enemy.pendingGroundSlam;
+      if (!zone) { enemy.aiPhase = 'pause'; enemy.aiTimer = bossSettings.recoveryDuration; return { launched: false }; }
+      zone.x = enemy.x; zone.z = enemy.z;
+      enemy.vx = enemy.vz = 0;
+      if (enemy.aiTimer > 1e-8) return { launched: false };
+      enemy.aiPhase = 'earth-retreat'; enemy.aiTimer = bossSettings.recoveryDuration;
+      enemy.bossGroundCooldown = bossSettings.recoveryDuration + randomBetween(bossSettings.skillPauseMin, bossSettings.skillPauseMax);
+      enemy.pendingGroundSlam = null;
+      const awayAngle = facingAngle(dx, dz, figure?.facing ?? 0);
+      launch(enemy, { x: Math.sin(awayAngle) * bossSettings.retreatPower, z: Math.cos(awayAngle) * bossSettings.retreatPower });
+      enemy.nonDamagingDash = true;
+      return { launched: false, retreated: true, earthShatterSlam: groundSlamPositions(zone), groundSlamImpact: zone };
+    }
+    if (enemy.aiPhase === 'pause' && enemy.aiTimer <= 0 && player.health > 0 && distanceToPlayer < bossSettings.closeDistance) {
+      enemy.vx = enemy.vz = 0;
+      enemy.bossSeriesAttack = null; enemy.bossSeriesRemaining = 0;
+      enemy.pendingEarthShatterPositions = null; enemy.bossWaveLeap = null; enemy.bossLeapHeight = 0; enemy.bossLeapAttack = null;
+      if (enemy.bossGroundCooldown > 1e-8) {
+        enemy.aiPhase = 'pause'; enemy.aiTimer = enemy.bossGroundCooldown;
+        return { launched: false, earthShatterCancelled: true };
+      }
+      enemy.pendingGroundSlam = { x: enemy.x, z: enemy.z, radius: bossSettings.circleRadius };
+      enemy.aiPhase = 'earth-slam-windup'; enemy.aiTimer = bossSettings.circleDuration;
+      return { launched: false, groundSlamWarning: enemy.pendingGroundSlam, duration: bossSettings.circleDuration };
+    }
+    if (enemy.aiPhase === 'earth-windup' && enemy.bossWaveLeap) {
+      const pose = bossWaveLeapPose(enemy.bossWaveLeap, enemy.aiTimer);
+      enemy.x = pose.x; enemy.z = pose.z; enemy.bossLeapHeight = pose.height;
+      enemy.vx = enemy.vz = 0;
+    }
+    if (enemy.aiPhase === 'earth-windup' && enemy.aiTimer <= 0) {
+      enemy.aiPhase = 'earth-recover'; enemy.aiTimer = bossSettings.recoveryDuration;
+      const zone = enemy.bossLeapAttack === 'leap-slam'
+        ? { x: enemy.x, z: enemy.z, radius: bossSettings.circleRadius } : null;
+      const positions = zone ? groundSlamPositions(zone) : earthShatterPositions(enemy.x, enemy.z, enemy.aiAimAngle);
+      enemy.pendingEarthShatterPositions = null; enemy.bossWaveLeap = null; enemy.bossLeapHeight = 0;
+      enemy.bossLeapAttack = null;
+      return { launched: false, earthShatterSlam: positions, ...(zone ? { groundSlamImpact: zone } : {}) };
+    }
+    if (enemy.aiPhase === 'earth-windup') return { launched: false };
+    if (enemy.aiPhase === 'earth-recover') {
+      if (enemy.aiTimer <= 0) { enemy.aiPhase = 'pause'; enemy.aiTimer = randomBetween(bossSettings.skillPauseMin, bossSettings.skillPauseMax); }
+      return { launched: false };
+    }
+    if (enemy.aiPhase === 'pause' && enemy.aiTimer <= 0 && player.health > 0) {
+      const angle = facingAngle(dx, dz, figure?.facing ?? 0);
+      const attack = takeBossSeriesAttack(enemy, randomBetween);
+      if (attack === 'dash') {
+        const decision = beginAim(enemy, player, figure, randomBetween(bossSettings.dashAimMin, bossSettings.dashAimMax));
+        enemy.aiAimAngle = bossDashAngle(angle, randomBetween);
+        enemy.aiTargetX = enemy.x + Math.sin(enemy.aiAimAngle) * distanceToPlayer;
+        enemy.aiTargetZ = enemy.z + Math.cos(enemy.aiAimAngle) * distanceToPlayer;
+        if (figure) figure.facing = enemy.aiAimAngle;
+        return decision;
+      }
+      enemy.aiAimAngle = angle;
+      const duration = attack === 'leap-slam' ? bossSettings.leapSlamDuration : bossSettings.waveDuration;
+      enemy.aiAimDuration = duration;
+      if (figure) figure.facing = angle;
+      enemy.bossLeapAttack = attack;
+      enemy.bossWaveLeap = createBossWaveLeap(enemy.x, enemy.z, angle, attack);
+      enemy.pendingEarthShatterPositions = attack === 'leap-slam' ? []
+        : earthShatterPositions(enemy.bossWaveLeap.endX, enemy.bossWaveLeap.endZ, angle);
+      enemy.vx = enemy.vz = 0; enemy.bossLeapHeight = 0;
+      enemy.aiPhase = 'earth-windup'; enemy.aiTimer = duration;
+      return { launched: false, earthShatterWarning: enemy.pendingEarthShatterPositions,
+        duration };
+    }
   }
 
   if (enemy.aiPhase === 'dash' && speed < .2) {
     enemy.nonDamagingDash = false;
     enemy.aiPhase = 'pause';
-    enemy.aiTimer = enemy.archetype === 'boar' ? randomBetween(.9, 1.8)
+    enemy.aiTimer = enemy.boss ? randomBetween(bossSettings.dashPauseMin, bossSettings.dashPauseMax) : enemy.archetype === 'boar' ? randomBetween(.9, 1.8)
       : enemy.archetype === 'ember-moth' && enemy.comboRemaining > 0 && enemy.charges > 0 ? .18
         : enemy.archetype === 'ember-moth' ? randomBetween(2.4, 3.2) : randomBetween(1, 3.2);
     return { launched: false };
@@ -136,7 +221,8 @@ export function advanceEnemyAI(enemy, player, figure, dt, randomBetween = (min, 
       damageQuarters: enemy.archetype === 'acid-spitter' ? 1 : 2, age: 0,
       lifetime: enemy.archetype === 'acid-spitter' ? 2.8 : 2.2 } };
   }
-  const power = enemy.archetype === 'boar' ? clamp(aimDistance * .22, .95, 1.6)
+  const power = enemy.boss ? clamp(aimDistance * bossSettings.dashDistanceGain, bossSettings.dashPowerMin, bossSettings.dashPowerMax) : !enemy.archetype || enemy.archetype === 'goblin' ? GOBLIN_DASH_MAX_POWER
+    : enemy.archetype === 'boar' ? clamp(aimDistance * .22, .95, 1.6)
     : enemy.archetype === 'ember-moth' ? clamp(aimDistance * .18, .85, 1.35)
       : enemy.archetype === 'shellguard' ? clamp(aimDistance * .15, .72, 1.05)
         : enemy.archetype === 'burrower' ? clamp(aimDistance * .19, .82, 1.35)

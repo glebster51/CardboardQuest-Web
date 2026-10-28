@@ -1,6 +1,6 @@
-import { EQUIPMENT_ITEMS, equipmentItem, equipmentOrbPosition, normalizeEquipment } from '../game/equipment.mjs?v=1';
-import { equipmentMount } from './equipment-poses.mjs?v=1';
-import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=1';
+import { EQUIPMENT_ITEMS, equipmentItem, equipmentOrbPosition, normalizeEquipment } from '../game/equipment.mjs?v=7c14a71de3a9af87';
+import { equipmentMount } from './equipment-poses.mjs?v=7c14a71de3a9af87';
+import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
 
 /** Three cached cardboard prints, reused by all pose/side mounts. Only the active pose draws. */
 export async function createCharacterEquipment({ THREE, figure, loadTemplate, getEquipment, sceneStencil }) {
@@ -22,6 +22,9 @@ export async function createCharacterEquipment({ THREE, figure, loadTemplate, ge
       art.traverse(mesh => {
         if (!mesh.isMesh) return;
         mesh.material = mesh.material.clone(); Object.assign(mesh.material, sceneStencil);
+        // Raw scenery templates have no damage-baked vertex colours. Reading
+        // a missing colour attribute multiplies the equipment print by black.
+        mesh.material.vertexColors = Boolean(mesh.geometry.getAttribute('color'));
         // Equipment shares the player's stencil, and is never an environmental reveal occluder.
         mesh.material.stencilRef = 1;
         mesh.userData.characterEquipment = true;

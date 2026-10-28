@@ -1,10 +1,12 @@
-import { merchantDefinition, merchantStock, MERCHANT_BUYBACK_VALUES } from '../game/merchants.mjs?v=2';
-import { INVENTORY_ITEMS } from '../game/inventory-items.mjs?v=3';
-import { normalizeCoins } from '../game/currency.mjs?v=1';
+import { merchantDefinition, merchantStock, MERCHANT_BUYBACK_VALUES } from '../game/merchants.mjs?v=7c14a71de3a9af87';
+import { INVENTORY_ITEMS } from '../game/inventory-items.mjs?v=7c14a71de3a9af87';
+import { normalizeCoins } from '../game/currency.mjs?v=7c14a71de3a9af87';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=7c14a71de3a9af87';
 
 /** Two-sided trade proposal: the save changes only after the player confirms it. */
 export function createShopPanel({ getState, onOpen, onTrade, onCommit }) {
   const root = document.createElement('section'); root.id = 'shop-panel'; root.hidden = true;
+  root.dataset.uiAnchor = 'center';
   root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-labelledby', 'shop-title');
   root.innerHTML = `<article class="shop-sheet shop-trade-sheet"><header class="shop-heading"><img class="shop-portrait" src="assets/economy/merchant.png" alt="">
     <div class="shop-heading-copy"><small id="shop-name"></small><h2 id="shop-title"></h2><span class="coin-balance">Твои монеты: <b id="shop-coins">0</b></span></div>
@@ -52,6 +54,7 @@ export function createShopPanel({ getState, onOpen, onTrade, onCommit }) {
       target.set(itemId, next);
     }
     notice.textContent = ''; render();
+    indicateUIChange(root.querySelector('.trade-ledger'), 'trade');
     if (returnFocus) {
       const card = root.querySelector(`.trade-item[data-trade-side="${returnFocus.tradeSide}"][data-trade-item="${returnFocus.tradeItem}"]`);
       const preferred = target.get(itemId) ? card?.querySelector('.trade-adjust:not([hidden])') : card?.querySelector('.trade-select:not(:disabled)');
@@ -149,7 +152,7 @@ export function createShopPanel({ getState, onOpen, onTrade, onCommit }) {
 
   function hide() {
     if (root.hidden) return;
-    buys.clear(); sells.clear(); root.hidden = true; actor = null;
+    buys.clear(); sells.clear(); void hideUIWindow(root); actor = null;
     (previousFocus?.isConnected ? previousFocus : null)?.focus({ preventScroll: true });
   }
   function finish() {
@@ -170,5 +173,5 @@ export function createShopPanel({ getState, onOpen, onTrade, onCommit }) {
     }
   });
   return { render, hide, isOpen: () => !root.hidden,
-    open(merchant) { buys.clear(); sells.clear(); previousFocus = document.activeElement; actor = merchant; onOpen?.(); root.hidden = false; notice.textContent = ''; render(); close.focus({ preventScroll: true }); } };
+    open(merchant) { buys.clear(); sells.clear(); previousFocus = document.activeElement; actor = merchant; onOpen?.(); void showUIWindow(root); notice.textContent = ''; render(); close.focus({ preventScroll: true }); } };
 }

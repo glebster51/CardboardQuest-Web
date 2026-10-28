@@ -3,6 +3,8 @@ export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealEnabled: true, revea
   revealNoiseMultiply: .6, revealNoiseSpeedX: .08, revealNoiseSpeedY: .41, revealCheckerSize: 1,
   revealDepthFadeAdd: .8, revealDepthFadeMultiply: 1.25 });
 
+const patchedRevealShaders = new WeakSet();
+
 export function playerRevealRadiusScale(effectPixelRatio, scenePixelRatio, effectEnabled = true) {
   if (!effectEnabled || !Number.isFinite(effectPixelRatio) || !Number.isFinite(scenePixelRatio)
       || effectPixelRatio <= 0 || scenePixelRatio <= 0) return 1;
@@ -11,6 +13,8 @@ export function playerRevealRadiusScale(effectPixelRatio, scenePixelRatio, effec
 
 /** Adds the screen-space dither discard to one opaque scenery shader. */
 export function applyPlayerOcclusionDitherShader(shader, uniforms) {
+  if (patchedRevealShaders.has(shader)) return;
+  patchedRevealShaders.add(shader);
   Object.assign(shader.uniforms, uniforms);
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', `#include <common>
@@ -199,5 +203,5 @@ export function createPlayerOcclusionDither(THREE, renderer,
     uniforms.cqRevealPlayerDepth.value = playerDepth;
   }
 
-  return { uniforms, update, updateSettings };
+  return { uniforms, update, updateSettings, getNoiseTexture: type => loadNoiseTexture?.(type) ?? null };
 }

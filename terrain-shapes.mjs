@@ -1,4 +1,5 @@
-import { applyTerrainSculptStrokes, TERRAIN_SCULPT_MAX_HEIGHT } from './game/terrain-sculpt.mjs?v=2';
+import { applyTerrainSculptStrokes, TERRAIN_SCULPT_MAX_HEIGHT } from './game/terrain-sculpt.mjs?v=7c14a71de3a9af87';
+import { restoreBakedHeights } from './game/terrain-bake.mjs?v=7c14a71de3a9af87';
 
 export function createTerrainPeaks(seed = 1937, count = 16, maxRadius = 6.5) {
   let state = seed >>> 0;
@@ -197,6 +198,7 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
   });
   const distanceToBounds = (x, z) => Math.min(x - minX, maxX - x, z - minZ, maxZ - z);
   const rawHeight = (x, z) => {
+    if(options.heightAt)return options.heightAt(x,z);
     if (pointInsidePolygon(x, z, walkablePoints)) return 0;
     const edge = nearestPointOnPath(x, z, walkablePoints);
     const distance = Math.hypot(x - edge.x, z - edge.z);
@@ -247,13 +249,16 @@ export function createTerrainHeightMap(seed = 9187, walkablePoints, options = {}
       const b = values[(z0 + 1) * columns + x0] * (1 - tx) + values[(z0 + 1) * columns + x0 + 1] * tx;
       const height = a * (1 - tz) + b * tz;
       if (height < -1e-4) return Math.max(sculptMinHeight, Math.round(height / step) * step);
-      if (authoredRelief) return Math.min(sculptMaxHeight, Math.round(height / step) * step);
+      if (authoredRelief) return Math.min(map.renderMaxHeight??sculptMaxHeight, Math.round(height / step) * step);
       return height <= 1e-4 ? 0 : Math.min(sculptMaxHeight, step + Math.floor((height + 1e-6) / step) * step);
     },
   };
+  map.baseValues = values.slice();
+  restoreBakedHeights(map,options.bakedHeight);
   applyTerrainSculptStrokes(map, options.sculptEdits ?? { strokes: [] }, walkablePoints);
   const sampledMax = values.reduce((maximum, height) => Math.max(maximum, height), maxHeight);
   const renderMaxHeight = Math.min(sculptMaxHeight, sampledMax);
+  map.renderMaxHeight = renderMaxHeight;
   const sampledMin = values.reduce((minimum, height) => Math.min(minimum, height), 0);
   const negativeDepth = Math.min(-sculptMinHeight, -sampledMin);
   const layerCount = authoredRelief ? Math.ceil(renderMaxHeight / step)
@@ -291,7 +296,8 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
 
   const sourceMinX = world.originX, sourceMinZ = world.originZ;
   const cellSizeX = world.width / (columns - 1), cellSizeZ = world.depth / (rows - 1);
-  const cellSize = Math.min(cellSizeX, cellSizeZ), maxHeight = elevation.maxHeight, step = elevation.step;
+  const cellSize = Math.min(cellSizeX, cellSizeZ), maxHeight = elevation.maxHeight, step = options.step??elevation.step;
+  if(!Number.isFinite(step) || step<=0)throw new RangeError('Depth map terrace step must be positive and finite');
   const zeroLevel = Number.isFinite(elevation.zeroLevel) ? elevation.zeroLevel : 0;
   const peakLevel = Number.isFinite(elevation.peakLevel) ? elevation.peakLevel : 255;
   if (zeroLevel < 0 || zeroLevel > 254 || peakLevel <= zeroLevel || peakLevel > 255)
@@ -307,14 +313,15 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
     const nearestX = Math.max(0, Math.min(columns - 1, sourceX));
     const nearestZ = Math.max(0, Math.min(rows - 1, sourceZ));
     const worldX = minX + x * cellSizeX, worldZ = minZ + z * cellSizeZ;
-    if (walkablePoints.length >= 3 && pointInsidePolygon(worldX, worldZ, walkablePoints)) continue;
     const distance = Math.hypot(Math.max(0, -sourceX, sourceX - columns + 1),
       Math.max(0, -sourceZ, sourceZ - rows + 1));
     const fade = Math.max(0, 1 - distance / padding);
+    if (walkablePoints.length >= 3 && pointInsidePolygon(worldX, worldZ, walkablePoints)) continue;
     values[z * mapColumns + x] = heightFromByte(samples[nearestZ * columns + nearestX]) * fade;
   }
   const sample = (x, z) => {
-    if (walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints)) return 0;
+    const hasSculpt = Boolean(options.bakedHeight)||(options.sculptEdits?.strokes?.length ?? 0) > 0;
+    if (!hasSculpt && walkablePoints.length >= 3 && pointInsidePolygon(x, z, walkablePoints)) return 0;
     const gx = Math.max(0, Math.min(mapColumns - 1.001, (x - minX) / cellSizeX));
     const gz = Math.max(0, Math.min(mapRows - 1.001, (z - minZ) / cellSizeZ));
     const x0 = Math.floor(gx), z0 = Math.floor(gz), tx = gx - x0, tz = gz - z0;
@@ -322,15 +329,18 @@ export function createTerrainHeightMapFromDepthMap(document, walkablePoints = []
     const b = values[(z0 + 1) * mapColumns + x0] * (1 - tx) + values[(z0 + 1) * mapColumns + x0 + 1] * tx;
     const height = a * (1 - tz) + b * tz;
     if (height < -step * .5) return Math.max(sculptMinHeight, Math.round(height / step) * step);
-    return height < step * .5 ? 0 : Math.min(sculptMaxHeight, Math.round(height / step) * step);
+    return height < step * .5 ? 0 : Math.min(map.renderMaxHeight??sculptMaxHeight, Math.round(height / step) * step);
   };
   const sculptMaxHeight = Math.max(maxHeight, options.sculptMaxHeight ?? TERRAIN_SCULPT_MAX_HEIGHT);
   const sculptMinHeight = Math.min(0, options.sculptMinHeight ?? -TERRAIN_SCULPT_MAX_HEIGHT);
   const map = { minX, minZ, columns: mapColumns, rows: mapRows, cellSize, cellSizeX, cellSizeZ,
     step, maxHeight, sculptMaxHeight, sculptMinHeight, values, sample };
+  map.baseValues = values.slice();
+  restoreBakedHeights(map,options.bakedHeight);
   applyTerrainSculptStrokes(map, options.sculptEdits ?? { strokes: [] }, walkablePoints);
   const sampledMax = values.reduce((maximum, height) => Math.max(maximum, height), maxHeight);
   const renderMaxHeight = Math.min(sculptMaxHeight, sampledMax);
+  map.renderMaxHeight = renderMaxHeight;
   const sampledMin = values.reduce((minimum, height) => Math.min(minimum, height), 0);
   const negativeDepth = Math.min(-sculptMinHeight, -sampledMin);
   map.layers = Array.from({ length: Math.max(1, Math.ceil(renderMaxHeight / step - 1e-9)) }, (_, index) => {

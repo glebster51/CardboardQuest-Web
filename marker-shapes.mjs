@@ -1,4 +1,19 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+export const UNIT_MARKER_RADIUS = 1.13;
+export const MARKER_STROKE_WIDTH = .26;
+
+// Intersect parallel inward-offset edges. Unlike scaling a smaller arrow,
+// this preserves the perpendicular stroke width on its diagonal head too.
+function insetContour(points, width) {
+  return points.map((point, index) => {
+    const previous=points[(index+points.length-1)%points.length],next=points[(index+1)%points.length];
+    const ax=point.x-previous.x,ay=point.y-previous.y,bx=next.x-point.x,by=next.y-point.y;
+    const lengthA=Math.hypot(ax,ay),lengthB=Math.hypot(bx,by);
+    const nA={x:-ay/lengthA,y:ax/lengthA},nB={x:-by/lengthB,y:bx/lengthB};
+    const denominator=1+nA.x*nB.x+nA.y*nB.y;
+    return {x:point.x+width*(nA.x+nB.x)/denominator,y:point.y+width*(nA.y+nB.y)/denominator};
+  });
+}
 
 function quadratic(start, control, end, steps) {
   const points = [];
@@ -30,17 +45,16 @@ function contour(radius, extension, segments) {
   points.push({ x: 0, y: radius + extension }, { x: -radius, y: shoulderY });
   if (shoulderY > radius * .58) points.push({ x: -radius, y: radius * .58 });
   points.push(...quadratic({ x: -radius, y: radius * .58 }, { x: -radius, y: radius * .3 }, { x: -radius, y: 0 }, Math.max(3, Math.round(segments / 12))));
+  points.pop(); // The last point duplicates the first; offset edges must be nonzero.
   return points;
 }
 
-export function createMarkerContours(radius = 1.13, extension = 0, border = .26, segments = 48) {
+export function createMarkerContours(radius = UNIT_MARKER_RADIUS, extension = 0, border = MARKER_STROKE_WIDTH, segments = 48) {
   if (!(radius > border && border > 0) || !Number.isFinite(extension) || extension < 0 || segments < 12) {
     throw new RangeError('Marker dimensions are invalid');
   }
   const outer = contour(radius, extension, segments);
-  const innerRadius = radius - border;
-  const innerExtension = Math.max(0, extension - border * .55);
-  const inner = contour(innerRadius, innerExtension, segments);
+  const inner = insetContour(outer, border);
   return { outer, inner };
 }
 

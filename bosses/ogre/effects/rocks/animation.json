@@ -1,0 +1,725 @@
+{
+  "format": "cardboardquest.unity-particle-bake.v2",
+  "source": "Assets/CardboarQuest/RockEffect.prefab",
+  "sourceHash": "21060b9395b1c046c35e2e98ac62c4862849f5a15cd48902ce1a4970c4c179b3",
+  "bakerHash": "a1cc0cd6fed7d4959c4c5ee57034104315c11a57dec89eaf2d37de0ee6ec25a6",
+  "units": "1 Unity unit = 1 game metre",
+  "fps": 60,
+  "duration": 2,
+  "frameCount": 121,
+  "stride": 28,
+  "textures": {
+    "3588caca30ff3bb4e9bc9ff2ae3b3a28.png": "textures/3588caca30ff3bb4e9bc9ff2ae3b3a28.png",
+    "a463c25eced4fe348a04ceeac4f42ec6.png": "textures/a463c25eced4fe348a04ceeac4f42ec6.png",
+    "d9f3baf8e38f5384d834f3874a672376.png": "textures/d9f3baf8e38f5384d834f3874a672376.png"
+  },
+  "variants": [
+    {
+      "seed": 127,
+      "systems": [
+        {
+          "name": "Smoke",
+          "path": "Smoke",
+          "billboard": true,
+          "cutout": false,
+          "cutoff": 0,
+          "blend": "alpha",
+          "shader": "Particles/Standard Unlit",
+          "texture": "3588caca30ff3bb4e9bc9ff2ae3b3a28.png",
+          "position": [
+            -0.002209699945524335,
+            0.2716600000858307,
+            -0.035002000629901886
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 2721181310,
+              "offset": 271,
+              "holdTime": 0.7166666666666667
+            },
+            {
+              "id": 3706777341,
+              "offset": 598,
+              "holdTime": 0.9833333333333333
+            },
+            {
+              "id": 421097158,
+              "offset": 920,
+              "holdTime": 0.6833333333333333
+            },
+            {
+              "id": 3157411804,
+              "offset": 1398,
+              "holdTime": 0.9666666666666667
+            },
+            {
+              "id": 691049736,
+              "offset": 1813,
+              "holdTime": 0.7333333333333333
+            },
+            {
+              "id": 507158203,
+              "offset": 2131,
+              "holdTime": 0.9666666666666667
+            },
+            {
+              "id": 323412700,
+              "offset": 2400,
+              "holdTime": 0.5333333333333333
+            },
+            {
+              "id": 366542049,
+              "offset": 2673,
+              "holdTime": 0.5833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_1",
+          "path": "Rocks_1",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            -0.002209699945524335,
+            -0.10300000011920929,
+            -0.7273300290107727
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 4080123280,
+              "offset": 2912,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_2",
+          "path": "Rocks_2",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            0.6119199991226196,
+            -0.10300000011920929,
+            0.31981000304222107
+          ],
+          "rotation": [
+            0,
+            0.866025447845459,
+            0,
+            0.4999999403953552
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 2314256513,
+              "offset": 3162,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_3",
+          "path": "Rocks_3",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            -0.6369199752807617,
+            -0.10300000011920929,
+            0.33133000135421753
+          ],
+          "rotation": [
+            0,
+            -0.866025447845459,
+            0,
+            0.4999999403953552
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 1196148834,
+              "offset": 3412,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Debris",
+          "path": "Debris",
+          "billboard": true,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "d9f3baf8e38f5384d834f3874a672376.png",
+          "position": [
+            -0.002209699945524335,
+            -0.006000000052154064,
+            -0.035002000629901886
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 116445198,
+              "offset": 3942,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 218817867,
+              "offset": 4502,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 1814205814,
+              "offset": 5124,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 1716826566,
+              "offset": 5716,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 389777669,
+              "offset": 6354,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 2067885780,
+              "offset": 6816,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 4093,
+      "systems": [
+        {
+          "name": "Smoke",
+          "path": "Smoke",
+          "billboard": true,
+          "cutout": false,
+          "cutoff": 0,
+          "blend": "alpha",
+          "shader": "Particles/Standard Unlit",
+          "texture": "3588caca30ff3bb4e9bc9ff2ae3b3a28.png",
+          "position": [
+            -0.002209699945524335,
+            0.2716600000858307,
+            -0.035002000629901886
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 1200054520,
+              "offset": 7110,
+              "holdTime": 0.6333333333333333
+            },
+            {
+              "id": 942463279,
+              "offset": 7432,
+              "holdTime": 0.7666666666666667
+            },
+            {
+              "id": 507862729,
+              "offset": 7736,
+              "holdTime": 0.5666666666666667
+            },
+            {
+              "id": 3413597832,
+              "offset": 8097,
+              "holdTime": 0.7333333333333333
+            },
+            {
+              "id": 1257674564,
+              "offset": 8442,
+              "holdTime": 0.6666666666666666
+            },
+            {
+              "id": 972900531,
+              "offset": 8708,
+              "holdTime": 0.9
+            },
+            {
+              "id": 1275968253,
+              "offset": 9028,
+              "holdTime": 0.8166666666666667
+            },
+            {
+              "id": 933538114,
+              "offset": 9320,
+              "holdTime": 0.9833333333333333
+            }
+          ]
+        },
+        {
+          "name": "Rocks_1",
+          "path": "Rocks_1",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            -0.002209699945524335,
+            -0.10300000011920929,
+            -0.7273300290107727
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 378044055,
+              "offset": 9352,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_2",
+          "path": "Rocks_2",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            0.6119199991226196,
+            -0.10300000011920929,
+            0.31981000304222107
+          ],
+          "rotation": [
+            0,
+            0.866025447845459,
+            0,
+            0.4999999403953552
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 4155867549,
+              "offset": 9384,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_3",
+          "path": "Rocks_3",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            -0.6369199752807617,
+            -0.10300000011920929,
+            0.33133000135421753
+          ],
+          "rotation": [
+            0,
+            -0.866025447845459,
+            0,
+            0.4999999403953552
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 2777525858,
+              "offset": 9416,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Debris",
+          "path": "Debris",
+          "billboard": true,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "d9f3baf8e38f5384d834f3874a672376.png",
+          "position": [
+            -0.002209699945524335,
+            -0.006000000052154064,
+            -0.035002000629901886
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 449534187,
+              "offset": 9935,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 347385882,
+              "offset": 10487,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 249842298,
+              "offset": 11217,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 118884446,
+              "offset": 11868,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 3759719184,
+              "offset": 12484,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 3006370840,
+              "offset": 13148,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 1103886799,
+              "offset": 13784,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 8191,
+      "systems": [
+        {
+          "name": "Smoke",
+          "path": "Smoke",
+          "billboard": true,
+          "cutout": false,
+          "cutoff": 0,
+          "blend": "alpha",
+          "shader": "Particles/Standard Unlit",
+          "texture": "3588caca30ff3bb4e9bc9ff2ae3b3a28.png",
+          "position": [
+            -0.002209699945524335,
+            0.2716600000858307,
+            -0.035002000629901886
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 2877686655,
+              "offset": 14041,
+              "holdTime": 0.5333333333333333
+            },
+            {
+              "id": 176816455,
+              "offset": 14353,
+              "holdTime": 0.6666666666666666
+            },
+            {
+              "id": 1484329165,
+              "offset": 14639,
+              "holdTime": 0.8666666666666667
+            },
+            {
+              "id": 3447606186,
+              "offset": 15008,
+              "holdTime": 0.6166666666666667
+            },
+            {
+              "id": 1662151500,
+              "offset": 15410,
+              "holdTime": 0.5
+            },
+            {
+              "id": 1705064192,
+              "offset": 15682,
+              "holdTime": 0.8333333333333334
+            },
+            {
+              "id": 1448734135,
+              "offset": 15999,
+              "holdTime": 0.9166666666666666
+            },
+            {
+              "id": 1875892899,
+              "offset": 16253,
+              "holdTime": 0.9
+            }
+          ]
+        },
+        {
+          "name": "Rocks_1",
+          "path": "Rocks_1",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            -0.002209699945524335,
+            -0.10300000011920929,
+            -0.7273300290107727
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 690753747,
+              "offset": 16285,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_2",
+          "path": "Rocks_2",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            0.6119199991226196,
+            -0.10300000011920929,
+            0.31981000304222107
+          ],
+          "rotation": [
+            0,
+            0.866025447845459,
+            0,
+            0.4999999403953552
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 3741851486,
+              "offset": 16317,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Rocks_3",
+          "path": "Rocks_3",
+          "billboard": false,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "a463c25eced4fe348a04ceeac4f42ec6.png",
+          "position": [
+            -0.6369199752807617,
+            -0.10300000011920929,
+            0.33133000135421753
+          ],
+          "rotation": [
+            0,
+            -0.866025447845459,
+            0,
+            0.4999999403953552
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 2301543086,
+              "offset": 16349,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        },
+        {
+          "name": "Debris",
+          "path": "Debris",
+          "billboard": true,
+          "cutout": true,
+          "cutoff": 0.5,
+          "blend": "alpha",
+          "shader": "Default-Particle-DouleSided-Cutout",
+          "texture": "d9f3baf8e38f5384d834f3874a672376.png",
+          "position": [
+            -0.002209699945524335,
+            -0.006000000052154064,
+            -0.035002000629901886
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            0.8232200145721436,
+            0.8232200145721436,
+            0.8232200145721436
+          ],
+          "tracks": [
+            {
+              "id": 3266312843,
+              "offset": 16991,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 990919814,
+              "offset": 17541,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 874108017,
+              "offset": 18169,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 800314618,
+              "offset": 18766,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 3017441956,
+              "offset": 19369,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 3685047899,
+              "offset": 20095,
+              "holdTime": 1.9833333333333334
+            },
+            {
+              "id": 2848540560,
+              "offset": 20663,
+              "holdTime": 1.9833333333333334
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "codec": "fourier-linear-v1",
+  "compression": {
+    "accuracy": 0.99,
+    "originalBytes": 718256,
+    "maxNormalizedErrorBound": 0.009797306883517584
+  },
+  "contentHash": "0fdbb1281cc359ff473cec2124ef2cbaacd5677409301e3fbd466af24af9a1f2"
+}

@@ -1,4 +1,4 @@
-import { hazardAtPoint } from './game/world-hazards.mjs';
+import { hazardAtPoint } from './game/world-hazards.mjs?v=7c14a71de3a9af87';
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 export function pointInWalkableArea(x, z, polygon) {

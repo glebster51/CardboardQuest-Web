@@ -1,5 +1,5 @@
-import { hasGrandpaDied } from '../game/story-campaign.mjs?v=5';
-import { isPlayableFloor } from '../game/world-hazards.mjs';
+import { hasGrandpaDied } from '../game/story-campaign.mjs?v=7c14a71de3a9af87';
+import { isPlayableFloor } from '../game/world-hazards.mjs?v=7c14a71de3a9af87';
 
 export const STORY_ACTORS = [
   { id: 'grandpa-alive', location: 'bell-vault', sprite: 'npc-grandpa-idle', x: -2.1, z: -1.4, height: 1.8, radius: .8 },

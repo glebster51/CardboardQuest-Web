@@ -6,8 +6,8 @@ export function markDirectPlayerHit(attacker, target) {
 }
 
 /** The directly hit enemy cannot hurt the player while its attack-speed rebound continues. */
-export function canEnemyDamagePlayer(attacker, target) {
-  return !(attacker.team === 'enemy' && target.team === 'player' && attacker.directHitProtection);
+export function canEnemyDamagePlayer(attacker, target, directHitProtection = attacker.directHitProtection) {
+  return !(attacker.team === 'enemy' && target.team === 'player' && directHitProtection);
 }
 
 /** End protection once the hit enemy has left its attack phase. */

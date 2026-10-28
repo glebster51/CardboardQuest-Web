@@ -17,6 +17,14 @@ export function spendCharge(unit) {
   return true;
 }
 
+export function refillCharges(unit) {
+  if (!unit || !Number.isFinite(unit.maxCharges) || unit.maxCharges < 0) return false;
+  unit.charges = unit.maxCharges;
+  unit.rechargeTimer = 0;
+  if (Array.isArray(unit.chargePop)) unit.chargePop.fill(0);
+  return true;
+}
+
 export function advanceChargeRecharge(unit, deltaSeconds, intervalSeconds = 3) {
   if (!unit || !Number.isFinite(deltaSeconds) || deltaSeconds < 0 || !(intervalSeconds > 0)) {
     throw new RangeError('Charge recharge parameters are invalid');

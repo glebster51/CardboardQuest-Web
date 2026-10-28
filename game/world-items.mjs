@@ -1,10 +1,16 @@
-import { EQUIPMENT_ITEMS } from './equipment.mjs?v=1';
-import { rollCoins, validCoinDrop } from './currency.mjs?v=1';
+import { EQUIPMENT_ITEMS } from './equipment.mjs?v=7c14a71de3a9af87';
+import { rollCoins, validCoinDrop } from './currency.mjs?v=7c14a71de3a9af87';
 export const LOOT_ITEM_IDS = Object.freeze([
   'berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard',
   ...EQUIPMENT_ITEMS.map(item => item.id),
 ]);
 export const WORLD_ITEM_IDS = Object.freeze([...LOOT_ITEM_IDS, 'coins']);
+
+/** Loot visuals must be ready before any authored spawner can activate an enemy. */
+export function locationNeedsLootSprites(location) {
+  return Boolean(location && ((location.enemies?.length ?? 0) > 0
+    || (location.spawners?.length ?? 0) > 0 || location.secret || (location.loot?.length ?? 0) > 0));
+}
 
 export function rollEditorChestLoot(random = Math.random) {
   const rewardCount = 2 + Math.floor(Math.max(0, Math.min(.999999, random())) * 3);

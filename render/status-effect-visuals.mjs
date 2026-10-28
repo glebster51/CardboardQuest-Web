@@ -1,4 +1,4 @@
-import { STATUS_EFFECTS } from '../game/status-effects.mjs';
+import { STATUS_EFFECTS } from '../game/status-effects.mjs?v=7c14a71de3a9af87';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 
@@ -114,13 +114,14 @@ function makeHeartMaterial(THREE, map, burning) {
   return material;
 }
 
-export function createStatusHeartMaterials(THREE, baseMaps, poisonMaps) {
+export function createStatusHeartMaterials(THREE, baseMaps, poisonMaps, restoredMaps = baseMaps) {
   const make = (maps, burning) => maps.map(map => makeHeartMaterial(THREE, map, burning));
-  const variants = { normal: make(baseMaps, false), poison: make(poisonMaps, false), burn: make(baseMaps, true), poisonBurn: make(poisonMaps, true) };
+  const variants = { normal: make(baseMaps, false), poison: make(poisonMaps, false), burn: make(baseMaps, true),
+    poisonBurn: make(poisonMaps, true), restored: make(restoredMaps, false) };
   variants.updateTime = time => {
-    for (const materials of [variants.normal, variants.poison, variants.burn, variants.poisonBurn])
+    for (const materials of [variants.normal, variants.poison, variants.burn, variants.poisonBurn, variants.restored])
       for (const material of materials) if (material.userData.burnShader) material.userData.burnShader.uniforms.uBurnTime.value = time;
   };
-  variants.all = [...variants.normal, ...variants.poison, ...variants.burn, ...variants.poisonBurn];
+  variants.all = [...variants.normal, ...variants.poison, ...variants.burn, ...variants.poisonBurn, ...variants.restored];
   return variants;
 }

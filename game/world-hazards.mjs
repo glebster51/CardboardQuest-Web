@@ -1,3 +1,5 @@
+import {terrainGroundContains} from './terrain-ground-domain.mjs?v=7c14a71de3a9af87';
+
 export function pointInPolygon(x, z, points) {
   let inside = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -24,6 +26,7 @@ export function hazardAtPoint(x, z, hazards = [], margin = 0) {
 }
 
 export function isPlayableFloor(location, x, z, margin = 0) {
-  return pointInPolygon(x, z, location.walkablePoints)
+  const domain=location.terrainHeightMap?.groundDomain;
+  return (domain?terrainGroundContains(domain,x,z,margin):pointInPolygon(x, z, location.walkablePoints))
     && !hazardAtPoint(x, z, location.hazards, margin);
 }

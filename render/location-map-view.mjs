@@ -1,4 +1,5 @@
-import { buildLocationMapGraph } from '../game/location-map-data.mjs';
+import { buildLocationMapGraph } from '../game/location-map-data.mjs?v=7c14a71de3a9af87';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=7c14a71de3a9af87';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const svgElement = (name, attributes = {}) => {
@@ -8,6 +9,7 @@ const svgElement = (name, attributes = {}) => {
 };
 
 export function createLocationMapView({ root, viewport, graph, progress, openButton, closeButton, campaign, edges }) {
+  root.dataset.uiAnchor ??= 'center';
   const layout = buildLocationMapGraph(campaign, edges);
   let campaignGraph = null;
   graph.setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`);
@@ -33,7 +35,9 @@ export function createLocationMapView({ root, viewport, graph, progress, openBut
       }
       graph.append(...uniqueRoutes.values());
       const visited = new Set(state.visited ?? []);
+      const previousProgress = progress.textContent;
       progress.textContent = `${visited.size} из ${layout.nodes.length} мест посещено`;
+      if (previousProgress && previousProgress !== progress.textContent) indicateUIChange(progress, 'map-progress');
       for (const node of campaignGraph.nodes) {
         const current = node.id === state.currentLocationId;
         const pin = svgElement('g', { class: `campaign-map-pin${current ? ' is-current' : visited.has(node.id) ? ' is-visited' : ''}`,
@@ -41,9 +45,9 @@ export function createLocationMapView({ root, viewport, graph, progress, openBut
         const title = svgElement('title'); title.textContent = labels.get(node.id) ?? node.id;
         const label = svgElement('text', { class: 'campaign-map-label', x: 0, y: -23, 'text-anchor': 'middle' });
         label.textContent = labels.get(node.id) ?? node.id;
-        pin.append(title, label,
-          svgElement('circle', { class: 'campaign-map-pin-outer', cx: 0, cy: 0, r: 15 }),
-          svgElement('circle', { class: 'campaign-map-pin-inner', cx: 0, cy: 0, r: 5 }));
+        const kind = current ? 'current' : visited.has(node.id) ? 'visited' : 'unknown';
+        pin.append(title, svgElement('image', { class: 'campaign-map-pin-art', href: `assets/ui/ui-map-pin-${kind}.webp`,
+          x: -21, y: -38, width: 42, height: 48, preserveAspectRatio: 'xMidYMid meet' }), label);
         graph.append(pin);
       }
       return;
@@ -56,7 +60,9 @@ export function createLocationMapView({ root, viewport, graph, progress, openBut
       }));
     }
     const visited = new Set(state.visited ?? []);
+    const previousProgress = progress.textContent;
     progress.textContent = `${visited.size} из ${layout.nodes.length} мест посещено`;
+    if (previousProgress && previousProgress !== progress.textContent) indicateUIChange(progress, 'map-progress');
     for (const node of layout.nodes) {
       const current = node.id === state.currentLocationId;
       const pin = svgElement('g', {
@@ -68,16 +74,17 @@ export function createLocationMapView({ root, viewport, graph, progress, openBut
       title.textContent = node.label;
       const label = svgElement('text', { class: 'map-label', x: 0, y: -17, 'text-anchor': 'middle' });
       label.textContent = node.label;
-      const outer = svgElement('circle', { class: 'map-pin-outer', cx: 0, cy: 0, r: 11 });
-      const inner = svgElement('circle', { class: 'map-pin-inner', cx: 0, cy: 0, r: 4 });
-      pin.append(title, label, outer, inner);
+      const kind = current ? 'current' : visited.has(node.id) ? 'visited' : 'unknown';
+      const marker = svgElement('image', { class: 'map-pin-art', href: `assets/ui/ui-map-pin-${kind}.webp`,
+        x: -18, y: -34, width: 36, height: 41, preserveAspectRatio: 'xMidYMid meet' });
+      pin.append(title, marker, label);
       graph.append(pin);
     }
   }
 
   function close() {
     if (root.hidden) return;
-    root.hidden = true;
+    void hideUIWindow(root);
     openButton.setAttribute('aria-expanded', 'false');
     openButton.focus();
   }
@@ -89,7 +96,7 @@ export function createLocationMapView({ root, viewport, graph, progress, openBut
   return {
     show(state) {
       render(state);
-      root.hidden = false;
+      if (root.hidden || root.dataset.uiMotionState === 'closing') void showUIWindow(root);
       openButton.setAttribute('aria-expanded', 'true');
       viewport.scrollTop = 0;
       const currentNode = campaignGraph?.nodes.find(node => node.id === state.currentLocationId) ?? layout.nodes.find(node => node.id === state.currentLocationId);

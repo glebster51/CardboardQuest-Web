@@ -1,7 +1,7 @@
 /** One build at a time; retain only the current location and its direct exits. */
 export function createLocationStreaming({ neighbors, build, release, schedule = callback => setTimeout(callback, 0), onError = console.error }) {
   const ready = new Map(), pending = new Map();
-  let wanted = new Set(), current = null, running = false, scheduled = false, activeTask = null;
+  let wanted = new Set(), current = null, committedCurrent = null, running = false, scheduled = false, activeTask = null;
   function request(id, foreground = false) {
     if (ready.has(id)) return Promise.resolve(ready.get(id));
     if (!pending.has(id)) {
@@ -31,26 +31,44 @@ export function createLocationStreaming({ neighbors, build, release, schedule = 
       else await release(id, result);
       task.resolve(result);
     } catch (error) {
-      await release(id);
-      if (wanted.has(id)) task.reject(error); else task.resolve(null);
+      let failure = error;
+      try { await release(id); }
+      catch (cleanupError) {
+        failure = new AggregateError([error, cleanupError], `Location ${id} failed and could not be released`, { cause: error });
+      }
+      if (wanted.has(id)) task.reject(failure);
+      else { task.resolve(null); if (failure !== error) onError(failure); }
     } finally {
       pending.delete(id); running = false; activeTask = null; queue();
     }
   }
   async function retain(id, preload = true) {
+    const previous = committedCurrent;
+    const desired = new Set([id, ...(preload ? neighbors(id) : [])]);
     current = id;
-    wanted = new Set([id, ...(preload ? neighbors(id) : [])]);
+    wanted = new Set([...desired, ...(ready.has(previous) ? [previous] : [])]);
     if (activeTask) await activeTask.promise.catch(() => {});
     if (current !== id) return null;
-    for (const [key, result] of ready) if (!wanted.has(key)) {
-      ready.delete(key); await release(key, result);
-    }
     for (const [key, task] of pending) if (!wanted.has(key) && !running) {
       pending.delete(key); task.resolve(null);
     }
-    const result = await request(id, true);
-    if (current === id && preload) for (const neighbor of neighbors(id)) request(neighbor).catch(onError);
-    return result;
+    try {
+      const result = await request(id, true);
+      if (current !== id) return null;
+      committedCurrent = id; wanted = desired;
+      for (const [key, previousResult] of ready) if (!wanted.has(key)) {
+        ready.delete(key);
+        try { await release(key, previousResult); } catch (error) { onError(error); }
+      }
+      if (preload) for (const neighbor of neighbors(id)) request(neighbor).catch(onError);
+      return result;
+    } catch (error) {
+      if (current === id) {
+        current = previous;
+        wanted = new Set(previous === null ? [] : [previous, ...neighbors(previous)]);
+      }
+      throw error;
+    }
   }
   return { retain, request, isReady: id => ready.has(id),
     snapshot: () => ({ current, ready: [...ready.keys()], pending: [...pending.keys()], wanted: [...wanted] }) };

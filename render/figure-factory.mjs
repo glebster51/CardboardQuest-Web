@@ -1,22 +1,137 @@
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=12';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=12';
-import { heartHealthLevels } from '../heart-health.mjs';
-import { enableFigurePickLayer } from '../game/pick-layers.mjs';
-import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=1';
-import { assignSharpHudLayer } from './sharp-hud-overlay.mjs';
-import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=1';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=7c14a71de3a9af87';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=7c14a71de3a9af87';
+import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=7c14a71de3a9af87';
+import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=7c14a71de3a9af87';
+import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
+import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=7c14a71de3a9af87';
+import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=7c14a71de3a9af87';
+import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=7c14a71de3a9af87';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
+const damageSeed = value => {
+  let hash = 2166136261;
+  for (const character of String(value)) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return (hash >>> 0) / 4294967295 * 1000;
+};
 
-function cloneSpriteModel(model) {
+function cloneSpriteModel(model, damageContext = null) {
   const group = model.group.clone(true);
-  const frontFlashMesh = group.children.find(child => child.material === model.flashMaterial);
-  const backFlashMesh = group.children.find(child => child.material === model.backFlashMaterial);
-  const flashMaterial = model.flashMaterial.clone(), backFlashMaterial = model.backFlashMaterial.clone();
-  if (frontFlashMesh) frontFlashMesh.material = flashMaterial;
-  if (backFlashMesh) backFlashMesh.material = backFlashMaterial;
+  const damageMaterials = [];
+  group.traverse(object => {
+    if (!object.isMesh || !(object.userData.cardboardSurface || object.name.startsWith('cardboard-'))) return;
+    object.userData.cardboardSurface = true;
+    object.material = Array.isArray(object.material) ? object.material.map(material => material.clone()) : object.material.clone();
+  });
+  if (damageContext) damageMaterials.push(...bindCardboardDamageTree(group, damageContext));
   bindSsaoSpriteAlphaCutouts(group);
-  return { ...model, group, flashMaterial, backFlashMaterial };
+  // Resolve references after the single material-cloning pass. Otherwise the
+  // animation updates an orphan material while the rendered clone stays at 0.
+  return installWhiteHitShader({ ...model, group, frontCap: group.getObjectByName('cardboard-front'), damageMaterials });
+}
+
+function installWhiteHitShader(model) {
+  for (const [meshName, materialKey] of [['cardboard-front-flash', 'flashMaterial'], ['cardboard-back-flash', 'backFlashMaterial']]) {
+    const mesh = model.group.getObjectByName(meshName);
+    if (!mesh?.material) continue;
+    const face = model.group.getObjectByName(meshName === 'cardboard-front-flash' ? 'cardboard-front' : 'cardboard-back');
+    // Follow baked damage deformations instead of sinking into a dented face.
+    if (face) mesh.geometry = face.geometry;
+    const material = mesh.material.clone();
+    material.toneMapped = false;
+    const previousCompile = material.onBeforeCompile;
+    const previousKey = material.customProgramCacheKey;
+    material.onBeforeCompile = function (shader, renderer) {
+      previousCompile?.call(this, shader, renderer);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>',
+        '#include <color_fragment>\ndiffuseColor.rgb = vec3(1.0);');
+    };
+    material.customProgramCacheKey = function () { return `${previousKey?.call(this) ?? ''}|cq-white-hit-v1`; };
+    material.needsUpdate = true;
+    mesh.material = material;
+    model[materialKey] = material;
+  }
+  return model;
+}
+
+function createHoverOutline(THREE, model, color = [255, 157, 34]) {
+  if (!model?.alphaPixels || !model.width || !model.height || !model.frontCap) return null;
+  const padding = 14, radius = 12, width = model.width, height = model.height;
+  const textureWidth = width + padding * 2, textureHeight = height + padding * 2;
+  const source = new Uint8Array(textureWidth * textureHeight);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    source[(y + padding) * textureWidth + x + padding] = model.alphaPixels[(y * width + x) * 4 + 3];
+  }
+  const horizontal = new Uint8Array(source.length), dilated = new Uint8Array(source.length);
+  const maxFilter = (input, output, horizontalAxis) => {
+    const lineCount = horizontalAxis ? textureHeight : textureWidth;
+    const lineLength = horizontalAxis ? textureWidth : textureHeight;
+    const queue = new Int32Array(lineLength);
+    for (let line = 0; line < lineCount; line++) {
+      let head = 0, tail = 0, next = 0;
+      for (let position = 0; position < lineLength; position++) {
+        const right = Math.min(lineLength - 1, position + radius);
+        while (next <= right) {
+          const sampleIndex = horizontalAxis ? line * textureWidth + next : next * textureWidth + line;
+          const value = input[sampleIndex];
+          while (tail > head) {
+            const previous = queue[tail - 1];
+            const previousIndex = horizontalAxis ? line * textureWidth + previous : previous * textureWidth + line;
+            if (input[previousIndex] > value) break;
+            tail--;
+          }
+          queue[tail++] = next++;
+        }
+        while (tail > head && queue[head] < position - radius) head++;
+        const maxIndex = horizontalAxis ? line * textureWidth + queue[head] : queue[head] * textureWidth + line;
+        const outputIndex = horizontalAxis ? line * textureWidth + position : position * textureWidth + line;
+        output[outputIndex] = input[maxIndex];
+      }
+    }
+  };
+  maxFilter(source, horizontal, true); maxFilter(horizontal, dilated, false);
+  const pixels = new Uint8Array(source.length * 4);
+  for (let index = 0; index < source.length; index++) {
+    pixels[index * 4] = color[0]; pixels[index * 4 + 1] = color[1]; pixels[index * 4 + 2] = color[2];
+    pixels[index * 4 + 3] = Math.max(0, dilated[index] - source[index]);
+  }
+  const canvas = document.createElement('canvas'); canvas.width = textureWidth; canvas.height = textureHeight;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(textureWidth, textureHeight); image.data.set(pixels); context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  const material = new THREE.MeshBasicMaterial({ map: texture, alphaTest: .08, side: THREE.DoubleSide,
+    depthTest: false, depthWrite: false, toneMapped: false });
+  const front = model.frontCap, sourceWidth = front.geometry.parameters?.width ?? 2.05 * width / height;
+  const sourceHeight = front.geometry.parameters?.height ?? 2.05;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(sourceWidth * textureWidth / width,
+    sourceHeight * textureHeight / height), material);
+  mesh.position.z = front.position.z + .006;
+  mesh.renderOrder = 200;
+  mesh.visible = false;
+  model.group.add(mesh);
+  return mesh;
+}
+
+function createEnemyOcclusionArt(THREE, sourceModel) {
+  const model = cloneSpriteModel(sourceModel);
+  model.group.traverse(object => {
+    if (!object.isMesh) return;
+    const tint = source => applyEnemySilhouetteStencil(new THREE.MeshBasicMaterial({ map: source.map ?? null,
+      alphaMap: source.alphaMap ?? null, color: 0xff4444, alphaTest: Math.max(.04, source.alphaTest ?? 0),
+      transparent: true, opacity: .38, depthTest: false, depthWrite: false,
+      side: THREE.DoubleSide, toneMapped: false }), THREE);
+    object.material = Array.isArray(object.material) ? object.material.map(tint) : tint(object.material);
+    object.renderOrder = 98;
+  });
+  const outline = createHoverOutline(THREE, model, [255, 45, 42]);
+  if (outline) {
+    applyEnemySilhouetteStencil(outline.material, THREE);
+    outline.renderOrder = 99;
+  }
+  return model;
 }
 
 function yieldFrameWork() {
@@ -28,8 +143,11 @@ function yieldFrameWork() {
 
 /** Build display instances from cached pose geometry and source textures. */
 export function createFigureFactory({ THREE, scene, renderer, ambientShadowMaterial, contactShadowMaterial,
-  corrugation, paper, sceneStencil, heartMaterialVariants, createEnemyMarker, groundUiY, assetBase = 'assets/', geometryClient }) {
+  corrugation, paper, sceneStencil, heartMaterialVariants, createEnemyMarker, groundUiY, assetBase = 'assets/', geometryClient,
+  cardboardDamageTexture, cardboardVoronoiTexture, cardboardTearNoiseTexture, cardboardPerlinTexture,
+  revealUniforms, getCardboardDamageSettings = () => ({}) }) {
   const artCache = new Map();
+  const spriteBase = prefix => prefix === 'ogre' ? new URL('../bosses/ogre/textures/', import.meta.url).href : assetBase;
   let puckColors = { player: '#d1e8ae', enemy: '#e9a092' };
   const unitPucks = new Set();
   function setPuckColors(settings) {
@@ -40,10 +158,12 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
   async function loadWorkerArt(body, prefix) {
     if (body.spriteAsset) {
       const spritePath = body.spriteAsset.replace(/^assets\//, '');
-      const url = new URL(`${assetBase}${spritePath}?sheet=3`, location.href).href;
+      const url = new URL(`${body.spriteAsset?.startsWith('bosses/') ? new URL('../', import.meta.url).href + body.spriteAsset : assetBase + spritePath}?sheet=3`, location.href).href;
       const model = await geometryClient.run('figure', { url, player: false });
       model.flashMaterial = model.byUuid.get(model.flashUuid).material;
       model.backFlashMaterial = model.byUuid.get(model.backFlashUuid).material;
+      model.frontCap = model.byUuid.get(model.frontCapUuid);
+      installWhiteHitShader(model);
       const frontArt = model, backArt = cloneSpriteModel(model);
       frontArt.group.rotation.y = 0; backArt.group.rotation.y = Math.PI;
       const group = new THREE.Group(); group.add(frontArt.group, backArt.group);
@@ -57,7 +177,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     }
     const states = {};
     const prepared = await Promise.all(VISUAL_STATES.flatMap(visualState => ['front', 'back'].map(side => {
-      const url = new URL(`${assetBase}${prefix}-${visualState}${side === 'back' ? '-back' : ''}.png?sheet=3`, location.href).href;
+      const url = new URL(`${spriteBase(prefix)}${prefix}-${visualState}${side === 'back' ? '-back' : ''}.png?sheet=3`, location.href).href;
       return geometryClient.run('figure', { url, player: body.team === 'player',
         flip: body.team === 'player' && visualState === 'idle' && side === 'front' });
     })));
@@ -68,6 +188,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
         const model = prepared[faceIndex++];
         model.flashMaterial = model.byUuid.get(model.flashUuid).material;
         model.backFlashMaterial = model.byUuid.get(model.backFlashUuid).material;
+        model.frontCap = model.byUuid.get(model.frontCapUuid);
         model.group.rotation.y = side === 'back' ? Math.PI : 0;
         faces.push(model);
       }
@@ -92,11 +213,11 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
         const loader = new THREE.TextureLoader();
         const spritePath = body.spriteAsset?.replace(/^assets\//, '');
         const staticSource = spritePath
-          ? await loader.loadAsync(`${assetBase}${spritePath}?sheet=3`) : null;
+          ? await loader.loadAsync(`${body.spriteAsset?.startsWith('bosses/') ? new URL('../', import.meta.url).href + body.spriteAsset : assetBase + spritePath}?sheet=3`) : null;
         const frontSources = staticSource ? VISUAL_STATES.map(() => staticSource) : await Promise.all(VISUAL_STATES.map(state =>
-          loader.loadAsync(`${assetBase}${prefix}-${state}.png?sheet=3`)));
+          loader.loadAsync(`${spriteBase(prefix)}${prefix}-${state}.png?sheet=3`)));
         const backSources = staticSource ? VISUAL_STATES.map(() => staticSource) : await Promise.all(VISUAL_STATES.map(state =>
-          loader.loadAsync(`${assetBase}${prefix}-${state}-back.png?sheet=3`)));
+          loader.loadAsync(`${spriteBase(prefix)}${prefix}-${state}-back.png?sheet=3`)));
         const width = frontSources[0].image.width, height = frontSources[0].image.height;
         if ([...frontSources, ...backSources].some(source => source.image.width !== width || source.image.height !== height)) {
           throw new Error(`Pose sheet cells must share one frame: ${prefix}`);
@@ -122,9 +243,9 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
           texture.colorSpace = THREE.SRGBColorSpace;
           texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
           const model = buildExtrudedSprite(alphaPixels, width, height, texture, texture,
-            corrugation, body.team === 'player', geometry.shapes, alphaPixels, geometry.smoothingAnchors);
+            corrugation, body.team === 'player', geometry.shapes, alphaPixels, geometry.smoothingAnchors, geometry.faceShapes);
           model.group.rotation.y = side === 'back' ? Math.PI : 0;
-          return { ...model, texture };
+          return installWhiteHitShader({ ...model, texture });
         };
 
         const states = {};
@@ -161,10 +282,9 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     return pending;
   }
 
-  const createFigure = async function(body, prefix) {
+  const createFigure = async function(body, prefix, { deferAttach = false } = {}) {
     const group = new THREE.Group();
     group.visible = !geometryClient || body.team === 'player';
-    scene.add(group);
     const ambientShadow = new THREE.Mesh(new THREE.CircleGeometry(1.02, 64), ambientShadowMaterial);
     ambientShadow.rotation.x = -Math.PI / 2; ambientShadow.position.y = .008; ambientShadow.renderOrder = 1;
     group.add(ambientShadow);
@@ -175,7 +295,7 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     ]);
     const puckTeam = body.team === 'player' ? 'player' : 'enemy';
     base.userData.unitPuckTeam = puckTeam;
-    unitPucks.add({ base, team: puckTeam });
+    const puckEntry = { base, team: puckTeam };
     for (const material of [base.material].flat()) material.color.set(puckColors[puckTeam]);
     base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
     group.add(base);
@@ -190,12 +310,38 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     const artStates = {};
     for (const visualState of VISUAL_STATES) {
       const template = assets.states[visualState];
-      const frontArt = cloneSpriteModel(template.frontArt), backArt = cloneSpriteModel(template.backArt);
+      const seed = damageSeed(body.id);
+      const damageContext = { THREE, texture: cardboardDamageTexture, noiseTexture: cardboardVoronoiTexture,
+        displacementNoiseTexture: cardboardPerlinTexture, tearNoiseTexture: cardboardTearNoiseTexture,
+        settings: getCardboardDamageSettings(), seed, kind: body.team === 'enemy' ? 'enemy' : 'character' };
+      const frontArt = cloneSpriteModel(template.frontArt, damageContext), backArt = cloneSpriteModel(template.backArt, { ...damageContext, seed: seed + 187.3 });
+      const hoverOutlineMeshes = body.team === 'player'
+        ? [createHoverOutline(THREE, frontArt), createHoverOutline(THREE, backArt)].filter(Boolean) : [];
       const artGroup = new THREE.Group(); artGroup.position.y = 1.25;
       artGroup.add(frontArt.group, backArt.group);
       artGroup.visible = false; group.add(artGroup);
       artStates[visualState] = { group: artGroup, frontArt, backArt,
-        alphaPixels: frontArt.alphaPixels, width: frontArt.width, height: frontArt.height };
+        alphaPixels: frontArt.alphaPixels, width: frontArt.width, height: frontArt.height, hoverOutlineMeshes };
+    }
+    let enemyOcclusionGhost = null;
+    if (body.team === 'enemy') {
+      const root = new THREE.Group();
+      root.name = `enemy-occlusion:${body.id}`;
+      root.visible = false;
+      const states = {};
+      for (const visualState of VISUAL_STATES) {
+        const source = artStates[visualState];
+        const frontArt = createEnemyOcclusionArt(THREE, source.frontArt);
+        const backArt = createEnemyOcclusionArt(THREE, source.backArt);
+        const artGroup = new THREE.Group();
+        artGroup.position.copy(source.group.position);
+        artGroup.visible = false;
+        artGroup.add(frontArt.group, backArt.group);
+        root.add(artGroup);
+        states[visualState] = { group: artGroup, frontArt, backArt };
+      }
+      group.add(root);
+      enemyOcclusionGhost = { root, states };
     }
     const initialArt = artStates.idle;
     initialArt.group.visible = true;
@@ -203,13 +349,17 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
 
     const healthHUD = new THREE.Group();
     const levels = heartHealthLevels(body.health, body.maxHealth);
+    const heartLayout = healthHeartLayout(levels.length);
+    const currentLastHeart = levels.reduce((last, level, index) => level > 0 ? index : last, -1);
     const heartIcons = levels.map((level, index) => {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(.23, .23), heartMaterialVariants.normal[level]);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(HEALTH_HEART_SIZE, HEALTH_HEART_SIZE), heartMaterialVariants.normal[level]);
       markSsaoSpriteAlphaCutout(mesh, heartMaterialVariants.normal[level].map, heartMaterialVariants.normal[level].alphaTest || .04);
-      mesh.renderOrder = 100;
-      mesh.position.set((index - (levels.length - 1) / 2) * .245, 0, .01);
+      mesh.renderOrder = healthHeartRenderOrder(level, index, currentLastHeart);
+      const scale = index === currentLastHeart ? 1.2 : 1;
+      mesh.scale.set(scale, scale, 1);
+      mesh.position.set(heartLayout.positions[index], 0, .01);
       healthHUD.add(mesh);
-      return { mesh, level };
+      return { mesh, level, currentLast: index === currentLastHeart };
     });
     const statusIndicators = createStatusEffectIndicators(THREE);
     healthHUD.add(statusIndicators.group);
@@ -231,23 +381,48 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     }
     healthHUD.position.set(body.x, 2.65, body.z);
     assignSharpHudLayer(healthHUD);
-    scene.add(healthHUD);
     let enemyMarker = null;
     if (body.team === 'enemy') {
       enemyMarker = createEnemyMarker(0xdf3830, 0xff887d, true);
+      enemyMarker.setSizeScale(body.boss ? 1.5 : 1);
       enemyMarker.group.rotation.y = body.aiAimAngle ?? 0;
       enemyMarker.group.position.set(body.x, groundUiY, body.z);
-      scene.add(enemyMarker.group);
     }
-    const figure = { group, prefix, artGroup: initialArt.group, artStates, visualState: 'idle', body,
+    const figure = { group, puck: base, prefix, artGroup: initialArt.group, artStates, visualState: 'idle', body,
       alphaPixels: initialArt.alphaPixels, width: initialArt.width, height: initialArt.height,
       healthHUD, heartIcons, chargePips, statusIndicators, enemyMarker, deadGroundedY: assets.deadGroundedY,
+      enemyOcclusionGhost,
       flashMaterial: initialArt.frontArt.flashMaterial, backFlashMaterial: initialArt.backArt.flashMaterial,
+      hoverOutlineMeshes: Object.values(artStates).flatMap(art => art.hoverOutlineMeshes),
+      cardboardDamageMaterials: Object.values(artStates).flatMap(art => [...art.frontArt.damageMaterials, ...art.backArt.damageMaterials]),
+      puckEntry, sceneAttached: false,
       viewBack: false, facing: 0, hitAge: 10, hitStrength: 0, hurtAge: 10, dealDamageAge: 10 };
     group.userData.figure = figure;
     group.position.set(body.x, 0, body.z);
     enableFigurePickLayer(group, body.team);
+    enemyOcclusionGhost?.root.traverse(object => object.layers.set(0));
+    if (!deferAttach) createFigure.attach(figure);
     return figure;
+  };
+  createFigure.attach = figure => {
+    if (!figure || figure.sceneAttached) return figure;
+    scene.add(figure.group, figure.healthHUD);
+    if (figure.enemyMarker?.group) scene.add(figure.enemyMarker.group);
+    unitPucks.add(figure.puckEntry);
+    figure.sceneAttached = true;
+    return figure;
+  };
+  createFigure.setCardboardDamage = (settings, texture = cardboardDamageTexture, noiseTexture = cardboardVoronoiTexture,
+    tearNoiseTexture = cardboardTearNoiseTexture, displacementNoiseTexture = cardboardPerlinTexture) => {
+    cardboardDamageTexture = texture;
+    cardboardVoronoiTexture = noiseTexture;
+    cardboardTearNoiseTexture = tearNoiseTexture;
+    cardboardPerlinTexture = displacementNoiseTexture;
+    for (const [key, pending] of artCache) void pending.then(assets => {
+      const kind = key.endsWith(':enemy') ? 'enemy' : 'character';
+      for (const state of Object.values(assets.states)) for (const side of [state.frontArt, state.backArt])
+        bindCardboardDamageTree(side.group, { THREE, texture, noiseTexture, displacementNoiseTexture, tearNoiseTexture, settings, kind });
+    });
   };
   createFigure.setPuckColors = setPuckColors;
   createFigure.releaseUnused = async prefixes => {

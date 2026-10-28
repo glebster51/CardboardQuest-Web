@@ -1,4 +1,8 @@
-import { hazardAtPoint } from './game/world-hazards.mjs';
+import { hazardAtPoint } from './game/world-hazards.mjs?v=7c14a71de3a9af87';
+import { advanceEarthShatterKnockback } from './game/earth-shatter.mjs?v=7c14a71de3a9af87';
+import { volumeBodyContact } from './game/terrain-volume.mjs?v=7c14a71de3a9af87';
+import {terrainGroundContact} from './game/terrain-ground-domain.mjs?v=7c14a71de3a9af87';
+import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=7c14a71de3a9af87';
 
 // World-space XZ motion. Constant friction gives a finite, frame-independent stop.
 export const MAX_PULL = 1.8;
@@ -14,7 +18,7 @@ export const LIMIT_Z = 9.1;
 export const PUCK_RADIUS = .8;
 export const COLLISION_RESTITUTION = .82;
 const INTERACTION_PLAYER_REBOUND_SCALE = .1;
-const SOFT_PUSH_TARGETS = new Set(['cache-chest', 'editor-chest', 'inspection-marker', 'merchant']);
+const SOFT_PUSH_TARGETS = new Set(['cache-chest', 'editor-chest', 'inspection-marker', 'merchant', 'earth-shatter-rock']);
 export const ATTACK_SPEED = 5;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 // Authored walkable footprint. The same polygon drives puck collision and the
@@ -78,6 +82,7 @@ export function advance(state, dt, arenaPoints = ARENA_POINTS, fallZones = [], c
 }
 
 function confine(state, arenaPoints, fallZones = [], canFall = false) {
+  if(arenaPoints.length<3)return 0;
   let inside = false;
   for (let i = 0, j = arenaPoints.length - 1; i < arenaPoints.length; j = i++) {
     const a = arenaPoints[i], b = arenaPoints[j];
@@ -114,6 +119,10 @@ function confine(state, arenaPoints, fallZones = [], canFall = false) {
 
 // Equal-mass discs. A disc held for aiming has zero inverse mass.
 export function collide(a, b, held = null) {
+  if (a.bossLeapHeight > 0 || b.bossLeapHeight > 0) return 0;
+  if (a.kind === 'earth-shatter-rock' && bossCanShatterOwnRock(a, b)
+      || b.kind === 'earth-shatter-rock' && bossCanShatterOwnRock(b, a)) return 0;
+  if (a.earthShatterKnockback || b.earthShatterKnockback) return 0;
   const dx = b.x - a.x, dz = b.z - a.z;
   const distance = Math.hypot(dx, dz);
   const radiusA = a.radius ?? PUCK_RADIUS, radiusB = b.radius ?? PUCK_RADIUS;
@@ -139,9 +148,13 @@ export function collide(a, b, held = null) {
 }
 
 export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoints = ARENA_POINTS, options = {}) {
+  // The authored polygon is only the fallback for untouched/legacy terrain.
+  const ground=options.terrainGround;
+  if(ground)arenaPoints=[];
   const fallZones = options.fallZones ?? [];
   const canFall = body => options.fallable?.(body) ?? false;
   const fallIntoHole = body => {
+    if (body.bossLeapHeight > 0) return false;
     if (!body.fell && canFall(body) && hazardAtPoint(body.x, body.z, options.hazards)) {
       body.fell = true; body.vx = 0; body.vz = 0;
       options.onFall?.(body);
@@ -150,12 +163,28 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoin
     return false;
   };
   const confineBody = body => {
+    if (body.bossLeapHeight > 0) return;
     if (body.fell || fallIntoHole(body)) return;
     const strength = confine(body, arenaPoints, fallZones, canFall(body));
     if (body.fell) options.onFall?.(body);
     else if (strength > .4) onImpact?.(body, null, strength);
+    const contact=ground?terrainGroundContact(ground,body):options.terrainVolume && volumeBodyContact(options.terrainVolume,body);
+    if(contact && (contact.x || contact.z)) {
+      if(contact.boundary&&canFall(body)&&body.vx*contact.x+body.vz*contact.z<-.02
+        &&fallZones.some(zone=>Math.hypot(zone.x-contact.edge.x,zone.z-contact.edge.z)<=zone.radius)) {
+        body.fell=true;body.vx=0;body.vz=0;options.onFall?.(body);return;
+      }
+      body.x+=contact.x*contact.depth;body.z+=contact.z*contact.depth;
+      const speed=body.vx*contact.x+body.vz*contact.z;
+      if(speed<0){body.vx-=(1+REBOUND)*speed*contact.x;body.vz-=(1+REBOUND)*speed*contact.z;if(-speed>.4)onImpact?.(body,null,-speed);}
+    }
   };
   for (const body of bodies) if (!body.fixed && body !== held && !body.fell) {
+    if (body.earthShatterKnockback) {
+      advanceEarthShatterKnockback(body, dt);
+      confineBody(body);
+      continue;
+    }
     const strength = advance(body, dt, arenaPoints, fallZones, canFall(body));
     if (body.fell) { options.onFall?.(body); continue; }
     if (fallIntoHole(body)) continue;
@@ -167,9 +196,15 @@ export function advanceWorld(bodies, dt, held = null, onImpact = null, arenaPoin
       for (let j = i + 1; j < bodies.length; j++) {
         const a = bodies[i], b = bodies[j];
         if (a.fell || b.fell) continue;
+        // Static scenery cannot resolve against other static scenery. Avoid
+        // spending all four contact passes testing those pairs, especially in
+        // prop-heavy combat locations.
+        if (a.fixed && b.fixed) continue;
         const attackingA = isAttacking(a), attackingB = isAttacking(b);
+        const earthRockContact = (a.kind === 'earth-shatter-rock' || b.kind === 'earth-shatter-rock')
+          && Math.hypot(a.x - b.x, a.z - b.z) < (a.radius ?? PUCK_RADIUS) + (b.radius ?? PUCK_RADIUS);
         const strength = collide(a, b, held);
-        if (strength > .4) onImpact?.(a, b, strength, attackingA, attackingB);
+        if (strength > .4 || earthRockContact) onImpact?.(a, b, strength, attackingA, attackingB);
       }
     }
     for (const body of bodies) if (!body.fixed && body !== held && !body.fell) confineBody(body);

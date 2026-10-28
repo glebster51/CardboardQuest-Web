@@ -5,15 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=99">
-  <script type="importmap">
-    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
-  </script>
+  <link rel="stylesheet" href="style.css?v=7c14a71de3a9af87">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
   <canvas id="item-flight-canvas" aria-hidden="true"></canvas>
   <div id="location-info" role="status" aria-live="polite"><strong id="location-title"></strong><small id="location-detail"></small></div>
+  <div id="day-clock" data-state="0" data-period="day" role="img" aria-label="День 1, Рассвет" title="День 1 · Рассвет">
+    <img class="day-clock-face" src="assets/ui/ui-hud-clock.webp" alt="" aria-hidden="true" decoding="async">
+    <img class="day-clock-pointer" src="assets/ui/ui-hud-clock-hand.webp" alt="" aria-hidden="true" decoding="async">
+    <span class="day-clock-label" aria-hidden="true">1</span>
+  </div>
   <div id="status-effects-hud" role="status" aria-live="polite" aria-label="Эффекты"></div>
   <div id="status-effect-tooltip" class="status-effect-tooltip" hidden role="dialog" aria-labelledby="status-effect-name">
     <button id="status-effect-tooltip-close" type="button" aria-label="Закрыть описание">×</button>
@@ -21,41 +23,48 @@
     <p id="status-effect-description"></p>
     <span id="status-effect-duration"></span>
   </div>
+  <section id="death-screen" hidden role="dialog" aria-modal="true" aria-labelledby="death-title" aria-describedby="death-copy">
+    <div class="death-composition">
+      <img class="death-art death-art-header" data-src="assets/ui/death-screen/death-screen-header.png" alt="" aria-hidden="true" decoding="async">
+      <div class="death-card">
+        <div class="death-heading">
+          <h1 id="death-title">Путь оборвался</h1>
+          <p id="death-copy">Но история ещё может продолжиться.</p>
+        </div>
+        <div class="death-actions">
+          <button id="death-checkpoint" type="button">Вернуться к предыдущему сохранению</button>
+          <small id="death-checkpoint-note"></small>
+          <button id="death-revive" type="button">Возродиться · посмотреть рекламу</button>
+        </div>
+        <img class="death-art death-art-footer" data-src="assets/ui/death-screen/death-screen-footer.png" alt="" aria-hidden="true" decoding="async">
+      </div>
+    </div>
+    <div id="death-ad-overlay" hidden role="status" aria-live="assertive">
+      <div class="death-ad-card">
+        <strong>Рекламная пауза</strong>
+        <span>Заглушка · <b id="death-ad-countdown">3</b></span>
+        <button id="death-ad-cancel" type="button">Отмена</button>
+      </div>
+    </div>
+  </section>
   <nav id="hud-tools" aria-label="Игровые действия">
     <button id="inventory-toggle" class="hud-icon" type="button" aria-label="Рюкзак" aria-controls="inventory-panel" aria-haspopup="dialog" aria-expanded="false" title="Рюкзак">
-      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-        <g stroke="#4b3020" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 13V9c0-6 12-6 12 0v4" fill="none"/>
-          <path d="M12 22H8v14c0 3 3 4 6 3m22-17h4v14c0 3-3 4-6 3" fill="#985631"/>
-          <path d="M12 17c0-9 24-9 24 0l2 21c1 7-29 7-28 0z" fill="#b9753d"/>
-          <path d="M12 16c0-5 24-5 24 0v8c-6 5-18 5-24 0z" fill="#dfad61"/>
-          <path d="M17 32h14v9H17z" fill="#e9bf7e"/>
-          <path d="M21 22h6v9h-6z" fill="#f7d88a"/>
-          <path d="M24 26v2M20 36h8" fill="none"/>
-        </g>
-      </svg>
+      <img src="assets/ui/ui-hud-backpack.webp" width="46" height="46" alt="" decoding="async">
       <span id="inventory-count" class="hud-count" hidden aria-hidden="true"></span>
     </button>
     <button id="audio-toggle" class="hud-icon" type="button" aria-label="Настройки" aria-controls="audio-panel" aria-haspopup="dialog" aria-expanded="false" title="Настройки">
       <img src="assets/ui/settings-gear.webp" width="46" height="46" alt="" decoding="async">
     </button>
     <button id="map-toggle" class="hud-icon" type="button" aria-label="Карта" aria-controls="world-map" aria-haspopup="dialog" aria-expanded="false" title="Карта">
-      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-        <g stroke="#4b3020" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m5 10 12-4 14 5 12-4v32l-12 4-14-5-12 4z" fill="#f3d99d"/>
-          <path d="m17 6 14 5v32l-14-5z" fill="#d8bb7c" stroke="none"/>
-          <path d="M17 6v32m14-27v32" fill="none" stroke="#a17c49" stroke-width="1.8"/>
-          <path d="m9 18 5-3 5 5m14 12 5-3 2 2" fill="none" stroke="#789451" stroke-width="3.5"/>
-          <path d="M12 32c9-1 5-12 14-10 5 1 4-6 10-7" fill="none" stroke="#a45b36" stroke-width="2.3" stroke-dasharray="2.5 4"/>
-          <path d="m33 12 6 6m0-6-6 6" fill="none" stroke="#9c4930"/>
-          <circle cx="12" cy="32" r="2.7" fill="#748d46"/>
-        </g>
-      </svg>
+      <img src="assets/ui/ui-hud-map.webp" width="46" height="46" alt="" decoding="async">
     </button>
   </nav>
   <section id="story-dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="story-title" tabindex="-1">
     <article>
-      <img id="story-portrait" alt="" hidden>
+      <aside id="story-portrait-well" aria-hidden="true">
+        <img id="story-portrait" alt="" hidden>
+        <span id="story-pocket-thickness"></span>
+      </aside>
       <div id="story-copy">
       <strong id="story-title"></strong>
       <strong id="story-speaker"></strong>
@@ -102,7 +111,7 @@
         <button id="world-map-close" type="button" aria-label="Закрыть карту">×</button>
       </header>
       <div id="world-map-viewport"><svg id="world-map-graph" role="img"></svg></div>
-      <footer><span><i class="map-key current"></i>Ты здесь</span><span><i class="map-key visited"></i>Был здесь</span><span><i class="map-key"></i>Впереди</span></footer>
+      <footer><span><img class="map-key current" src="assets/ui/ui-map-pin-current.webp" alt="">Ты здесь</span><span><img class="map-key visited" src="assets/ui/ui-map-pin-visited.webp" alt="">Был здесь</span><span><img class="map-key" src="assets/ui/ui-map-pin-unknown.webp" alt="">Впереди</span></footer>
     </article>
   </section>
   <section id="audio-panel" hidden role="dialog" aria-modal="true" aria-labelledby="audio-title">
@@ -117,12 +126,7 @@
     <input id="audio-ambience" data-audio-setting="ambience" type="range" min="0" max="100" step="1">
     <button id="audio-mute" type="button" aria-pressed="false">Выключить звук</button>
     <button id="restart" type="button" aria-label="Начать игру заново" title="Начать игру заново">
-      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-        <g stroke="#4b3020" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M35 14a16 16 0 1 1-22 0l-4-4 16-2-3 16-4-5a9 9 0 1 0 12 0z" fill="#82964f"/>
-          <path d="m12 12 9-1-2 9M35 27a11 11 0 0 1-8 9" fill="none" stroke="#c4d18b" stroke-width="1.8"/>
-        </g>
-      </svg>
+      <img src="assets/ui/ui-hud-restart.webp" width="30" height="30" alt="" decoding="async">
       <span>Начать заново</span>
     </button>
     <small id="audio-credit">Музыка: Suno · звуковые эффекты: CardboardQuest</small>
@@ -133,7 +137,13 @@
     <header><strong>Диагностика загрузки</strong><span id="load-debug-current">HTML готов · ожидаю app.js</span></header>
     <ol id="load-debug-list"><li data-state="ready">HTML-оболочка · готова</li></ol>
   </aside>
-  <script type="module" src="app.js?v=249"></script>
+    <aside id="save-status" hidden role="status" aria-live="polite">
+      <p data-save-message></p>
+      <button type="button" data-save-retry>Повторить сохранение</button>
+      <button type="button" data-save-export>Скачать поход</button>
+      <button type="button" data-save-dismiss>Понятно</button>
+    </aside>
+    <script src="bootstrap.js?v=7c14a71de3a9af87"></script>
 </body>
 </html>
 

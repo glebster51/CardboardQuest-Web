@@ -1,4 +1,4 @@
-import { createDefaultFogPaths, fogPathRadiusAt } from '../fog-paths.mjs?v=2';
+import { reconcileFogPaths } from '../fog-paths.mjs?v=7c14a71de3a9af87';
 
 export const CAMPAIGN_GRAPH_FORMAT = 'cardboardquest.campaign-graph.v1';
 
@@ -86,26 +86,7 @@ export function applyCampaignGraphToLocation(location, graph) {
       ...(location.arrivals?.[source.id]?.rotationY != null ? { rotationY: location.arrivals[source.id].rotationY } : {}) };
   }
   location.arrivals = incoming;
-  const previous = new Map((location.fogPaths?.paths ?? []).map(path => [path.id, path]));
-  const base = createDefaultFogPaths({ entry: location.entry, arrivals: incoming });
-  const oldCenter = previous.values().next().value?.points?.at(-1);
-  if (oldCenter) for (const path of base.paths) {
-    const old = previous.get(path.id);
-    if (old) {
-      path.points = clone(old.points);
-      if (old.radii) path.radii = clone(old.radii);
-      const start = path.id === 'entry' ? location.entry : incoming[path.id.slice('arrival:'.length)];
-      if (start) path.points[0] = [start.x, start.z];
-    }
-    else {
-      const start = path.points[0], end = oldCenter;
-      path.points = [start, ...[.25, .5, .75].map(t => [start[0] + (end[0] - start[0]) * t,
-        start[1] + (end[1] - start[1]) * t]), [...end]];
-      const firstOld = previous.values().next().value;
-      const centerRadius = fogPathRadiusAt(firstOld, firstOld.points.length - 1);
-      if (centerRadius !== 1) path.radii = path.points.map((_, index) => index === path.points.length - 1 ? centerRadius : 1);
-    }
-  }
+  const base = reconcileFogPaths({ entry:location.entry, arrivals:incoming },location.fogPaths);
   location.fogPaths = base;
   location.edgeShade?.updatePaths(base);
   return true;
