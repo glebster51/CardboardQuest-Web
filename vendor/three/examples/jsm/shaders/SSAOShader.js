@@ -1,7 +1,7 @@
 import {
 	Matrix4,
 	Vector2
-} from '../../../build/three.module.js?v=7c14a71de3a9af87';
+} from '../../../build/three.module.js?v=ab782efa5048549c';
 
 /**
  * @module SSAOShader

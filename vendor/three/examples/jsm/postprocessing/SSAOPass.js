@@ -21,11 +21,11 @@ import {
 	Vector3,
 	WebGLRenderTarget,
 	ZeroFactor
-} from '../../../build/three.module.js?v=7c14a71de3a9af87';
-import { Pass, FullScreenQuad } from './Pass.js?v=7c14a71de3a9af87';
-import { SimplexNoise } from '../math/SimplexNoise.js?v=7c14a71de3a9af87';
-import { SSAOBlurShader, SSAODepthShader, SSAOShader } from '../shaders/SSAOShader.js?v=7c14a71de3a9af87';
-import { CopyShader } from '../shaders/CopyShader.js?v=7c14a71de3a9af87';
+} from '../../../build/three.module.js?v=ab782efa5048549c';
+import { Pass, FullScreenQuad } from './Pass.js?v=ab782efa5048549c';
+import { SimplexNoise } from '../math/SimplexNoise.js?v=ab782efa5048549c';
+import { SSAOBlurShader, SSAODepthShader, SSAOShader } from '../shaders/SSAOShader.js?v=ab782efa5048549c';
+import { CopyShader } from '../shaders/CopyShader.js?v=ab782efa5048549c';
 
 /**
  * A pass for a basic SSAO effect.

@@ -1,4 +1,4 @@
-import { markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
+import { markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=ab782efa5048549c';
 
 const GROUND_DECALS = [
   'ground-v2-pit', 'ground-v2-grass-ring', 'ground-v2-dirt-patch', 'ground-v2-footprints',

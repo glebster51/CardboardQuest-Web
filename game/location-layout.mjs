@@ -1,6 +1,6 @@
-import { extractTerrainContours, smoothClosedContour } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
-import { EXIT_FOG_ENTRY_OFFSET, EXIT_FOG_EXIT_EXTENSION } from '../exit-fog.mjs?v=7c14a71de3a9af87';
-import { distanceToPolygon, hazardAtPoint, pointInPolygon } from './world-hazards.mjs?v=7c14a71de3a9af87';
+import { extractTerrainContours, smoothClosedContour } from '../terrain-shapes.mjs?v=ab782efa5048549c';
+import { EXIT_FOG_ENTRY_OFFSET, EXIT_FOG_EXIT_EXTENSION } from '../exit-fog.mjs?v=ab782efa5048549c';
+import { distanceToPolygon, hazardAtPoint, pointInPolygon } from './world-hazards.mjs?v=ab782efa5048549c';
 
 // Corridor centre-lines, room ellipses, and widths in unscaled tabletop units.
 // Every branch starts at the safe story point (0,0); its last point is an exit.

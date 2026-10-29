@@ -1,5 +1,5 @@
-import {pointInPolygon} from '../game/world-hazards.mjs?v=7c14a71de3a9af87';
-import {smoothClosedContour} from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
+import {pointInPolygon} from '../game/world-hazards.mjs?v=ab782efa5048549c';
+import {smoothClosedContour} from '../terrain-shapes.mjs?v=ab782efa5048549c';
 
 /** Close a through hole one terrace below the lowest exposed floor, rather than
  * at the density texture's artificial lower cutoff. Keep real deep caves above it.

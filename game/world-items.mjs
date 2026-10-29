@@ -1,5 +1,5 @@
-import { EQUIPMENT_ITEMS } from './equipment.mjs?v=7c14a71de3a9af87';
-import { rollCoins, validCoinDrop } from './currency.mjs?v=7c14a71de3a9af87';
+import { EQUIPMENT_ITEMS } from './equipment.mjs?v=ab782efa5048549c';
+import { rollCoins, validCoinDrop } from './currency.mjs?v=ab782efa5048549c';
 export const LOOT_ITEM_IDS = Object.freeze([
   'berries', 'hardtack', 'jerky', 'bandage', 'scrap', 'nuts', 'bladeShard',
   ...EQUIPMENT_ITEMS.map(item => item.id),

@@ -1,4 +1,4 @@
-import {terrainVolumeSlice,TERRAIN_DENSITY_SCALE} from '../game/terrain-volume.mjs?v=7c14a71de3a9af87';
+import {terrainVolumeSlice,TERRAIN_DENSITY_SCALE} from '../game/terrain-volume.mjs?v=ab782efa5048549c';
 
 /** Only exterior-connected air needs a surface. Keep the editable volume intact:
  * a later tunnel can expose a cavity that currently has no rendered geometry.

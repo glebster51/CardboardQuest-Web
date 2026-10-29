@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=7c14a71de3a9af87">
+  <link rel="stylesheet" href="style.css?v=ab782efa5048549c">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
@@ -65,13 +65,17 @@
         <img id="story-portrait" alt="" hidden>
         <span id="story-pocket-thickness"></span>
       </aside>
-      <div id="story-copy">
-      <strong id="story-title"></strong>
-      <strong id="story-speaker"></strong>
-      <p id="story-text"></p>
-      <small id="story-progress"></small>
-      <div id="story-options"></div>
-      <button id="story-close" type="button">Дальше →</button>
+      <div id="story-layout">
+        <div id="story-copy">
+          <strong id="story-title"></strong>
+          <strong id="story-speaker"></strong>
+          <p id="story-text" aria-live="polite"></p>
+          <div id="story-progress"></div>
+        </div>
+        <footer class="dialogue-actions">
+          <div id="story-options"></div>
+          <button id="story-close" type="button">Дальше →</button>
+        </footer>
       </div>
     </article>
   </section>
@@ -143,7 +147,7 @@
       <button type="button" data-save-export>Скачать поход</button>
       <button type="button" data-save-dismiss>Понятно</button>
     </aside>
-    <script src="bootstrap.js?v=7c14a71de3a9af87"></script>
+    <script src="bootstrap.js?v=ab782efa5048549c"></script>
 </body>
 </html>
 

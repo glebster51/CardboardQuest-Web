@@ -1,4 +1,4 @@
-import { hideUIWindow, indicateUIChange, showUIWindow } from '../render/ui-window-motion.mjs?v=7c14a71de3a9af87';
+import { hideUIWindow, indicateUIChange, showUIWindow } from '../render/ui-window-motion.mjs?v=ab782efa5048549c';
 
 /** Game settings panel; settings are independent of campaign saves and restart. */
 export function createAudioControls({ audio, root, trigger, onOpen }) {

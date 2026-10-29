@@ -1,9 +1,9 @@
-import * as THREE from './vendor/three/build/three.module.js?v=7c14a71de3a9af87';
-import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=7c14a71de3a9af87';
-import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=7c14a71de3a9af87';
-import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
-import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=7c14a71de3a9af87';
-import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=7c14a71de3a9af87';
+import * as THREE from './vendor/three/build/three.module.js?v=ab782efa5048549c';
+import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=ab782efa5048549c';
+import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=ab782efa5048549c';
+import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=ab782efa5048549c';
+import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=ab782efa5048549c';
+import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=ab782efa5048549c';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);

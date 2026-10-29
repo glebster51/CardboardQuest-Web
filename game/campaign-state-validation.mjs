@@ -1,4 +1,4 @@
-import { normalizeStatusEffects } from './status-effects.mjs?v=7c14a71de3a9af87';
+import { normalizeStatusEffects } from './status-effects.mjs?v=ab782efa5048549c';
 
 export const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const finiteNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;

@@ -1,13 +1,11 @@
-/** Pick the closest living enemy whose encounter has been triggered. */
-export function nearestAwakeThreat(player, enemies) {
-  let nearest = null, nearestDistance = Infinity;
+/** Find the equally weighted center of the player and active, living enemies. */
+export function combatCenterOfMass(player, enemies) {
+  let x = player.x, z = player.z, count = 1;
   for (const enemy of enemies) {
     if (enemy.health <= 0 || !enemy.combatAwake || enemy.fell || enemy.poolDormant || enemy.spawnReady === false) continue;
-    const dx = enemy.x - player.x, dz = enemy.z - player.z;
-    const distance = dx * dx + dz * dz;
-    if (distance < nearestDistance) { nearest = enemy; nearestDistance = distance; }
+    x += enemy.x; z += enemy.z; count++;
   }
-  return nearest;
+  return { x: x / count, z: z / count, count };
 }
 
 /** Smoothly yaw the camera toward a horizontal direction, looking from behind it. */

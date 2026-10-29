@@ -1,16 +1,16 @@
-import { OGRE_DEFAULTS, normalizeOgreSettings, validateOgreSettings, upgradeOgreSceneDiff } from '../bosses/ogre/settings.mjs?v=7c14a71de3a9af87';
+import { OGRE_DEFAULTS, normalizeOgreSettings, validateOgreSettings, upgradeOgreSceneDiff } from '../bosses/ogre/settings.mjs?v=ab782efa5048549c';
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
 export const SCENE_BUILD = '228';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=7c14a71de3a9af87';
-import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7c14a71de3a9af87';
-import { validateFogPaths } from '../fog-paths.mjs?v=7c14a71de3a9af87';
-import { validateCampaignGraph } from '../game/campaign-graph.mjs?v=7c14a71de3a9af87';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=7c14a71de3a9af87';
-import { normalizeEnemySpawner } from '../game/enemy-spawners.mjs?v=7c14a71de3a9af87';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=7c14a71de3a9af87';
-import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=7c14a71de3a9af87';
-import { GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT } from '../ground-grid-settings.mjs?v=7c14a71de3a9af87';
-import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=ab782efa5048549c';
+import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=ab782efa5048549c';
+import { validateFogPaths } from '../fog-paths.mjs?v=ab782efa5048549c';
+import { validateCampaignGraph } from '../game/campaign-graph.mjs?v=ab782efa5048549c';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=ab782efa5048549c';
+import { normalizeEnemySpawner } from '../game/enemy-spawners.mjs?v=ab782efa5048549c';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=ab782efa5048549c';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=ab782efa5048549c';
+import { GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT } from '../ground-grid-settings.mjs?v=ab782efa5048549c';
+import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=ab782efa5048549c';
 export { FOG_DEFAULTS };
 export const PLAYER_REVEAL_KEYS = ['revealEnabled', 'revealInnerRadius', 'revealOuterRadius', 'revealNoiseEnabled',
   'revealNoiseType', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply', 'revealNoiseSpeedX',

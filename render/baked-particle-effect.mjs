@@ -1,4 +1,4 @@
-import { FOURIER_PARTICLE_CODEC, sampleFourierParticleTrack, validateFourierParticleData } from './baked-particle-curves.mjs?v=7c14a71de3a9af87';
+import { FOURIER_PARTICLE_CODEC, sampleFourierParticleTrack, validateFourierParticleData } from './baked-particle-curves.mjs?v=ab782efa5048549c';
 // Unity owns simulation; the game evaluates a compact Fourier curve bake.
 export const BAKED_PARTICLE_STRIDE = 28;
 

@@ -1,4 +1,4 @@
-import {terrainGroundContains} from './terrain-ground-domain.mjs?v=7c14a71de3a9af87';
+import {terrainGroundContains} from './terrain-ground-domain.mjs?v=ab782efa5048549c';
 
 export function pointInPolygon(x, z, points) {
   let inside = false;

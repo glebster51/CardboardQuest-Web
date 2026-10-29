@@ -1,8 +1,8 @@
 // Signed density stored as an R8 3D texture: 128 is the solid/air boundary.
 // Layout matches Data3DTexture: x + width * (y + height * z).
 export const TERRAIN_DENSITY_SCALE = 24;
-import {TERRAIN_MAX_STROKES,TERRAIN_MAX_POINTS,TERRAIN_MAX_STROKE_POINTS,isHeightStroke,terrainHeightAfterDab} from './terrain-brush.mjs?v=7c14a71de3a9af87';
-import {isLayerRepair,applyTerrainLayerRepair} from './terrain-layer-tools.mjs?v=7c14a71de3a9af87';
+import {TERRAIN_MAX_STROKES,TERRAIN_MAX_POINTS,TERRAIN_MAX_STROKE_POINTS,isHeightStroke,terrainHeightAfterDab} from './terrain-brush.mjs?v=ab782efa5048549c';
+import {isLayerRepair,applyTerrainLayerRepair} from './terrain-layer-tools.mjs?v=ab782efa5048549c';
 export {TERRAIN_MAX_STROKES,TERRAIN_MAX_POINTS,TERRAIN_MAX_STROKE_POINTS};
 const encode=value=>Math.max(0,Math.min(255,Math.round(128+value*TERRAIN_DENSITY_SCALE)));
 const decode=value=>(value-128)/TERRAIN_DENSITY_SCALE;

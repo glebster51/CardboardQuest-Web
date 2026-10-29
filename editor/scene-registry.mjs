@@ -1,14 +1,14 @@
-import { OGRE_DEFAULTS, normalizeOgreSettings } from '../bosses/ogre/settings.mjs?v=7c14a71de3a9af87';
+import { OGRE_DEFAULTS, normalizeOgreSettings } from '../bosses/ogre/settings.mjs?v=ab782efa5048549c';
 import { createEditModel, FOG_DEFAULTS, PLAYER_REVEAL_DEFAULTS, PLAYER_REVEAL_KEYS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT,
-  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './edit-model.mjs?v=7c14a71de3a9af87';
-import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=7c14a71de3a9af87';
-import { createExitBarrierBodies } from '../location-network.mjs?v=7c14a71de3a9af87';
-import { createDefaultFogPaths } from '../fog-paths.mjs?v=7c14a71de3a9af87';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=7c14a71de3a9af87';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=7c14a71de3a9af87';
-import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=7c14a71de3a9af87';
-import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
-import { sceneryAuthoredY, applySceneryGrounding } from '../render/scenery-grounding.mjs?v=7c14a71de3a9af87';
+  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './edit-model.mjs?v=ab782efa5048549c';
+import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=ab782efa5048549c';
+import { createExitBarrierBodies } from '../location-network.mjs?v=ab782efa5048549c';
+import { createDefaultFogPaths } from '../fog-paths.mjs?v=ab782efa5048549c';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=ab782efa5048549c';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=ab782efa5048549c';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=ab782efa5048549c';
+import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=ab782efa5048549c';
+import { sceneryAuthoredY, applySceneryGrounding } from '../render/scenery-grounding.mjs?v=ab782efa5048549c';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
 export function createSceneRegistry({ THREE, overrides, savedDiff = null, locationIds = [], setFog, getActiveLocationId = () => null,

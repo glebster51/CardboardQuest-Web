@@ -1,107 +1,107 @@
-import { OGRE_SETTINGS, loadOgreSettings, setOgreSettings } from './bosses/ogre/settings.mjs?v=7c14a71de3a9af87';
-import * as THREE from './vendor/three/build/three.module.js?v=7c14a71de3a9af87';
-import { getBrowserStorage, createMemoryStorage } from './storage.mjs?v=7c14a71de3a9af87';
-import { createCampaignSaveRepository } from './game/campaign-save.mjs?v=7c14a71de3a9af87';
-import { createSaveStatus } from './render/save-status.mjs?v=7c14a71de3a9af87';
-import { createGameAudio } from './audio/game-audio.mjs?v=7c14a71de3a9af87';
-import { createAudioControls } from './audio/audio-controls.mjs?v=7c14a71de3a9af87';
-import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=7c14a71de3a9af87';
-import { createLocationStreaming } from './game/location-streaming.mjs?v=7c14a71de3a9af87';
-import { createGeometryClient } from './render/geometry-client.mjs?v=7c14a71de3a9af87';
-import { attachSceneryToTerrain, regroundLocationScenery } from './render/scenery-grounding.mjs?v=7c14a71de3a9af87';
-import { installTerrainVolumeTexture } from './render/terrain-volume-texture.mjs?v=7c14a71de3a9af87';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=7c14a71de3a9af87';
-import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs?v=7c14a71de3a9af87';
-import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=7c14a71de3a9af87';
-import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=7c14a71de3a9af87';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=7c14a71de3a9af87';
-import { createPlayerOcclusionDither, playerRevealRadiusScale } from './render/player-occlusion-dither.mjs?v=7c14a71de3a9af87';
-import { applyCardboardOcclusionStencil } from './render/enemy-occlusion-silhouette.mjs?v=7c14a71de3a9af87';
-import { createHexTiltShiftShader, createPostEffectInputShader, createTiltShiftCompositeShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=7c14a71de3a9af87';
-import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=7c14a71de3a9af87';
-import { hideUIWindow, indicateUIChange, installUIFeedback, showUIWindow } from './render/ui-window-motion.mjs?v=7c14a71de3a9af87';
-import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=7c14a71de3a9af87';
-import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
-import { SCENE_OVERRIDES as RELEASE_SCENE_OVERRIDES } from './scene-overrides.mjs?v=7c14a71de3a9af87';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=7c14a71de3a9af87';
-import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=7c14a71de3a9af87';
-import { clearLocalEditorDraft, isLocalEditorOrigin } from './editor/release-local-editor-state.mjs?v=7c14a71de3a9af87';
-import { connectLocalEditor, loadLocalEditorUi } from './editor/release-local-editor-client.mjs?v=7c14a71de3a9af87';
-import { ASSET_CATALOG, catalogAsset } from './editor/asset-catalog.mjs?v=7c14a71de3a9af87';
-import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=7c14a71de3a9af87';
-import { CARDBOARD_DAMAGE_DEFAULTS, cardboardDamageStageForHealth, cardboardPropDamageStageForHealth, applyCardboardPropHit, updateCardboardDamageTree } from './cardboard-damage.mjs?v=7c14a71de3a9af87';
-import { advanceEnemyAI } from './game/enemy-ai.mjs?v=7c14a71de3a9af87';
+import { OGRE_SETTINGS, loadOgreSettings, setOgreSettings } from './bosses/ogre/settings.mjs?v=ab782efa5048549c';
+import * as THREE from './vendor/three/build/three.module.js?v=ab782efa5048549c';
+import { getBrowserStorage, createMemoryStorage } from './storage.mjs?v=ab782efa5048549c';
+import { createCampaignSaveRepository } from './game/campaign-save.mjs?v=ab782efa5048549c';
+import { createSaveStatus } from './render/save-status.mjs?v=ab782efa5048549c';
+import { createGameAudio } from './audio/game-audio.mjs?v=ab782efa5048549c';
+import { createAudioControls } from './audio/audio-controls.mjs?v=ab782efa5048549c';
+import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=ab782efa5048549c';
+import { createLocationStreaming } from './game/location-streaming.mjs?v=ab782efa5048549c';
+import { createGeometryClient } from './render/geometry-client.mjs?v=ab782efa5048549c';
+import { attachSceneryToTerrain, regroundLocationScenery } from './render/scenery-grounding.mjs?v=ab782efa5048549c';
+import { installTerrainVolumeTexture } from './render/terrain-volume-texture.mjs?v=ab782efa5048549c';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=ab782efa5048549c';
+import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs?v=ab782efa5048549c';
+import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=ab782efa5048549c';
+import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=ab782efa5048549c';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=ab782efa5048549c';
+import { createPlayerOcclusionDither, playerRevealRadiusScale } from './render/player-occlusion-dither.mjs?v=ab782efa5048549c';
+import { applyCardboardOcclusionStencil } from './render/enemy-occlusion-silhouette.mjs?v=ab782efa5048549c';
+import { createHexTiltShiftShader, createPostEffectInputShader, createTiltShiftCompositeShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=ab782efa5048549c';
+import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=ab782efa5048549c';
+import { hideUIWindow, indicateUIChange, installUIFeedback, showUIWindow } from './render/ui-window-motion.mjs?v=ab782efa5048549c';
+import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=ab782efa5048549c';
+import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=ab782efa5048549c';
+import { SCENE_OVERRIDES as RELEASE_SCENE_OVERRIDES } from './scene-overrides.mjs?v=ab782efa5048549c';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=ab782efa5048549c';
+import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=ab782efa5048549c';
+import { clearLocalEditorDraft, isLocalEditorOrigin } from './editor/release-local-editor-state.mjs?v=ab782efa5048549c';
+import { connectLocalEditor, loadLocalEditorUi } from './editor/release-local-editor-client.mjs?v=ab782efa5048549c';
+import { ASSET_CATALOG, catalogAsset } from './editor/asset-catalog.mjs?v=ab782efa5048549c';
+import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=ab782efa5048549c';
+import { CARDBOARD_DAMAGE_DEFAULTS, cardboardDamageStageForHealth, cardboardPropDamageStageForHealth, applyCardboardPropHit, updateCardboardDamageTree } from './cardboard-damage.mjs?v=ab782efa5048549c';
+import { advanceEnemyAI } from './game/enemy-ai.mjs?v=ab782efa5048549c';
 import { advanceEarthShatterWave, createEarthShatterWave, earthShatterRockCanDamage,
   createEarthShatterKnockback,
-  earthShatterAttackPoseActive } from './game/earth-shatter.mjs?v=7c14a71de3a9af87';
-import { groundSlamProgress, groundSlamJumpHeight, groundSlamContains, createGroundSlamKnockback } from './bosses/ogre/ground-slam.mjs?v=7c14a71de3a9af87';
-import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=7c14a71de3a9af87';
-import { sampleOpeningCinematic } from './game/opening-cinematic.mjs?v=7c14a71de3a9af87';
-import { createInspectionTrigger } from './game/inspection-trigger.mjs?v=7c14a71de3a9af87';
-import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=7c14a71de3a9af87';
-import { createEntryCheckpoint, createLocationStartCheckpoint, restoreCampaignCheckpointAfterDeath } from './game/campaign-checkpoint.mjs?v=7c14a71de3a9af87';
-import { captureDeathResumeSnapshot, restoreDeathResumeSnapshot } from './game/death-recovery.mjs?v=7c14a71de3a9af87';
-import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=7c14a71de3a9af87';
-import { advanceEnemySpawner, ENEMY_SPAWNER_DEFAULTS, isEnemySpawnerRequestCurrent, normalizeEnemySpawner } from './game/enemy-spawners.mjs?v=7c14a71de3a9af87';
-import { advanceDayNightClock, DAY_NIGHT_STATES, resetEncounterSnapshot } from './game/day-night.mjs?v=7c14a71de3a9af87';
-import { advanceStoneProjectile, projectileStatusEffect } from './game/projectiles.mjs?v=7c14a71de3a9af87';
-import { createPointerInput } from './game/pointer-input.mjs?v=7c14a71de3a9af87';
-import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=7c14a71de3a9af87';
-import { followDirection, followMotion, nearestAwakeThreat } from './render/camera-follow.mjs?v=7c14a71de3a9af87';
-import { getStoryDialogue } from './game/story-dialogue.mjs?v=7c14a71de3a9af87';
-import { createDialoguePanel } from './render/dialogue-panel.mjs?v=7c14a71de3a9af87';
-import { createLocationMapView } from './render/location-map-view.mjs?v=7c14a71de3a9af87';
-import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=7c14a71de3a9af87';
-import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=7c14a71de3a9af87';
-import { buildLocationMapGraph } from './game/location-map-data.mjs?v=7c14a71de3a9af87';
-import { createInventoryPanel } from './render/inventory-panel.mjs?v=7c14a71de3a9af87';
-import { EQUIPMENT_ITEMS, combatBonuses, equipInventoryItem, unequipItem, grantEquipmentStarter, playerDamageTaken } from './game/equipment.mjs?v=7c14a71de3a9af87';
-import { createCharacterEquipment } from './render/character-equipment.mjs?v=7c14a71de3a9af87';
-import { COIN_SKINS, coinSkin, creditCoins, rollCoins } from './game/currency.mjs?v=7c14a71de3a9af87';
-import { executeMerchantTrade, canReachMerchant, merchantDefinition } from './game/merchants.mjs?v=7c14a71de3a9af87';
-import { createLocationMerchants, createMerchantActor } from './render/merchants.mjs?v=7c14a71de3a9af87';
-import { createShopPanel } from './render/shop-panel.mjs?v=7c14a71de3a9af87';
-import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=7c14a71de3a9af87';
-import { createFigureFactory } from './render/figure-factory.mjs?v=7c14a71de3a9af87';
-import { updateFigureHitFlash } from './render/figure-hit-flash.mjs?v=7c14a71de3a9af87';
-import { createEarthShatterVisual, createEarthShatterWarning, createGroundSlamWarning } from './render/earth-shatter.mjs?v=7c14a71de3a9af87';
-import { loadRockEffectAssets } from './render/rock-effect-animation.mjs?v=7c14a71de3a9af87';
-import { createGroundRenderer } from './render/ground-renderer.mjs?v=7c14a71de3a9af87';
-import { createScenePlaceholder, updateScenePlaceholderName } from './render/scene-placeholder.mjs?v=7c14a71de3a9af87';
-import { createGroundGrid } from './render/ground-grid.mjs?v=7c14a71de3a9af87';
-import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=7c14a71de3a9af87';
-import { createScenerySystem } from './render/scenery-system.mjs?v=7c14a71de3a9af87';
-import { sceneryFaceForCamera } from './scenery-face.mjs?v=7c14a71de3a9af87';
-import { cardboardFallGroundOffset } from './scenery-layout.mjs?v=7c14a71de3a9af87';
-import { populateNarrativeScenery } from './render/location-scenery.mjs?v=7c14a71de3a9af87';
-import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=7c14a71de3a9af87';
-import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=7c14a71de3a9af87';
-import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=7c14a71de3a9af87';
-import { createVectorMarker as makeVectorMarker, resizeRingGeometry } from './render/vector-marker.mjs?v=7c14a71de3a9af87';
-import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, refillCharges, playerChargeRechargeInterval } from './charge-recharge.mjs?v=7c14a71de3a9af87';
+  earthShatterAttackPoseActive } from './game/earth-shatter.mjs?v=ab782efa5048549c';
+import { groundSlamProgress, groundSlamJumpHeight, groundSlamContains, createGroundSlamKnockback } from './bosses/ogre/ground-slam.mjs?v=ab782efa5048549c';
+import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=ab782efa5048549c';
+import { sampleOpeningCinematic } from './game/opening-cinematic.mjs?v=ab782efa5048549c';
+import { createInspectionTrigger } from './game/inspection-trigger.mjs?v=ab782efa5048549c';
+import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=ab782efa5048549c';
+import { createEntryCheckpoint, createLocationStartCheckpoint, restoreCampaignCheckpointAfterDeath } from './game/campaign-checkpoint.mjs?v=ab782efa5048549c';
+import { captureDeathResumeSnapshot, restoreDeathResumeSnapshot } from './game/death-recovery.mjs?v=ab782efa5048549c';
+import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=ab782efa5048549c';
+import { advanceEnemySpawner, ENEMY_SPAWNER_DEFAULTS, isEnemySpawnerRequestCurrent, normalizeEnemySpawner } from './game/enemy-spawners.mjs?v=ab782efa5048549c';
+import { advanceDayNightClock, DAY_NIGHT_STATES, resetEncounterSnapshot } from './game/day-night.mjs?v=ab782efa5048549c';
+import { advanceStoneProjectile, projectileStatusEffect } from './game/projectiles.mjs?v=ab782efa5048549c';
+import { createPointerInput } from './game/pointer-input.mjs?v=ab782efa5048549c';
+import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=ab782efa5048549c';
+import { followDirection, followMotion, combatCenterOfMass } from './render/camera-follow.mjs?v=ab782efa5048549c';
+import { getStoryDialogue } from './game/story-dialogue.mjs?v=ab782efa5048549c';
+import { createDialoguePanel } from './render/dialogue-panel.mjs?v=ab782efa5048549c';
+import { createLocationMapView } from './render/location-map-view.mjs?v=ab782efa5048549c';
+import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=ab782efa5048549c';
+import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=ab782efa5048549c';
+import { buildLocationMapGraph } from './game/location-map-data.mjs?v=ab782efa5048549c';
+import { createInventoryPanel } from './render/inventory-panel.mjs?v=ab782efa5048549c';
+import { EQUIPMENT_ITEMS, combatBonuses, equipInventoryItem, unequipItem, grantEquipmentStarter, playerDamageTaken } from './game/equipment.mjs?v=ab782efa5048549c';
+import { createCharacterEquipment } from './render/character-equipment.mjs?v=ab782efa5048549c';
+import { COIN_SKINS, coinSkin, creditCoins, rollCoins } from './game/currency.mjs?v=ab782efa5048549c';
+import { executeMerchantTrade, canReachMerchant, merchantDefinition } from './game/merchants.mjs?v=ab782efa5048549c';
+import { createLocationMerchants, createMerchantActor } from './render/merchants.mjs?v=ab782efa5048549c';
+import { createShopPanel } from './render/shop-panel.mjs?v=ab782efa5048549c';
+import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=ab782efa5048549c';
+import { createFigureFactory } from './render/figure-factory.mjs?v=ab782efa5048549c';
+import { updateFigureHitFlash } from './render/figure-hit-flash.mjs?v=ab782efa5048549c';
+import { createEarthShatterVisual, createEarthShatterWarning, createGroundSlamWarning } from './render/earth-shatter.mjs?v=ab782efa5048549c';
+import { loadRockEffectAssets } from './render/rock-effect-animation.mjs?v=ab782efa5048549c';
+import { createGroundRenderer } from './render/ground-renderer.mjs?v=ab782efa5048549c';
+import { createScenePlaceholder, updateScenePlaceholderName } from './render/scene-placeholder.mjs?v=ab782efa5048549c';
+import { createGroundGrid } from './render/ground-grid.mjs?v=ab782efa5048549c';
+import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=ab782efa5048549c';
+import { createScenerySystem } from './render/scenery-system.mjs?v=ab782efa5048549c';
+import { sceneryFaceForCamera } from './scenery-face.mjs?v=ab782efa5048549c';
+import { cardboardFallGroundOffset } from './scenery-layout.mjs?v=ab782efa5048549c';
+import { populateNarrativeScenery } from './render/location-scenery.mjs?v=ab782efa5048549c';
+import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=ab782efa5048549c';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=ab782efa5048549c';
+import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=ab782efa5048549c';
+import { createVectorMarker as makeVectorMarker, resizeRingGeometry } from './render/vector-marker.mjs?v=ab782efa5048549c';
+import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, refillCharges, playerChargeRechargeInterval } from './charge-recharge.mjs?v=ab782efa5048549c';
 import { heartHealthLevels, healthHeartRenderOrder, healthRestoreVisual, restoredHeartIndices,
-  ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=7c14a71de3a9af87';
-import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=7c14a71de3a9af87';
-import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=7c14a71de3a9af87';
-import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=7c14a71de3a9af87';
-import { recoverAfterFall } from './game/fall-recovery.mjs?v=7c14a71de3a9af87';
-import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, createCacheOpening } from './game/cache-animation.mjs?v=7c14a71de3a9af87';
+  ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=ab782efa5048549c';
+import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=ab782efa5048549c';
+import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=ab782efa5048549c';
+import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=ab782efa5048549c';
+import { recoverAfterFall } from './game/fall-recovery.mjs?v=ab782efa5048549c';
+import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, createCacheOpening } from './game/cache-animation.mjs?v=ab782efa5048549c';
 import { CAMPAIGN, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
-  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=7c14a71de3a9af87';
-import { locationNeedsLootSprites, normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot, unlockDroppedLootAfterLeaving, WORLD_ITEM_IDS } from './game/world-items.mjs?v=7c14a71de3a9af87';
-import { INVENTORY_ITEMS, removeInventoryItem } from './game/inventory-items.mjs?v=7c14a71de3a9af87';
+  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=ab782efa5048549c';
+import { locationNeedsLootSprites, normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot, unlockDroppedLootAfterLeaving, WORLD_ITEM_IDS } from './game/world-items.mjs?v=ab782efa5048549c';
+import { INVENTORY_ITEMS, removeInventoryItem } from './game/inventory-items.mjs?v=ab782efa5048549c';
 import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
-  ITEM_MAGNET_STORAGE_KEY, itemMagnetRadiusForItem, normalizeItemMagnetSettings, sampleItemMagnetMotion } from './game/item-magnet.mjs?v=7c14a71de3a9af87';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=7c14a71de3a9af87';
-import { createPerformanceProfiler } from './diagnostics/release-performance-profiler.mjs?v=7c14a71de3a9af87';
+  ITEM_MAGNET_STORAGE_KEY, itemMagnetRadiusForItem, normalizeItemMagnetSettings, sampleItemMagnetMotion } from './game/item-magnet.mjs?v=ab782efa5048549c';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=ab782efa5048549c';
+import { createPerformanceProfiler } from './diagnostics/release-performance-profiler.mjs?v=ab782efa5048549c';
 import { advanceStatusEffects, advanceStatusLocations, applyConsumableEffect, applyStatusEffect,
-  statusEffectLabels } from './game/status-effects.mjs?v=7c14a71de3a9af87';
-import { isMobileRenderTarget, localRenderFps, renderQualityProfile } from './game/frame-rate.mjs?v=7c14a71de3a9af87';
+  statusEffectLabels } from './game/status-effects.mjs?v=ab782efa5048549c';
+import { isMobileRenderTarget, localRenderFps, renderQualityProfile } from './game/frame-rate.mjs?v=ab782efa5048549c';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,
-  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=7c14a71de3a9af87';
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=ab782efa5048549c';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -334,9 +334,9 @@ async function start() {
     if (postProcessingPromise) return postProcessingPromise;
     postProcessingPromise = (async () => { try {
       const [composerModule, ssaoModule, shaderPassModule] = await Promise.all([
-        import("./vendor/three/examples/jsm/postprocessing/EffectComposer.js?v=7c14a71de3a9af87"),
-        import("./vendor/three/examples/jsm/postprocessing/SSAOPass.js?v=7c14a71de3a9af87"),
-        import("./vendor/three/examples/jsm/postprocessing/ShaderPass.js?v=7c14a71de3a9af87"),
+        import("./vendor/three/examples/jsm/postprocessing/EffectComposer.js?v=ab782efa5048549c"),
+        import("./vendor/three/examples/jsm/postprocessing/SSAOPass.js?v=ab782efa5048549c"),
+        import("./vendor/three/examples/jsm/postprocessing/ShaderPass.js?v=ab782efa5048549c"),
       ]);
       const target = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat,
         type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false });
@@ -3227,9 +3227,10 @@ async function start() {
     if (followMovement && dt > 0) {
       cameraManualOverride = Math.max(0, cameraManualOverride - dt);
       if (cameraManualOverride === 0 && !inputController.isOrbiting() && !inputController.isAiming()) {
-        const threat = heroBody.health > 0 ? nearestAwakeThreat(heroBody, activeLocation.enemies) : null;
-        orbit.theta = threat
-          ? followDirection(orbit.theta, threat.x - heroBody.x, threat.z - heroBody.z, dt)
+        const focus = heroBody.health > 0 ? combatCenterOfMass(heroBody, activeLocation.enemies) : null;
+        const focusX = focus ? focus.x - heroBody.x : 0, focusZ = focus ? focus.z - heroBody.z : 0;
+        orbit.theta = focus && Math.hypot(focusX, focusZ) >= .001
+          ? followDirection(orbit.theta, focusX, focusZ, dt)
           : followMotion(orbit.theta, heroBody.vx, heroBody.vz, dt);
       }
     }

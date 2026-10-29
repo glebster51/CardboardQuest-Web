@@ -1,5 +1,5 @@
-import { OGRE_SETTINGS as settings } from './settings.mjs?v=7c14a71de3a9af87';
-import { createEarthShatterKnockback } from '../../game/earth-shatter.mjs?v=7c14a71de3a9af87';
+import { OGRE_SETTINGS as settings } from './settings.mjs?v=ab782efa5048549c';
+import { createEarthShatterKnockback } from '../../game/earth-shatter.mjs?v=ab782efa5048549c';
 
 export const GROUND_SLAM_TRIGGER_DISTANCE = 2.6;
 export const GROUND_SLAM_RADIUS = 3.4;

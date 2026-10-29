@@ -1,11 +1,11 @@
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=7c14a71de3a9af87';
-import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=7c14a71de3a9af87';
-import { WALKABLE_POINTS } from '../physics.mjs?v=7c14a71de3a9af87';
-import { nearestPointOnPath } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
-import { sceneResources } from './scene-resources.mjs?v=7c14a71de3a9af87';
-import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
-import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
-import { attachSceneryToTerrain } from './scenery-grounding.mjs?v=7c14a71de3a9af87';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=ab782efa5048549c';
+import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=ab782efa5048549c';
+import { WALKABLE_POINTS } from '../physics.mjs?v=ab782efa5048549c';
+import { nearestPointOnPath } from '../terrain-shapes.mjs?v=ab782efa5048549c';
+import { sceneResources } from './scene-resources.mjs?v=ab782efa5048549c';
+import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=ab782efa5048549c';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=ab782efa5048549c';
+import { attachSceneryToTerrain } from './scenery-grounding.mjs?v=ab782efa5048549c';
 
 function propSeed(value) {
   let hash = 2166136261;

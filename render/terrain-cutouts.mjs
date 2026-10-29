@@ -1,4 +1,4 @@
-import { extractTerrainContours } from '../terrain-shapes.mjs?v=7c14a71de3a9af87';
+import { extractTerrainContours } from '../terrain-shapes.mjs?v=ab782efa5048549c';
 
 function signedDistance(x,z,polygon) {
   let inside=false,distance=Infinity;

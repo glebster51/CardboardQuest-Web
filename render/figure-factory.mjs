@@ -1,12 +1,12 @@
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=7c14a71de3a9af87';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=7c14a71de3a9af87';
-import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=7c14a71de3a9af87';
-import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=7c14a71de3a9af87';
-import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=7c14a71de3a9af87';
-import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=7c14a71de3a9af87';
-import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=7c14a71de3a9af87';
-import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=7c14a71de3a9af87';
-import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=7c14a71de3a9af87';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=ab782efa5048549c';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=ab782efa5048549c';
+import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=ab782efa5048549c';
+import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=ab782efa5048549c';
+import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=ab782efa5048549c';
+import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=ab782efa5048549c';
+import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=ab782efa5048549c';
+import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=ab782efa5048549c';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=ab782efa5048549c';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const damageSeed = value => {

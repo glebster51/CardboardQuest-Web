@@ -1,4 +1,4 @@
-import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=7c14a71de3a9af87';
+import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=ab782efa5048549c';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
