@@ -1,6 +1,6 @@
-import { validateVolumeStrokes, TERRAIN_MAX_STROKES, TERRAIN_MAX_POINTS, TERRAIN_MAX_STROKE_POINTS } from './terrain-volume.mjs?v=9c7aef8cf303e523';
-import { validateTerrainBake } from './terrain-bake.mjs?v=9c7aef8cf303e523';
-import {isHeightStroke,terrainOperations,terrainHeightAfterDab,terrainBrushSpacing} from './terrain-brush.mjs?v=9c7aef8cf303e523';
+import { validateVolumeStrokes, TERRAIN_MAX_STROKES, TERRAIN_MAX_POINTS, TERRAIN_MAX_STROKE_POINTS } from './terrain-volume.mjs?v=f484ba7b7b13e7f6';
+import { validateTerrainBake } from './terrain-bake.mjs?v=f484ba7b7b13e7f6';
+import {isHeightStroke,terrainOperations,terrainHeightAfterDab,terrainBrushSpacing} from './terrain-brush.mjs?v=f484ba7b7b13e7f6';
 export {terrainBrushSpacing};
 const MODES = new Set(['level', 'raise', 'lower']);
 export const TERRAIN_SCULPT_MAX_HEIGHT = 8;

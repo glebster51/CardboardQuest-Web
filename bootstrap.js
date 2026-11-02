@@ -9,7 +9,7 @@
     panel.append(text, retry); panel.hidden = false;
   }
   addEventListener('cq-start-error', event => showError(event.detail));
-  import("./app.js?v=9c7aef8cf303e523").catch(error => {
+  import("./app.js?v=f484ba7b7b13e7f6").catch(error => {
     console.error(error);
     showError('Не удалось загрузить игру. Проверь соединение и повтори загрузку.');
   });

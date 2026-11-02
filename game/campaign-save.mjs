@@ -1,5 +1,5 @@
-import { CAMPAIGN_SAVE_KEY, createCampaignState } from './story-campaign.mjs?v=9c7aef8cf303e523';
-import { isRecord } from './campaign-state-validation.mjs?v=9c7aef8cf303e523';
+import { CAMPAIGN_SAVE_KEY, createCampaignState } from './story-campaign.mjs?v=f484ba7b7b13e7f6';
+import { isRecord } from './campaign-state-validation.mjs?v=f484ba7b7b13e7f6';
 
 export const CAMPAIGN_BACKUP_KEY = `${CAMPAIGN_SAVE_KEY}-backup`;
 export const CAMPAIGN_RECOVERY_KEY = `${CAMPAIGN_SAVE_KEY}-recovery`;

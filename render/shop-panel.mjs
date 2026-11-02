@@ -1,7 +1,7 @@
-import { merchantDefinition, merchantStock, MERCHANT_BUYBACK_VALUES } from '../game/merchants.mjs?v=9c7aef8cf303e523';
-import { INVENTORY_ITEMS } from '../game/inventory-items.mjs?v=9c7aef8cf303e523';
-import { normalizeCoins } from '../game/currency.mjs?v=9c7aef8cf303e523';
-import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=9c7aef8cf303e523';
+import { merchantDefinition, merchantStock, MERCHANT_BUYBACK_VALUES } from '../game/merchants.mjs?v=f484ba7b7b13e7f6';
+import { INVENTORY_ITEMS } from '../game/inventory-items.mjs?v=f484ba7b7b13e7f6';
+import { normalizeCoins } from '../game/currency.mjs?v=f484ba7b7b13e7f6';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=f484ba7b7b13e7f6';
 
 /** Two-sided trade proposal: the save changes only after the player confirms it. */
 export function createShopPanel({ getState, onOpen, onTrade, onCommit }) {

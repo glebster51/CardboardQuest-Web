@@ -1,11 +1,12 @@
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=9c7aef8cf303e523';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=9c7aef8cf303e523';
-import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=9c7aef8cf303e523';
-import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=9c7aef8cf303e523';
-import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=9c7aef8cf303e523';
-import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=9c7aef8cf303e523';
-import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=9c7aef8cf303e523';
-import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=9c7aef8cf303e523';
+import { createFigureRegistry } from './figure-registry.mjs?v=f484ba7b7b13e7f6';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=f484ba7b7b13e7f6';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=f484ba7b7b13e7f6';
+import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=f484ba7b7b13e7f6';
+import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=f484ba7b7b13e7f6';
+import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=f484ba7b7b13e7f6';
+import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=f484ba7b7b13e7f6';
+import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=f484ba7b7b13e7f6';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=f484ba7b7b13e7f6';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const damageSeed = value => {
@@ -147,10 +148,10 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
   const artCache = new Map();
   const spriteBase = prefix => prefix === 'ogre' ? new URL('../bosses/ogre/textures/', import.meta.url).href : assetBase;
   let puckColors = { player: '#d1e8ae', enemy: '#e9a092' };
-  const unitPucks = new Set();
+  const liveFigures = createFigureRegistry(scene);
   function setPuckColors(settings) {
     puckColors = { ...puckColors, ...settings };
-    for (const { base, team } of unitPucks) for (const material of [base.material].flat()) material.color.set(puckColors[team]);
+    liveFigures.setColors(puckColors);
   }
 
   async function loadWorkerArt(body, prefix) {
@@ -400,14 +401,8 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     if (!deferAttach) createFigure.attach(figure);
     return figure;
   };
-  createFigure.attach = figure => {
-    if (!figure || figure.sceneAttached) return figure;
-    scene.add(figure.group, figure.healthHUD);
-    if (figure.enemyMarker?.group) scene.add(figure.enemyMarker.group);
-    unitPucks.add(figure.puckEntry);
-    figure.sceneAttached = true;
-    return figure;
-  };
+  createFigure.attach = liveFigures.attach;
+  createFigure.detach = liveFigures.detach;
   createFigure.setCardboardDamage = (settings, texture = cardboardDamageTexture, noiseTexture = cardboardVoronoiTexture,
     tearNoiseTexture = cardboardTearNoiseTexture, displacementNoiseTexture = cardboardPerlinTexture) => {
     cardboardDamageTexture = texture;

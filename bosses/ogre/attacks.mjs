@@ -1,4 +1,4 @@
-import { OGRE_SETTINGS as settings } from './settings.mjs?v=9c7aef8cf303e523';
+import { OGRE_SETTINGS as settings } from './settings.mjs?v=f484ba7b7b13e7f6';
 export const BOSS_WAVE_LEAP_DURATION = .4;
 export const BOSS_WAVE_LEAP_DISTANCE = 1.6;
 export const BOSS_WAVE_LEAP_HEIGHT = 1.1;

@@ -1,5 +1,5 @@
-import { buildLocationMapGraph } from '../game/location-map-data.mjs?v=9c7aef8cf303e523';
-import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=9c7aef8cf303e523';
+import { buildLocationMapGraph } from '../game/location-map-data.mjs?v=f484ba7b7b13e7f6';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=f484ba7b7b13e7f6';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const svgElement = (name, attributes = {}) => {

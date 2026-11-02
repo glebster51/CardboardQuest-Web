@@ -1,15 +1,15 @@
-import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs?v=9c7aef8cf303e523';
-import { exitRoadContinuation } from '../game/location-art.mjs?v=9c7aef8cf303e523';
+import { makePlayfieldCardboardMaterial, makeRoughCardboardMaterial } from '../cardboard-surface.mjs?v=f484ba7b7b13e7f6';
+import { exitRoadContinuation } from '../game/location-art.mjs?v=f484ba7b7b13e7f6';
 import { coarsenClosedTerrainContour, smoothClosedContour, createTerrainHeightMap as defaultHeightMap,
-  createTerrainHeightMapFromDepthMap as defaultDepthMap, extractTerrainContours as defaultContours } from '../terrain-shapes.mjs?v=9c7aef8cf303e523';
-import { terrainLevelCenter, terrainSideTriangleMask } from '../terrain-side-culling.mjs?v=9c7aef8cf303e523';
-import { buildFogPathTopology } from './location-edge-shade.mjs?v=9c7aef8cf303e523';
-import { terrainSurfaceContours } from './terrain-cutouts.mjs?v=9c7aef8cf303e523';
-import { createTerrainVolume, createVolumeCollisionField } from '../game/terrain-volume.mjs?v=9c7aef8cf303e523';
-import {createVisibleTerrainSlices} from './terrain-visibility.mjs?v=9c7aef8cf303e523';
-import {createTerrainSafetyFloor} from './terrain-safety-floor.mjs?v=9c7aef8cf303e523';
-import {terrainOperations,isHeightStroke} from '../game/terrain-brush.mjs?v=9c7aef8cf303e523';
-import {simpleTerrainLayout} from '../game/terrain-base.mjs?v=9c7aef8cf303e523';
+  createTerrainHeightMapFromDepthMap as defaultDepthMap, extractTerrainContours as defaultContours } from '../terrain-shapes.mjs?v=f484ba7b7b13e7f6';
+import { terrainLevelCenter, terrainSideTriangleMask } from '../terrain-side-culling.mjs?v=f484ba7b7b13e7f6';
+import { buildFogPathTopology } from './location-edge-shade.mjs?v=f484ba7b7b13e7f6';
+import { terrainSurfaceContours } from './terrain-cutouts.mjs?v=f484ba7b7b13e7f6';
+import { createTerrainVolume, createVolumeCollisionField } from '../game/terrain-volume.mjs?v=f484ba7b7b13e7f6';
+import {createVisibleTerrainSlices} from './terrain-visibility.mjs?v=f484ba7b7b13e7f6';
+import {createTerrainSafetyFloor} from './terrain-safety-floor.mjs?v=f484ba7b7b13e7f6';
+import {terrainOperations,isHeightStroke} from '../game/terrain-brush.mjs?v=f484ba7b7b13e7f6';
+import {simpleTerrainLayout} from '../game/terrain-base.mjs?v=f484ba7b7b13e7f6';
 
 const TERRACE_HEIGHT_SCALE = 3;
 

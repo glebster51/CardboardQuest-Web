@@ -1,10 +1,10 @@
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=9c7aef8cf303e523';
-import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=9c7aef8cf303e523';
-import { WALKABLE_POINTS } from '../physics.mjs?v=9c7aef8cf303e523';
-import { nearestPointOnPath } from '../terrain-shapes.mjs?v=9c7aef8cf303e523';
-import { sceneResources } from './scene-resources.mjs?v=9c7aef8cf303e523';
-import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=9c7aef8cf303e523';
-import { attachSceneryToTerrain } from './scenery-grounding.mjs?v=9c7aef8cf303e523';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=f484ba7b7b13e7f6';
+import { PUCK_CENTER_Y, PUCK_HEIGHT, sceneryTokenLayout } from '../scenery-layout.mjs?v=f484ba7b7b13e7f6';
+import { WALKABLE_POINTS } from '../physics.mjs?v=f484ba7b7b13e7f6';
+import { nearestPointOnPath } from '../terrain-shapes.mjs?v=f484ba7b7b13e7f6';
+import { sceneResources } from './scene-resources.mjs?v=f484ba7b7b13e7f6';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=f484ba7b7b13e7f6';
+import { attachSceneryToTerrain } from './scenery-grounding.mjs?v=f484ba7b7b13e7f6';
 
 function propSeed(value) {
   let hash = 2166136261;

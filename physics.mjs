@@ -1,8 +1,8 @@
-import { hazardAtPoint } from './game/world-hazards.mjs?v=9c7aef8cf303e523';
-import { advanceEarthShatterKnockback } from './game/earth-shatter.mjs?v=9c7aef8cf303e523';
-import { volumeBodyContact } from './game/terrain-volume.mjs?v=9c7aef8cf303e523';
-import {terrainGroundContact} from './game/terrain-ground-domain.mjs?v=9c7aef8cf303e523';
-import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=9c7aef8cf303e523';
+import { hazardAtPoint } from './game/world-hazards.mjs?v=f484ba7b7b13e7f6';
+import { advanceEarthShatterKnockback } from './game/earth-shatter.mjs?v=f484ba7b7b13e7f6';
+import { volumeBodyContact } from './game/terrain-volume.mjs?v=f484ba7b7b13e7f6';
+import {terrainGroundContact} from './game/terrain-ground-domain.mjs?v=f484ba7b7b13e7f6';
+import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=f484ba7b7b13e7f6';
 
 // World-space XZ motion. Constant friction gives a finite, frame-independent stop.
 export const MAX_PULL = 1.8;

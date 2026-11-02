@@ -1,5 +1,5 @@
-import { EQUIPMENT_ITEMS, equipmentItem, equipmentOrbPosition, normalizeEquipment } from '../game/equipment.mjs?v=9c7aef8cf303e523';
-import { equipmentMount } from './equipment-poses.mjs?v=9c7aef8cf303e523';
+import { EQUIPMENT_ITEMS, equipmentItem, equipmentOrbPosition, normalizeEquipment } from '../game/equipment.mjs?v=f484ba7b7b13e7f6';
+import { equipmentMount } from './equipment-poses.mjs?v=f484ba7b7b13e7f6';
 
 /** Three cached cardboard prints, reused by all pose/side mounts. Only the active pose draws. */
 export async function createCharacterEquipment({ THREE, figure, loadTemplate, getEquipment, sceneStencil }) {

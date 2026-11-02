@@ -1,4 +1,4 @@
-import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=9c7aef8cf303e523';
+import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=f484ba7b7b13e7f6';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const AIM_DRAG_INPUT_MULTIPLIER = 2;

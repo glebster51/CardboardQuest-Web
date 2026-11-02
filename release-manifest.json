@@ -1,6 +1,7 @@
 {
   "format": "cardboardquest.release.v1",
-  "buildId": "9c7aef8cf303e523",
+  "sourceSha": "909970955be127c198445623818d416ae82dac61",
+  "buildId": "f484ba7b7b13e7f6",
   "entry": "index.html",
   "modules": [
     "app.js",
@@ -19,21 +20,22 @@
     "depth-map-assets.mjs",
     "diagnostics/release-performance-profiler.mjs",
     "editor/asset-catalog.mjs",
-    "editor/edit-model.mjs",
     "editor/release-local-editor-client.mjs",
     "editor/release-local-editor-state.mjs",
-    "editor/scene-registry.mjs",
     "exit-fog.mjs",
     "extrusion-smoothing.mjs",
     "figure-model.mjs",
     "fog-paths.mjs",
     "fog-settings.mjs",
+    "game/application-mode.mjs",
     "game/attack-protection.mjs",
     "game/cache-animation.mjs",
     "game/campaign-checkpoint.mjs",
     "game/campaign-graph.mjs",
     "game/campaign-save.mjs",
+    "game/campaign-snapshot.mjs",
     "game/campaign-state-validation.mjs",
+    "game/combat-damage.mjs",
     "game/currency.mjs",
     "game/day-night.mjs",
     "game/death-recovery.mjs",
@@ -88,6 +90,8 @@
     "render/equipment-poses.mjs",
     "render/figure-factory.mjs",
     "render/figure-hit-flash.mjs",
+    "render/figure-presentation.mjs",
+    "render/figure-registry.mjs",
     "render/geometry-client.mjs",
     "render/geometry-transfer.mjs",
     "render/geometry-worker.mjs",
@@ -121,7 +125,13 @@
     "render/ui-window-motion.mjs",
     "render/unity-rock-effect.mjs",
     "render/vector-marker.mjs",
+    "runtime/combat-controller.mjs",
+    "runtime/location-lifecycle.mjs",
+    "runtime/world-items-controller.mjs",
     "scene-overrides.mjs",
+    "scene/scene-model.mjs",
+    "scene/scene-registry.mjs",
+    "scene/schema.mjs",
     "scenery-face.mjs",
     "scenery-layout.mjs",
     "scenery-model-v4.mjs",
@@ -143,8 +153,8 @@
   "files": [
     {
       "path": "app.js",
-      "bytes": 239907,
-      "sha256": "871a255c96cf244c7dd919db12c1be6e0dbc345551b13a93f0942c5ab6a77764"
+      "bytes": 192418,
+      "sha256": "82809ad0843eea75a5c346bfde69f4e6b8596895c2328f0a31b786db5cebd0c8"
     },
     {
       "path": "assets/audio/forgotten-bell-suno.mp3",
@@ -225,11 +235,6 @@
       "path": "assets/boar-on-hit.png",
       "bytes": 117670,
       "sha256": "3dee845e64a5005daea9f7a831336f1aa97a2c5e46804d1a1908f447ce717470"
-    },
-    {
-      "path": "assets/boar-pose-sheet.png",
-      "bytes": 1923569,
-      "sha256": "6bc8b36e9fa00c106376fe40ef1e36d7a1d40e26157793c59491a8234c2fe30e"
     },
     {
       "path": "assets/broken-bridge-depth-source.png",
@@ -1022,11 +1027,6 @@
       "sha256": "5ab91eb7ce532cccb4ee78b01135ea4e73f9d3e6e054d2f2b254249a61e5f518"
     },
     {
-      "path": "assets/narrative-environment-sheet.png",
-      "bytes": 2760182,
-      "sha256": "fe03f8c0adcb322912f2af129f1b8033d5a4c32b103a31c99a15217978eb1afb"
-    },
-    {
       "path": "assets/npc-cartographer-idle.png",
       "bytes": 186337,
       "sha256": "4e1a2ca265c374d31c5cfed5d2d5d1b061e2450ec5b7ce7f0a2c0d9eb0112752"
@@ -1115,16 +1115,6 @@
       "path": "assets/slinger-on-hit.png",
       "bytes": 131237,
       "sha256": "da80899de93c90fe0d38ad75ae93a7fe8e4d7423ff74b576ae8d8ec8ed912ef3"
-    },
-    {
-      "path": "assets/slinger-pose-sheet.png",
-      "bytes": 2139111,
-      "sha256": "6aa73249922f3b5ba4b84e4d138fde0d12bf931e5da9a3e45f37469da080414e"
-    },
-    {
-      "path": "assets/story-npc-sheet.png",
-      "bytes": 1344822,
-      "sha256": "18595e9b599e425c7d9334cf8e5a553771b5e647275be1854d4624529df2bf1f"
     },
     {
       "path": "assets/ui-health-hearts.webp",
@@ -1259,7 +1249,7 @@
     {
       "path": "audio/audio-controls.mjs",
       "bytes": 5116,
-      "sha256": "ad0c7546eb1617b5246ffeb14df08580f6e3d4e38cf2a4b1a216f37e390c3476"
+      "sha256": "330eee604c3ea11a76cc3632a652bf4e440c44ca751e27eb3a87413978c4f88e"
     },
     {
       "path": "audio/audio-rules.mjs",
@@ -1269,7 +1259,7 @@
     {
       "path": "audio/game-audio.mjs",
       "bytes": 11215,
-      "sha256": "a05ca01ef9ea354259d59b4dc2422fd89e5d9585baccc272b194d85344f4a6a8"
+      "sha256": "995e32a2bcb36d33787bfa76d11a632a683b9d77633910fc9d48e9f1789fd39c"
     },
     {
       "path": "audio/music-tracks.mjs",
@@ -1284,12 +1274,12 @@
     {
       "path": "bootstrap.js",
       "bytes": 891,
-      "sha256": "2f56dc720550eb64612bfbe44c4770fb842418a10dcf3f464df02930048d94c9"
+      "sha256": "6d3ed0ff349b7ac3cabc96c93d0c6af789a9e24c6222c5ec211bb74b4d19b41b"
     },
     {
       "path": "bosses/ogre/attacks.mjs",
       "bytes": 2807,
-      "sha256": "cd2e93acd7499d90c8390c377865eb64f966ab631c5e49cecb6974c6a84253d0"
+      "sha256": "a1cd7a5e473abc4abe181092a33f4392effe3f584e0d33ed496c32cf2dc3d6f5"
     },
     {
       "path": "bosses/ogre/config.json",
@@ -1324,7 +1314,7 @@
     {
       "path": "bosses/ogre/ground-slam.mjs",
       "bytes": 1671,
-      "sha256": "ead735301a44608219839476507e3cf6beb31c3339647a72d2898c75f5353f03"
+      "sha256": "d732ec789b4f04eaf0bc6636774dbe0c962307717c5517cdcab1e803735406d0"
     },
     {
       "path": "bosses/ogre/settings.mjs",
@@ -1399,7 +1389,7 @@
     {
       "path": "cardboard-damage.mjs",
       "bytes": 22933,
-      "sha256": "5b7d5d73dfe066ada7ffdb307be38fcb63a9989d8b4fbfd7ee56304b13fcd54f"
+      "sha256": "7c842b8364952552fe2bbc21830cfcc0087d070abef39726dd38b3c0868c7e92"
     },
     {
       "path": "cardboard-surface.mjs",
@@ -1424,12 +1414,7 @@
     {
       "path": "editor/asset-catalog.mjs",
       "bytes": 8469,
-      "sha256": "3e064f1be3af620781bf5e972eb6e37014834a03dedac0b99753455b41a8e22d"
-    },
-    {
-      "path": "editor/edit-model.mjs",
-      "bytes": 29424,
-      "sha256": "ecf554dbcf22c3b710275a9bff0dcd82dc883c3fc16e991249f6ecb8ad12a30c"
+      "sha256": "f2602283a7ac2b1a1fb314519a3cde9184e913f49b223d8dc4cf6216fb613759"
     },
     {
       "path": "editor/release-local-editor-client.mjs",
@@ -1440,11 +1425,6 @@
       "path": "editor/release-local-editor-state.mjs",
       "bytes": 374,
       "sha256": "386e0d3bd5acd38da66184ecfdbfd3459d6d6d8b3d1dadebc8f8fe0250b1b17f"
-    },
-    {
-      "path": "editor/scene-registry.mjs",
-      "bytes": 31242,
-      "sha256": "2bc9a273e1883dd46605402390c2b8ed07f78b06f78b6050b30ef1f489e4aa4f"
     },
     {
       "path": "editor/vendor/THREE-LICENSE.txt",
@@ -1464,7 +1444,7 @@
     {
       "path": "figure-model.mjs",
       "bytes": 10228,
-      "sha256": "dde1bfa25c612a1914e7c7708ef58b174826486d32ceb466573531ee6c6c77a9"
+      "sha256": "82912a38ec368ed43bcf7edabd822c6ef3b78eafb272cf687635b10c3e64894f"
     },
     {
       "path": "fog-paths.mjs",
@@ -1475,6 +1455,11 @@
       "path": "fog-settings.mjs",
       "bytes": 432,
       "sha256": "423c8b1b7187f2a25d79f5448097e94a7055655199e0c66a56154dcb8f5a3233"
+    },
+    {
+      "path": "game/application-mode.mjs",
+      "bytes": 778,
+      "sha256": "082cc15eff48437441aff0680ff816f1ac919e89630e8fefe599def79186695d"
     },
     {
       "path": "game/attack-protection.mjs",
@@ -1494,17 +1479,27 @@
     {
       "path": "game/campaign-graph.mjs",
       "bytes": 5812,
-      "sha256": "263f29f02153680186cbf77bb09a7552583945208a73f9e6f0cb685f4a25f50d"
+      "sha256": "d0da00011c8d0b9064aa237502c693a7c911dea05f560ba1d21f31ed1db7618f"
     },
     {
       "path": "game/campaign-save.mjs",
       "bytes": 4258,
-      "sha256": "7c61ed7977de9013bc71e1da63c6db2ac8a9b2abf28b21f88668e78c11266ee7"
+      "sha256": "eddea60dd6ef4d4baca61b3fd66879834d33f90647fff5a955912f12415751ba"
+    },
+    {
+      "path": "game/campaign-snapshot.mjs",
+      "bytes": 2136,
+      "sha256": "7847af2d29b142bc38e7ecf4f35b89450400c4b997f7ff61b821d69ad3cc7b50"
     },
     {
       "path": "game/campaign-state-validation.mjs",
       "bytes": 4632,
-      "sha256": "3f872da204eb20e240dc1580c033067aab8f9e485c5e4aa349df14c232d77db9"
+      "sha256": "82b8f715efd25caf553ecc280247f7fe0f348f12e5cf00f3b8b3be8ba60c54c6"
+    },
+    {
+      "path": "game/combat-damage.mjs",
+      "bytes": 982,
+      "sha256": "1a5e13474883aeb76ac06021445ddb6d142bdfbc71c4ab4ac0af3ff7cfe43f19"
     },
     {
       "path": "game/currency.mjs",
@@ -1529,7 +1524,7 @@
     {
       "path": "game/earth-shatter.mjs",
       "bytes": 3453,
-      "sha256": "11f06fb72a21c025876117ce7da100bdf15c81cde906736e95332e0b6b04d38d"
+      "sha256": "4be0a3832db6ea04fbfc6b2b62c5a4aff863a674d29d3e54d7c87348429e4d14"
     },
     {
       "path": "game/encounters.mjs",
@@ -1539,7 +1534,7 @@
     {
       "path": "game/enemy-ai.mjs",
       "bytes": 13365,
-      "sha256": "e13557764c1beb37eea945e7cf4a249a52ecfbab74206ed848318c6c443af219"
+      "sha256": "3c26738e2f80cf1e07b0057bc8b468916e6641fc6c627abf78045f464c078329"
     },
     {
       "path": "game/enemy-spawners.mjs",
@@ -1549,7 +1544,7 @@
     {
       "path": "game/equipment.mjs",
       "bytes": 6510,
-      "sha256": "e6941ffb5f42fbdb499d9f839e86691272a35e2cde0a95d05cb3b9725b266d01"
+      "sha256": "0d35feeab203eaad1198d3cc2b9a293dd83ed5e98a4a0b927510839a8e682c07"
     },
     {
       "path": "game/fall-recovery.mjs",
@@ -1569,7 +1564,7 @@
     {
       "path": "game/inventory-items.mjs",
       "bytes": 4688,
-      "sha256": "c4bc913baafe57fe941ed2c2c89dcbb0af582d3d34d561da187b2cb55a7278ab"
+      "sha256": "7bc3e1b9860d3932b03ce15e0f05a5e8e3d151a3c155b3f60e93aeb90278305f"
     },
     {
       "path": "game/item-magnet.mjs",
@@ -1584,7 +1579,7 @@
     {
       "path": "game/location-layout.mjs",
       "bytes": 8882,
-      "sha256": "677f5878effcbf5ee194253dc68d1ec593d3876630c6222b7c78460ae4351d2c"
+      "sha256": "7f177e170e8ee283d2f66b2dbf26d0d0378694667036b6dbb0f63cefde6705ac"
     },
     {
       "path": "game/location-map-data.mjs",
@@ -1599,7 +1594,7 @@
     {
       "path": "game/merchants.mjs",
       "bytes": 7571,
-      "sha256": "f17f03d7e26b7476690342abd9a2d1791e8413cb33b6e1fae321c0adf42c946d"
+      "sha256": "a7e8a036ef555dbefe9648f5ebcc62be3e462815581b10ad867092f37121333e"
     },
     {
       "path": "game/opening-cinematic.mjs",
@@ -1614,7 +1609,7 @@
     {
       "path": "game/pointer-input.mjs",
       "bytes": 7608,
-      "sha256": "91a9102f18c1aa2eb23fa47beb695c029086b96303f85b3bc08ca436f0d58a31"
+      "sha256": "d0b0bd223a089037af8f61e6194a33a004067a11633367e5da890f4d7450662e"
     },
     {
       "path": "game/projectiles.mjs",
@@ -1634,17 +1629,17 @@
     {
       "path": "game/story-campaign.mjs",
       "bytes": 29674,
-      "sha256": "7ca758aa4c559fc4728ab58adc7f8756b383cc6b4c891cb8f1f74ead8510dc2d"
+      "sha256": "37556153a416913c414fa6aa04379a782877471163d29eb22b0703a12445d9ce"
     },
     {
       "path": "game/story-dialogue.mjs",
       "bytes": 32651,
-      "sha256": "6f8701f45458029a99ff3d016a78c049483a9ca73c51c9feadacc203ea71024a"
+      "sha256": "c727a10908b3a370250776a3455cc28f2202cca2386bdc1de2162c9bac28f338"
     },
     {
       "path": "game/story-world.mjs",
       "bytes": 10487,
-      "sha256": "8e0e3cbbfcf0be4a73de3b58a9f619357c3e5d2d2cbe9159dc67e2204abe36f4"
+      "sha256": "7c716ad987b83541172d5b1a10b1e4bc110bb3dfcdb9277166df06ab01107b50"
     },
     {
       "path": "game/terrain-bake.mjs",
@@ -1674,27 +1669,27 @@
     {
       "path": "game/terrain-sculpt.mjs",
       "bytes": 4769,
-      "sha256": "26bdc391161115ab018f6db35019ea778dbd9978b5f0c05877042d855da4ed4c"
+      "sha256": "ae10761c40cfbbf59f8e01583c42409c6907e1c9a4cb43958f8f8e8c9f6899c1"
     },
     {
       "path": "game/terrain-volume.mjs",
       "bytes": 11908,
-      "sha256": "4f8af56acebe75132dd16014a3928ecacc8f6283883d3a6125a4c4d2ac645a37"
+      "sha256": "d52dd4bc914b2486a4266cb80b194a6d10793ac33871989377a042bcb9c8067a"
     },
     {
       "path": "game/world-hazards.mjs",
       "bytes": 1319,
-      "sha256": "8c3cee96fc820d3ff8cb975369253e86ecac0f282c90675d91ecf6870dadb5ba"
+      "sha256": "9e5492a8e93ba28b2ea0f5f31d2fd17810749210677b7d1cf2f91c70761e9d54"
     },
     {
       "path": "game/world-items.mjs",
       "bytes": 3674,
-      "sha256": "bdd58ae70d82fbb933d1c9d8fa331218a8a167c51aca4d764de3c67f32c5c0c7"
+      "sha256": "a3c2c1daa3a73e3714b7929bdb6166764aa04766b76e98497e5c50c588a081d4"
     },
     {
       "path": "ground-decoration.mjs",
       "bytes": 9704,
-      "sha256": "38af3834425339b919825e3774c3292fe9b0a5375670164e29ce0f5d0cdef75d"
+      "sha256": "7920bde20b607b0c8a3745952b408c88337f732d0b7585dd69166c850605ebdd"
     },
     {
       "path": "ground-grid-settings.mjs",
@@ -1709,7 +1704,7 @@
     {
       "path": "index.html",
       "bytes": 10671,
-      "sha256": "fdfb97c014ded6c6a3e48fb501397caecbced4af7aa8129f42dc15adacaff733"
+      "sha256": "6cb1e08ecbd815222e6619d673a7197e3194b203ed14c1aa954ce13740b72640"
     },
     {
       "path": "location-network.mjs",
@@ -1724,7 +1719,7 @@
     {
       "path": "physics.mjs",
       "bytes": 10283,
-      "sha256": "39f485603bd8930581743a80083b6499d52a9d1316553fc214301200232cbf05"
+      "sha256": "6af9fbfdf208b85188e24484ac4050efa4c08e52987c7cefd47e71e777ce835b"
     },
     {
       "path": "render/baked-particle-curves.mjs",
@@ -1734,7 +1729,7 @@
     {
       "path": "render/baked-particle-effect.mjs",
       "bytes": 8622,
-      "sha256": "a06d5bb7f3765a7a2629df26b8c2bb830740bf408b6574d19d666fc881994575"
+      "sha256": "ebf2c1121d1b340c81abf428e8e64f944844e34e0dab7e3707a027996ca26895"
     },
     {
       "path": "render/camera-follow.mjs",
@@ -1744,22 +1739,22 @@
     {
       "path": "render/campaign-graph-view.mjs",
       "bytes": 12442,
-      "sha256": "5b8e60c6c584f08e4bd551510a57a12a25a5095a0fdb6bbbd34f6e768c40c19f"
+      "sha256": "7b6a80a38e986ad052858835995f718f9b7416b49796646b0736bd75bb6240e1"
     },
     {
       "path": "render/character-equipment.mjs",
       "bytes": 5120,
-      "sha256": "d37e6cda26d4a71708f555b9f71fad34c4cd830748bdab340ecf0475f6ef64e7"
+      "sha256": "f3128c9cdfd0a6f092777de929f4ebfc07ec242cbbbb15dca0e93a4b1a6d324c"
     },
     {
       "path": "render/dialogue-panel.mjs",
       "bytes": 7355,
-      "sha256": "a9c2eabdb0ee2a2e20b6132e775912091d04b3cbeae1990f48279d426e9596a4"
+      "sha256": "6f57ba4569df3e631d6cf7bd09e7d565bbd6d55d14586472a04da1c639ffba49"
     },
     {
       "path": "render/earth-shatter.mjs",
       "bytes": 2663,
-      "sha256": "b43611d488f9c3c53a6eb8a5b02daa08b6d6849fc69c2c20984c28b1babdfa45"
+      "sha256": "5589c5fbdc9c6b5b6dbfea3e9727d0dd726006a477d40cb21b596665f26d2f65"
     },
     {
       "path": "render/enemy-occlusion-silhouette.mjs",
@@ -1773,8 +1768,8 @@
     },
     {
       "path": "render/figure-factory.mjs",
-      "bytes": 24830,
-      "sha256": "3a5cc4bbd331fc9bcd6577a078ec25fe85f7fbb41f21020620909b7dc7b33651"
+      "bytes": 24624,
+      "sha256": "91c3d9232dd670660f9cc0510583d9a1d06106d507c3e8b23cb37c95ec538443"
     },
     {
       "path": "render/figure-hit-flash.mjs",
@@ -1782,9 +1777,19 @@
       "sha256": "cc0bf1bc658b4dea85d3bdcc9b3c4a1d4f74bef2b642d0ffa784d5a374b0e9b1"
     },
     {
+      "path": "render/figure-presentation.mjs",
+      "bytes": 9021,
+      "sha256": "8d3194814b9bf342312bdce4251a26e04fea04a936c12b80868c0aa2203d0cca"
+    },
+    {
+      "path": "render/figure-registry.mjs",
+      "bytes": 898,
+      "sha256": "eb13003dadc8b946d21f0f5c10ac8695e220b5a8712f6af25e60552a47ff9d50"
+    },
+    {
       "path": "render/geometry-client.mjs",
       "bytes": 2104,
-      "sha256": "f65b93b63642085b2a8fa8577ae89338a066600aa63183c09a2df415fb465300"
+      "sha256": "a3e457f9f75d36cf61e13c9eed2f19bb23961efde18b217578ddc17421ea76d7"
     },
     {
       "path": "render/geometry-transfer.mjs",
@@ -1794,12 +1799,12 @@
     {
       "path": "render/geometry-worker.mjs",
       "bytes": 5640,
-      "sha256": "fcb50d4f6d5a80d87443b5f0dcffac82a261bd12201d1d3d7724eda2a6b05c8b"
+      "sha256": "cca0769236115613e5cf876cf9475735527f36dc5f8bad916897d4234a6937f6"
     },
     {
       "path": "render/ground-grid.mjs",
       "bytes": 6754,
-      "sha256": "abb8220b24cbe282aa15dfaf7c043510195655f156da435305fb565289f56fd1"
+      "sha256": "d703351f7b8d626ba0b6c198a170db2fb592ed33f7424991195fcabf9c8b10af"
     },
     {
       "path": "render/ground-renderer.mjs",
@@ -1809,37 +1814,37 @@
     {
       "path": "render/hex-tilt-shift.mjs",
       "bytes": 4819,
-      "sha256": "7767f72bc0970369be427747674b94ae68deeb5f167eb136b25a118a4d0fb6a8"
+      "sha256": "fbf3fa7a3e1c5bd2584f51094f6a25ec90d4d414bec1416922929ceb02914b5b"
     },
     {
       "path": "render/inventory-panel.mjs",
       "bytes": 17913,
-      "sha256": "526007e82c7fd93f9df2f586918dca9c3d2bbd874b470f062ffaaa912b774842"
+      "sha256": "a6d2dcedb148e7aad7a9cf7c5154bc74defd318e889f1a4dfe633c75217fdd7d"
     },
     {
       "path": "render/location-edge-shade.mjs",
       "bytes": 15847,
-      "sha256": "1f6e1484ef10d476bf1f5b2d55483dffcb41b53bbcfb2901c1b1826793ab648d"
+      "sha256": "d147cea6c107418457d6e2ce2f81c5ca3822131ec2d6a596cc6b5b6082a1a102"
     },
     {
       "path": "render/location-exits.mjs",
       "bytes": 3936,
-      "sha256": "3bda5c9e64b05195b06cc0a346b5a7b8a0cfab9a45038dac8b6325c19fc9bb87"
+      "sha256": "1c1d35b56883cb9a9260265e89e0b8b355f0d90ba63f6e41cabeb5d2d061dc64"
     },
     {
       "path": "render/location-map-view.mjs",
       "bytes": 6361,
-      "sha256": "6c59095271cd93e8a91851d0a2f3c5f6b84da3c1c603fd95579d43d2db22cff9"
+      "sha256": "97a9ede6ed68fe2f25bf0059159bedc4767ef6b85b5f6034111c23b0540472f6"
     },
     {
       "path": "render/location-scenery.mjs",
       "bytes": 4579,
-      "sha256": "e54d1b4d4f72de3a49912d02976d6c92c7e35a2fd47b73ccfe532ece15172f8b"
+      "sha256": "466768442eb0bb1f88f86df61ab8db96207b78b4041d130ce5ec98b2bbf67b9c"
     },
     {
       "path": "render/merchants.mjs",
       "bytes": 2120,
-      "sha256": "798b8fd909c38220eb131e23da38771110d9da9f5dd4b5652ac9b98650a30358"
+      "sha256": "cc8aa5467cff3842a4b52be6d601fb367b0c961abd069bbe6282540d880a3e5a"
     },
     {
       "path": "render/player-occlusion-dither.mjs",
@@ -1849,12 +1854,12 @@
     {
       "path": "render/rock-effect-animation.mjs",
       "bytes": 425,
-      "sha256": "ca08be10c4ffba27e19b2f69a1576e9366c130850528c127638b8f71cd687a82"
+      "sha256": "349ee89073ffe3b12d07a9d2d19cefbfd841936dc8c889cd6d15fcf69119ef8c"
     },
     {
       "path": "render/save-status.mjs",
       "bytes": 1635,
-      "sha256": "ee021e5d7714799c5f98eed099f852e2cc03e546d35100d8192cf9ee67fd4d21"
+      "sha256": "3e84b3ffa14c17c0bdc73d9a8ab8b1abbc3922adae8e80da25e58d76d2856779"
     },
     {
       "path": "render/scene-placeholder.mjs",
@@ -1863,8 +1868,8 @@
     },
     {
       "path": "render/scene-resources.mjs",
-      "bytes": 875,
-      "sha256": "441192f5b0304ad0e5d7e0ef08889f7bde3413a6103008f37d427ff2eaa8346a"
+      "bytes": 2194,
+      "sha256": "60df3f6880ee1b2b65995beab4cb0bc77befb03452d8f52010daac5171d655cf"
     },
     {
       "path": "render/scenery-grounding.mjs",
@@ -1874,7 +1879,7 @@
     {
       "path": "render/scenery-system.mjs",
       "bytes": 7961,
-      "sha256": "57077c4d9f2ed54be688650f02dc9f8740978a9bed5bce8a8beb2750ad5ae7b2"
+      "sha256": "dce56c8b82ce17ba97589eb7b5883307b5166cc6b892d4b70cd51bc8da472d68"
     },
     {
       "path": "render/sharp-hud-overlay.mjs",
@@ -1884,22 +1889,22 @@
     {
       "path": "render/shop-panel.mjs",
       "bytes": 12966,
-      "sha256": "a06f6c504245158a086df5f472ca777193f8831c7a368daea653e6962da4c74f"
+      "sha256": "46e044ffcfb986eff048b74ca161dd56a5f734b77cc6bb73cccaf6de7cf01719"
     },
     {
       "path": "render/status-effect-visuals.mjs",
       "bytes": 8480,
-      "sha256": "4996471722a3926dd5bf48245e8082881724dd42cf61920a9b19d496d2a415f9"
+      "sha256": "90d77dd842b05a93109a134668a6c47a6b9d38273b978d25f6c317c5124866a8"
     },
     {
       "path": "render/story-actors.mjs",
       "bytes": 2555,
-      "sha256": "4dc483e0729c6127683438362070250a399890535e50a1d8c8e4a06ff15e2b8e"
+      "sha256": "f2f9f8c0169d14cffe8c3018a4021ff3077f7ff1df557e77c703c38c6b4c18f7"
     },
     {
       "path": "render/terrain-cutouts.mjs",
       "bytes": 1401,
-      "sha256": "e31ee691b2dbe578945f57505c1bdabba74507f8f5b234d4abd1fc7dbc8745b4"
+      "sha256": "2b6c1e2528b1b6472bd98f1c79fb5c28ac1e5c7c2c25c6543df4c92d82179e87"
     },
     {
       "path": "render/terrain-edge-style.mjs",
@@ -1909,22 +1914,22 @@
     {
       "path": "render/terrain-renderer.mjs",
       "bytes": 20917,
-      "sha256": "59eb24600a6bf7b0108b834bbd0bf5922c1988bc30f06a004d63abe73a65fb6d"
+      "sha256": "c769d85db69b8ca62c720fb44120139fd3ef860760b7edfac7f3ce81d4125051"
     },
     {
       "path": "render/terrain-safety-floor.mjs",
       "bytes": 2712,
-      "sha256": "4657f53af0e6bed2773f97ed28e3e1c8cd1775d030768667bda1d601ae5325de"
+      "sha256": "b840f2307385e199cc1c76648ae19c3d75fd98bf1e7ba8796a2f933265a65e7c"
     },
     {
       "path": "render/terrain-sampler.mjs",
       "bytes": 2121,
-      "sha256": "d7efacc2e80bfae7fb9435902ab837fcb92e72864da1235b0b9c9b0200f3c526"
+      "sha256": "722126d2119cb05e0bc6e32b45c2b7f0cbe119b780fa800f7ec4df25b64f26da"
     },
     {
       "path": "render/terrain-visibility.mjs",
       "bytes": 2986,
-      "sha256": "b681617640c4483755c3d9f8d08d71a7c4abdd6acd353f7ff1afaa49c41b02ad"
+      "sha256": "2039c96d30082fa12216a43fc6d00edfcbc7c5991bd5bb3b2ca9d331d17e1ed3"
     },
     {
       "path": "render/terrain-volume-texture.mjs",
@@ -1939,17 +1944,52 @@
     {
       "path": "render/unity-rock-effect.mjs",
       "bytes": 3239,
-      "sha256": "e360d7886237f663e6de1c1b87750e4032ddac717bc84d1e1417360aaa32b1b7"
+      "sha256": "6786e354745774c553883fccc0b08db0a6becac218b043169b6241a675206d2d"
     },
     {
       "path": "render/vector-marker.mjs",
       "bytes": 3919,
-      "sha256": "fa9d5f396ef6dd47df2254ac34ca909c1f8c5e647e3878684392a92f1dc1f237"
+      "sha256": "a5f12cd6c2b1026571e27aa11bb8de13517897e1be2bf75aaf3ba96ec905f530"
+    },
+    {
+      "path": "runtime-assets.json",
+      "bytes": 10336,
+      "sha256": "91398a9bf2f6d84ae8f9ff6d99e3018170894a1e307355250c2515c3f309ef32"
+    },
+    {
+      "path": "runtime/combat-controller.mjs",
+      "bytes": 11051,
+      "sha256": "a5ec3ad5a0825ea92385452d7b845f8da6e8d655715d77d312388d7cf8284355"
+    },
+    {
+      "path": "runtime/location-lifecycle.mjs",
+      "bytes": 23518,
+      "sha256": "a9085dbe1dad6a28a1d202953099f6f99d32259f432c86066b9f91280b6659d8"
+    },
+    {
+      "path": "runtime/world-items-controller.mjs",
+      "bytes": 24029,
+      "sha256": "f7cd7e4324611c6d3b975ee798b4f88b5cc936496edbb03fae42cbde659406e9"
     },
     {
       "path": "scene-overrides.mjs",
       "bytes": 209146,
       "sha256": "1943b587bdc86e05273ba88f594595852779030a50fdf7c8eb660c92e92eaac3"
+    },
+    {
+      "path": "scene/scene-model.mjs",
+      "bytes": 1988,
+      "sha256": "6a40a825c71bfd7c329cfbeb37f60d50b8e92128e4d7f5d8c5b16861940ca96c"
+    },
+    {
+      "path": "scene/scene-registry.mjs",
+      "bytes": 31330,
+      "sha256": "ceba631de393e2718a3f017ff0ef435167a2b5e9cfb07ad4d736edbffd5ed21c"
+    },
+    {
+      "path": "scene/schema.mjs",
+      "bytes": 14515,
+      "sha256": "3292e60dcc65869eaa137242c38e75cb7cb0fe582be5024a1b6ca406d2f3b754"
     },
     {
       "path": "scenery-face.mjs",
@@ -1964,7 +2004,7 @@
     {
       "path": "scenery-model-v4.mjs",
       "bytes": 5858,
-      "sha256": "1cb0ffd667c250e8be55a07db490f67eabf7d893117959b418865e1fdcb202f1"
+      "sha256": "2fed0a52c775f477ce30f52763cf3d8d9c7b8b91a81c0c3fd85e5a0e4383cec4"
     },
     {
       "path": "screen-effects.mjs",
@@ -1989,12 +2029,12 @@
     {
       "path": "terrain-shapes.mjs",
       "bytes": 24111,
-      "sha256": "1b4ff382658ca5f0c372b92175e64eb7c418d4d8e7cee9450d07da4b8a1fa6b9"
+      "sha256": "e11adfaa46264cbcc00d1efa512fae8f244824468b7e8757ab248d3a92ac22a3"
     },
     {
       "path": "terrain-side-culling.mjs",
       "bytes": 3051,
-      "sha256": "12532c75e19767dfd1abb2f67926c8b6aa56ec481af731cffc2f69c968576d9c"
+      "sha256": "f3fd4689a6709c2c61864ed0653f84d2cd6a51a9c07ec1bb7c7ebdf7713a8080"
     },
     {
       "path": "triangle-subdivision.mjs",
@@ -2014,27 +2054,27 @@
     {
       "path": "vendor/three/build/three.module.js",
       "bytes": 650191,
-      "sha256": "dcc1f02cb95dbfd0e43fe59aefe287aed8d7671bc9fbb017e4856362308362a1"
+      "sha256": "0a35d372d2844fdb739f4854e3b0257f649766ca28e05898dd25f1ef2a1aea9e"
     },
     {
       "path": "vendor/three/examples/jsm/postprocessing/EffectComposer.js",
       "bytes": 8602,
-      "sha256": "34b5cadc2d9c23357dc32f7444051d729dc8becefdf7e00f807c6acf04caf7d7"
+      "sha256": "63b436dfdaf22f1d53d9bf8745ff555fa1dbd6a31e8d8cf03cc1554538e117d0"
     },
     {
       "path": "vendor/three/examples/jsm/postprocessing/MaskPass.js",
       "bytes": 4713,
-      "sha256": "7e6f496316331c1c5b5a7e4116fe3aac40739daca4794d9938b4d0ece2df5c80"
+      "sha256": "aa81e2cbba43062913a29f4abf1c4c196028518fd4897df32e896adafbd798d6"
     },
     {
       "path": "vendor/three/examples/jsm/postprocessing/Pass.js",
       "bytes": 4262,
-      "sha256": "92e7696baf9f31df63c49d6b9640e723d530693aec8218db25863b110a5375a6"
+      "sha256": "ac64ca533ffa85cb1903dc947f3b54f02d608faeb54ec59ced082c2a2ffd0655"
     },
     {
       "path": "vendor/three/examples/jsm/postprocessing/ShaderPass.js",
       "bytes": 3291,
-      "sha256": "58202861c34a8b8237e6a261af7af47c31b8f77b44399e949cad65451f053579"
+      "sha256": "3b711db47ebdaac3826eed1a091ec131cf386105ad2d137d3427e0bb68e6d4e6"
     },
     {
       "path": "vendor/three/examples/jsm/shaders/CopyShader.js",

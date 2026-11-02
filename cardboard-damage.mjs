@@ -1,4 +1,4 @@
-import { applyPlayerOcclusionDitherShader } from './render/player-occlusion-dither.mjs?v=9c7aef8cf303e523';
+import { applyPlayerOcclusionDitherShader } from './render/player-occlusion-dither.mjs?v=f484ba7b7b13e7f6';
 
 export const CARDBOARD_DAMAGE_DEFAULTS = Object.freeze({
   corrugationSize: 1,

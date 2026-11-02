@@ -1,6 +1,6 @@
-import { advanceDialogue, canChooseDialogueOption, createDialogueSession, dialogueFrame, paginateDialogueLines } from '../game/dialogue.mjs?v=9c7aef8cf303e523';
-import { SPEAKERS } from '../game/story-dialogue.mjs?v=9c7aef8cf303e523';
-import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=9c7aef8cf303e523';
+import { advanceDialogue, canChooseDialogueOption, createDialogueSession, dialogueFrame, paginateDialogueLines } from '../game/dialogue.mjs?v=f484ba7b7b13e7f6';
+import { SPEAKERS } from '../game/story-dialogue.mjs?v=f484ba7b7b13e7f6';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=f484ba7b7b13e7f6';
 
 const expressions = Object.freeze({ calm: 'спокойствие', bold: 'решимость', worried: 'тревога' });
 const graphemeSegmenter = typeof Intl.Segmenter === 'function'

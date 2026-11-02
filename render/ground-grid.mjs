@@ -1,5 +1,5 @@
-import { GROUND_GRID_COLOR_DEFAULT, GROUND_GRID_DEFAULTS } from '../ground-grid-settings.mjs?v=9c7aef8cf303e523';
-import {terrainGroundContains} from '../game/terrain-ground-domain.mjs?v=9c7aef8cf303e523';
+import { GROUND_GRID_COLOR_DEFAULT, GROUND_GRID_DEFAULTS } from '../ground-grid-settings.mjs?v=f484ba7b7b13e7f6';
+import {terrainGroundContains} from '../game/terrain-ground-domain.mjs?v=f484ba7b7b13e7f6';
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const pointInPolygon = (x, z, points) => {

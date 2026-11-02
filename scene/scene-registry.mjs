@@ -1,20 +1,21 @@
-import { OGRE_DEFAULTS, normalizeOgreSettings } from '../bosses/ogre/settings.mjs?v=9c7aef8cf303e523';
-import { createEditModel, FOG_DEFAULTS, PLAYER_REVEAL_DEFAULTS, PLAYER_REVEAL_KEYS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT,
-  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './edit-model.mjs?v=9c7aef8cf303e523';
-import { ASSET_CATALOG, catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=9c7aef8cf303e523';
-import { createExitBarrierBodies } from '../location-network.mjs?v=9c7aef8cf303e523';
-import { createDefaultFogPaths } from '../fog-paths.mjs?v=9c7aef8cf303e523';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=9c7aef8cf303e523';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=9c7aef8cf303e523';
-import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=9c7aef8cf303e523';
-import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=9c7aef8cf303e523';
-import { sceneryAuthoredY, applySceneryGrounding } from '../render/scenery-grounding.mjs?v=9c7aef8cf303e523';
+import { createSceneModel } from './scene-model.mjs?v=f484ba7b7b13e7f6';
+import { OGRE_DEFAULTS, normalizeOgreSettings } from '../bosses/ogre/settings.mjs?v=f484ba7b7b13e7f6';
+import { FOG_DEFAULTS, PLAYER_REVEAL_DEFAULTS, PLAYER_REVEAL_KEYS, LIGHTING_DEFAULTS, TERRAIN_STYLE_DEFAULTS, UNIT_PUCK_COLOR_DEFAULTS, GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT,
+  readTransform, scopeLegacyGlobalFogChanges, validateSceneValue, writeTransform } from './schema.mjs?v=f484ba7b7b13e7f6';
+import { ASSET_CATALOG, catalogAsset, catalogPrefab } from '../editor/asset-catalog.mjs?v=f484ba7b7b13e7f6';
+import { createExitBarrierBodies } from '../location-network.mjs?v=f484ba7b7b13e7f6';
+import { createDefaultFogPaths } from '../fog-paths.mjs?v=f484ba7b7b13e7f6';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=f484ba7b7b13e7f6';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=f484ba7b7b13e7f6';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=f484ba7b7b13e7f6';
+import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=f484ba7b7b13e7f6';
+import { sceneryAuthoredY, applySceneryGrounding } from '../render/scenery-grounding.mjs?v=f484ba7b7b13e7f6';
 
 /** Stable scene ids, editable meshes, and their actual gameplay data. */
-export function createSceneRegistry({ THREE, overrides, savedDiff = null, locationIds = [], setFog, getActiveLocationId = () => null,
+export function createSceneRegistry({ createModel = createSceneModel, THREE, overrides, savedDiff = null, locationIds = [], setFog, getActiveLocationId = () => null,
   setLighting = () => {}, setTerrainStyle = () => {}, setUnitPuckColors = () => {}, setScreenEffects = () => {}, setOgreSettings = () => {}, setItemMagnetSettings = () => {},
   setGroundGrid = () => {}, setGroundGridColor = () => {}, setCardboardDamage = () => {} }) {
-  const model = createEditModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
+  const model = createModel(), resident = new Map(), sources = new Map(), placedTemplates = new Map();
   if (savedDiff) model.restore(scopeLegacyGlobalFogChanges(savedDiff, locationIds, overrides));
   const legacyFog = { ...FOG_DEFAULTS, ...overrides.fog }, locationFogs = new Map(), nightFogs = new Map();
   const revealBaseline = { ...PLAYER_REVEAL_DEFAULTS, ...Object.fromEntries(PLAYER_REVEAL_KEYS

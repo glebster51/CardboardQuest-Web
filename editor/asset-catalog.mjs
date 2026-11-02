@@ -1,7 +1,7 @@
-import { sceneryAsset } from '../render/location-scenery.mjs?v=9c7aef8cf303e523';
-import { EQUIPMENT_ITEMS } from '../game/equipment.mjs?v=9c7aef8cf303e523';
-import { COIN_SKINS } from '../game/currency.mjs?v=9c7aef8cf303e523';
-import { MERCHANTS } from '../game/merchants.mjs?v=9c7aef8cf303e523';
+import { sceneryAsset } from '../render/location-scenery.mjs?v=f484ba7b7b13e7f6';
+import { EQUIPMENT_ITEMS } from '../game/equipment.mjs?v=f484ba7b7b13e7f6';
+import { COIN_SKINS } from '../game/currency.mjs?v=f484ba7b7b13e7f6';
+import { MERCHANTS } from '../game/merchants.mjs?v=f484ba7b7b13e7f6';
 
 const foliage = [
   ['tree', 'Дуб', 4], ['evergreen', 'Ель', 3.8], ['birch', 'Берёза', 4], ['bushes', 'Куст', 1.8],

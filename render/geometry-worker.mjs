@@ -1,14 +1,14 @@
-import * as THREE from '../vendor/three/build/three.module.js?v=9c7aef8cf303e523';
-import { createTerrainRenderer } from './terrain-renderer.mjs?v=9c7aef8cf303e523';
-import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=9c7aef8cf303e523';
-import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=9c7aef8cf303e523';
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=9c7aef8cf303e523';
-import { makeScenerySprite } from '../scenery-model-v4.mjs?v=9c7aef8cf303e523';
-import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=9c7aef8cf303e523';
-import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs?v=9c7aef8cf303e523';
-import { createCampaignLocations } from '../game/story-world.mjs?v=9c7aef8cf303e523';
-import { createLocationNetwork } from '../location-network.mjs?v=9c7aef8cf303e523';
-import { decodeTerrainBake } from '../game/terrain-bake.mjs?v=9c7aef8cf303e523';
+import * as THREE from '../vendor/three/build/three.module.js?v=f484ba7b7b13e7f6';
+import { createTerrainRenderer } from './terrain-renderer.mjs?v=f484ba7b7b13e7f6';
+import { createTerrainHeightMap, createTerrainHeightMapFromDepthMap, extractTerrainContours } from '../terrain-shapes.mjs?v=f484ba7b7b13e7f6';
+import { silhouetteShapes, makeExtrudedSprite } from '../figure-model.mjs?v=f484ba7b7b13e7f6';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=f484ba7b7b13e7f6';
+import { makeScenerySprite } from '../scenery-model-v4.mjs?v=f484ba7b7b13e7f6';
+import { packScene, terrainLayoutPayload } from './geometry-transfer.mjs?v=f484ba7b7b13e7f6';
+import { createLocationWalkPaths, scatterGroundDetails } from '../ground-decoration.mjs?v=f484ba7b7b13e7f6';
+import { createCampaignLocations } from '../game/story-world.mjs?v=f484ba7b7b13e7f6';
+import { createLocationNetwork } from '../location-network.mjs?v=f484ba7b7b13e7f6';
+import { decodeTerrainBake } from '../game/terrain-bake.mjs?v=f484ba7b7b13e7f6';
 
 globalThis.document = { createElement: () => new OffscreenCanvas(1, 1) };
 const shared = Object.fromEntries(['paper', 'grain', 'corrugation', 'terrainCorrugation'].map(key => [key, new THREE.Texture()]));

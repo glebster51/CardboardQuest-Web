@@ -1,8 +1,8 @@
-import { OGRE_SETTINGS as bossSettings } from '../bosses/ogre/settings.mjs?v=9c7aef8cf303e523';
-import { facingAngle, launch, GOBLIN_DASH_MAX_POWER } from '../physics.mjs?v=9c7aef8cf303e523';
-import { earthShatterPositions } from './earth-shatter.mjs?v=9c7aef8cf303e523';
-import { groundSlamPositions } from '../bosses/ogre/ground-slam.mjs?v=9c7aef8cf303e523';
-import { takeBossSeriesAttack, bossDashAngle, createBossWaveLeap, bossWaveLeapPose } from '../bosses/ogre/attacks.mjs?v=9c7aef8cf303e523';
+import { OGRE_SETTINGS as bossSettings } from '../bosses/ogre/settings.mjs?v=f484ba7b7b13e7f6';
+import { facingAngle, launch, GOBLIN_DASH_MAX_POWER } from '../physics.mjs?v=f484ba7b7b13e7f6';
+import { earthShatterPositions } from './earth-shatter.mjs?v=f484ba7b7b13e7f6';
+import { groundSlamPositions } from '../bosses/ogre/ground-slam.mjs?v=f484ba7b7b13e7f6';
+import { takeBossSeriesAttack, bossDashAngle, createBossWaveLeap, bossWaveLeapPose } from '../bosses/ogre/attacks.mjs?v=f484ba7b7b13e7f6';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 function beginAim(enemy, player, figure, duration) {

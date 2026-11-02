@@ -1,7 +1,7 @@
-import { AUDIO_SETTINGS_KEY, normalizeAudioSettings } from './audio-rules.mjs?v=9c7aef8cf303e523';
-import { MUSIC_TRACKS } from './music-tracks.mjs?v=9c7aef8cf303e523';
-import { SOUND_RECIPES } from './sound-recipes.mjs?v=9c7aef8cf303e523';
-import { getBrowserStorage } from '../storage.mjs?v=9c7aef8cf303e523';
+import { AUDIO_SETTINGS_KEY, normalizeAudioSettings } from './audio-rules.mjs?v=f484ba7b7b13e7f6';
+import { MUSIC_TRACKS } from './music-tracks.mjs?v=f484ba7b7b13e7f6';
+import { SOUND_RECIPES } from './sound-recipes.mjs?v=f484ba7b7b13e7f6';
+import { getBrowserStorage } from '../storage.mjs?v=f484ba7b7b13e7f6';
 
 /** Lazy audio: no context, music requests or decoded music before a user gesture. */
 export function createGameAudio({ windowRef = window, documentRef = document, storage = getBrowserStorage(windowRef),

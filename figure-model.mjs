@@ -1,8 +1,8 @@
-import * as THREE from './vendor/three/build/three.module.js?v=9c7aef8cf303e523';
-import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=9c7aef8cf303e523';
-import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=9c7aef8cf303e523';
-import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=9c7aef8cf303e523';
-import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=9c7aef8cf303e523';
+import * as THREE from './vendor/three/build/three.module.js?v=f484ba7b7b13e7f6';
+import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=f484ba7b7b13e7f6';
+import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=f484ba7b7b13e7f6';
+import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=f484ba7b7b13e7f6';
+import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=f484ba7b7b13e7f6';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);

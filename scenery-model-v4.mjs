@@ -1,5 +1,5 @@
-import * as THREE from './vendor/three/build/three.module.js?v=9c7aef8cf303e523';
-import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=9c7aef8cf303e523';
+import * as THREE from './vendor/three/build/three.module.js?v=f484ba7b7b13e7f6';
+import { silhouetteShapes, makeExtrudedSprite } from './figure-model.mjs?v=f484ba7b7b13e7f6';
 
 export function extractMainScenerySprite(image) {
   const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;

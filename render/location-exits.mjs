@@ -1,5 +1,5 @@
-import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=9c7aef8cf303e523';
-import { EXIT_FOG_CENTER_DEPTH, EXIT_FOG_LENGTH } from '../exit-fog.mjs?v=9c7aef8cf303e523';
+import { LOCATION_FAR_COLOR } from './location-edge-shade.mjs?v=f484ba7b7b13e7f6';
+import { EXIT_FOG_CENTER_DEPTH, EXIT_FOG_LENGTH } from '../exit-fog.mjs?v=f484ba7b7b13e7f6';
 
 export const EXIT_SHADOW_LENGTH = EXIT_FOG_LENGTH;
 export const EXIT_SHADOW_CENTER_DEPTH = EXIT_FOG_CENTER_DEPTH;

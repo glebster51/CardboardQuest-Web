@@ -1,4 +1,4 @@
-import { unpackScene } from './geometry-transfer.mjs?v=9c7aef8cf303e523';
+import { unpackScene } from './geometry-transfer.mjs?v=f484ba7b7b13e7f6';
 
 export function createGeometryClient(THREE, shared, yieldWork,
   { WorkerClass = globalThis.Worker, timeoutMs = 120000 } = {}) {
@@ -15,7 +15,7 @@ export function createGeometryClient(THREE, shared, yieldWork,
   function ensureWorker() {
     if (disposed) throw new Error('Geometry client is closed');
     if (worker) return worker;
-    const next = new WorkerClass(new URL('./geometry-worker.mjs?v=9c7aef8cf303e523', import.meta.url), { type: 'module' });
+    const next = new WorkerClass(new URL('./geometry-worker.mjs?v=f484ba7b7b13e7f6', import.meta.url), { type: 'module' });
     worker = next;
     next.onmessage = ({ data }) => {
       if (worker !== next) return;

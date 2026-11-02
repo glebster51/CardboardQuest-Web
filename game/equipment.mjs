@@ -1,4 +1,4 @@
-import { statusCombatBonuses } from './status-effects.mjs?v=9c7aef8cf303e523';
+import { statusCombatBonuses } from './status-effects.mjs?v=f484ba7b7b13e7f6';
 
 export const EQUIPMENT_ITEMS = Object.freeze([
   { id: 'ironSword', name: 'Дорожный клинок', slot: 'weapon', image: 'assets/equipment/sword.png', damage: 2,

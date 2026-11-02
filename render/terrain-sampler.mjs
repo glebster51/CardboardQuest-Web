@@ -1,6 +1,6 @@
-import { pointInPolygon } from '../game/world-hazards.mjs?v=9c7aef8cf303e523';
-import { terrainVolumeFloor } from '../game/terrain-volume.mjs?v=9c7aef8cf303e523';
-import {terrainSafetyFloorAt} from './terrain-safety-floor.mjs?v=9c7aef8cf303e523';
+import { pointInPolygon } from '../game/world-hazards.mjs?v=f484ba7b7b13e7f6';
+import { terrainVolumeFloor } from '../game/terrain-volume.mjs?v=f484ba7b7b13e7f6';
+import {terrainSafetyFloorAt} from './terrain-safety-floor.mjs?v=f484ba7b7b13e7f6';
 
 /** Restore the worker's sampling function without regenerating its height grid. */
 export function restoreTerrainSampler(map, { rounded = true, walkablePoints = [], depthMap = false, sculpted = false } = {}) {
