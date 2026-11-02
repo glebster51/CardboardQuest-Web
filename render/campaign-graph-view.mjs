@@ -1,6 +1,6 @@
-import { validateCampaignGraph } from '../game/campaign-graph.mjs?v=ab782efa5048549c';
-import { buildFogPathTopology, locationFogShadeAt } from './location-edge-shade.mjs?v=ab782efa5048549c';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=ab782efa5048549c';
+import { validateCampaignGraph } from '../game/campaign-graph.mjs?v=9c7aef8cf303e523';
+import { buildFogPathTopology, locationFogShadeAt } from './location-edge-shade.mjs?v=9c7aef8cf303e523';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=9c7aef8cf303e523';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const colors = {

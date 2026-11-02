@@ -5,16 +5,30 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#c7b391">
   <title>CardboardQuest</title>
-  <link rel="stylesheet" href="style.css?v=ab782efa5048549c">
+  <link rel="stylesheet" href="style.css?v=9c7aef8cf303e523">
 </head>
 <body>
   <main id="scene" aria-label="Игровой стол. Перетаскивай героя для атаки, а пустое место — для вращения камеры."></main>
   <canvas id="item-flight-canvas" aria-hidden="true"></canvas>
-  <div id="location-info" role="status" aria-live="polite"><strong id="location-title"></strong><small id="location-detail"></small></div>
-  <div id="day-clock" data-state="0" data-period="day" role="img" aria-label="День 1, Рассвет" title="День 1 · Рассвет">
-    <img class="day-clock-face" src="assets/ui/ui-hud-clock.webp" alt="" aria-hidden="true" decoding="async">
-    <img class="day-clock-pointer" src="assets/ui/ui-hud-clock-hand.webp" alt="" aria-hidden="true" decoding="async">
-    <span class="day-clock-label" aria-hidden="true">1</span>
+  <div id="top-hud">
+    <button id="location-info" type="button" aria-label="Открыть карту локаций" aria-controls="world-map" aria-haspopup="dialog" aria-expanded="false" aria-live="polite" title="Открыть карту локаций"><strong id="location-title"></strong></button>
+    <div id="top-hud-camera-gap" aria-hidden="true"></div>
+    <div id="top-hud-right">
+      <nav id="hud-tools" aria-label="Игровые действия">
+        <button id="inventory-toggle" class="hud-icon" type="button" aria-label="Рюкзак" aria-controls="inventory-panel" aria-haspopup="dialog" aria-expanded="false" title="Рюкзак">
+          <img src="assets/ui/ui-hud-backpack.webp" width="46" height="46" alt="" decoding="async">
+          <span id="inventory-count" class="hud-count" hidden aria-hidden="true"></span>
+        </button>
+        <button id="audio-toggle" class="hud-icon" type="button" aria-label="Настройки" aria-controls="audio-panel" aria-haspopup="dialog" aria-expanded="false" title="Настройки">
+          <img src="assets/ui/settings-gear.webp" width="46" height="46" alt="" decoding="async">
+        </button>
+      </nav>
+      <div id="day-clock" data-state="0" data-period="day" role="img" aria-label="День 1, Рассвет" title="День 1 · Рассвет">
+        <img class="day-clock-face" src="assets/ui/ui-hud-clock.webp" alt="" aria-hidden="true" decoding="async">
+        <img class="day-clock-pointer" src="assets/ui/ui-hud-clock-hand.webp" alt="" aria-hidden="true" decoding="async">
+        <span class="day-clock-label" aria-hidden="true">1</span>
+      </div>
+    </div>
   </div>
   <div id="status-effects-hud" role="status" aria-live="polite" aria-label="Эффекты"></div>
   <div id="status-effect-tooltip" class="status-effect-tooltip" hidden role="dialog" aria-labelledby="status-effect-name">
@@ -47,18 +61,6 @@
       </div>
     </div>
   </section>
-  <nav id="hud-tools" aria-label="Игровые действия">
-    <button id="inventory-toggle" class="hud-icon" type="button" aria-label="Рюкзак" aria-controls="inventory-panel" aria-haspopup="dialog" aria-expanded="false" title="Рюкзак">
-      <img src="assets/ui/ui-hud-backpack.webp" width="46" height="46" alt="" decoding="async">
-      <span id="inventory-count" class="hud-count" hidden aria-hidden="true"></span>
-    </button>
-    <button id="audio-toggle" class="hud-icon" type="button" aria-label="Настройки" aria-controls="audio-panel" aria-haspopup="dialog" aria-expanded="false" title="Настройки">
-      <img src="assets/ui/settings-gear.webp" width="46" height="46" alt="" decoding="async">
-    </button>
-    <button id="map-toggle" class="hud-icon" type="button" aria-label="Карта" aria-controls="world-map" aria-haspopup="dialog" aria-expanded="false" title="Карта">
-      <img src="assets/ui/ui-hud-map.webp" width="46" height="46" alt="" decoding="async">
-    </button>
-  </nav>
   <section id="story-dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="story-title" tabindex="-1">
     <article>
       <aside id="story-portrait-well" aria-hidden="true">
@@ -83,7 +85,7 @@
     <article class="inventory-sheet">
       <header class="inventory-heading">
         <div><h2 id="inventory-title">Дорожный мешок</h2><span id="inventory-equipment"></span></div>
-        <button id="inventory-close" type="button" aria-label="Закрыть рюкзак">×</button>
+        <button id="inventory-close" type="button" aria-label="Закрыть рюкзак"><span class="panel-close-mark" aria-hidden="true">×</span></button>
       </header>
       <div class="inventory-board">
         <div id="inventory-items" role="group" aria-label="Предметы в рюкзаке, пять на пять ячеек"></div>
@@ -112,14 +114,17 @@
     <article>
       <header>
         <div><strong id="world-map-title">Дороги долины</strong><small id="world-map-progress"></small></div>
-        <button id="world-map-close" type="button" aria-label="Закрыть карту">×</button>
+        <button id="world-map-close" type="button" aria-label="Закрыть карту"><span class="panel-close-mark" aria-hidden="true">×</span></button>
       </header>
       <div id="world-map-viewport"><svg id="world-map-graph" role="img"></svg></div>
       <footer><span><img class="map-key current" src="assets/ui/ui-map-pin-current.webp" alt="">Ты здесь</span><span><img class="map-key visited" src="assets/ui/ui-map-pin-visited.webp" alt="">Был здесь</span><span><img class="map-key" src="assets/ui/ui-map-pin-unknown.webp" alt="">Впереди</span></footer>
     </article>
   </section>
-  <section id="audio-panel" hidden role="dialog" aria-modal="true" aria-labelledby="audio-title">
-    <header><h2 id="audio-title">Настройки</h2><button id="audio-close" type="button" aria-label="Закрыть настройки">×</button></header>
+  <div id="audio-overlay" hidden aria-hidden="true"></div>
+  <section id="audio-panel" data-ui-anchor="top" data-ui-motion-surface hidden role="dialog" aria-modal="true" aria-labelledby="audio-title">
+    <div id="audio-panel-art" aria-hidden="true"></div>
+    <div id="audio-panel-sheet">
+    <header><h2 id="audio-title">Настройки</h2></header>
     <label for="audio-master">Общая громкость <output id="audio-master-value"></output></label>
     <input id="audio-master" data-audio-setting="master" type="range" min="0" max="100" step="1">
     <label for="audio-music">Музыка <output id="audio-music-value"></output></label>
@@ -128,12 +133,16 @@
     <input id="audio-effects" data-audio-setting="effects" type="range" min="0" max="100" step="1">
     <label for="audio-ambience">Звуки природы <output id="audio-ambience-value"></output></label>
     <input id="audio-ambience" data-audio-setting="ambience" type="range" min="0" max="100" step="1">
+    <div id="audio-actions">
+    <button id="audio-fullscreen" type="button" aria-pressed="false">Во весь экран</button>
     <button id="audio-mute" type="button" aria-pressed="false">Выключить звук</button>
     <button id="restart" type="button" aria-label="Начать игру заново" title="Начать игру заново">
       <img src="assets/ui/ui-hud-restart.webp" width="30" height="30" alt="" decoding="async">
       <span>Начать заново</span>
     </button>
-    <small id="audio-credit">Музыка: Suno · звуковые эффекты: CardboardQuest</small>
+    </div>
+    </div>
+    <button id="audio-close" data-ui-no-squash="true" type="button" aria-label="Закрыть настройки"><span id="audio-close-mark" class="panel-close-mark" aria-hidden="true">×</span></button>
   </section>
   <div id="loading" role="status" aria-label="Загрузка"><span></span></div>
   <div id="error" role="alert" hidden></div>
@@ -147,7 +156,7 @@
       <button type="button" data-save-export>Скачать поход</button>
       <button type="button" data-save-dismiss>Понятно</button>
     </aside>
-    <script src="bootstrap.js?v=ab782efa5048549c"></script>
+    <script src="bootstrap.js?v=9c7aef8cf303e523"></script>
 </body>
 </html>
 

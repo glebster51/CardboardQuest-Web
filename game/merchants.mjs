@@ -1,5 +1,5 @@
-import { inventoryEntries, INVENTORY_ITEMS } from './inventory-items.mjs?v=ab782efa5048549c';
-import { MAX_COINS, normalizeCoins } from './currency.mjs?v=ab782efa5048549c';
+import { inventoryEntries, INVENTORY_ITEMS } from './inventory-items.mjs?v=9c7aef8cf303e523';
+import { MAX_COINS, normalizeCoins } from './currency.mjs?v=9c7aef8cf303e523';
 
 const offer = (itemId, price, stock) => Object.freeze({ itemId, price, stock });
 export const MERCHANTS = Object.freeze([

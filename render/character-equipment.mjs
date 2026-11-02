@@ -1,6 +1,5 @@
-import { EQUIPMENT_ITEMS, equipmentItem, equipmentOrbPosition, normalizeEquipment } from '../game/equipment.mjs?v=ab782efa5048549c';
-import { equipmentMount } from './equipment-poses.mjs?v=ab782efa5048549c';
-import { bindSsaoSpriteAlphaCutouts } from './ssao-alpha-cutout.mjs?v=ab782efa5048549c';
+import { EQUIPMENT_ITEMS, equipmentItem, equipmentOrbPosition, normalizeEquipment } from '../game/equipment.mjs?v=9c7aef8cf303e523';
+import { equipmentMount } from './equipment-poses.mjs?v=9c7aef8cf303e523';
 
 /** Three cached cardboard prints, reused by all pose/side mounts. Only the active pose draws. */
 export async function createCharacterEquipment({ THREE, figure, loadTemplate, getEquipment, sceneStencil }) {
@@ -29,7 +28,7 @@ export async function createCharacterEquipment({ THREE, figure, loadTemplate, ge
         mesh.material.stencilRef = 1;
         mesh.userData.characterEquipment = true;
       });
-      bindSsaoSpriteAlphaCutouts(art); mount.add(art); face.group.add(mount);
+      mount.add(art); face.group.add(mount);
       mounts.push({ mount, slot, poseName, side, itemId: item.id });
     }
   }

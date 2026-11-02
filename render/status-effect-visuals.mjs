@@ -1,4 +1,4 @@
-import { STATUS_EFFECTS } from '../game/status-effects.mjs?v=ab782efa5048549c';
+import { STATUS_EFFECTS } from '../game/status-effects.mjs?v=9c7aef8cf303e523';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 

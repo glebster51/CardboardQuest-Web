@@ -1,5 +1,5 @@
-import { ITEM_LABELS, CONSUMABLE_HEALING } from './story-campaign.mjs?v=ab782efa5048549c';
-import { EQUIPMENT_ITEMS } from './equipment.mjs?v=ab782efa5048549c';
+import { ITEM_LABELS, CONSUMABLE_HEALING } from './story-campaign.mjs?v=9c7aef8cf303e523';
+import { EQUIPMENT_ITEMS } from './equipment.mjs?v=9c7aef8cf303e523';
 
 export const INVENTORY_CAPACITY = 25;
 export const INVENTORY_ITEMS = Object.freeze([

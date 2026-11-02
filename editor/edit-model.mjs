@@ -1,16 +1,16 @@
-import { OGRE_DEFAULTS, normalizeOgreSettings, validateOgreSettings, upgradeOgreSceneDiff } from '../bosses/ogre/settings.mjs?v=ab782efa5048549c';
+import { OGRE_DEFAULTS, normalizeOgreSettings, validateOgreSettings, upgradeOgreSceneDiff } from '../bosses/ogre/settings.mjs?v=9c7aef8cf303e523';
 export const SCENE_DIFF_FORMAT = 'cardboardquest.scene-diff.v1';
 export const SCENE_BUILD = '228';
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=ab782efa5048549c';
-import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=ab782efa5048549c';
-import { validateFogPaths } from '../fog-paths.mjs?v=ab782efa5048549c';
-import { validateCampaignGraph } from '../game/campaign-graph.mjs?v=ab782efa5048549c';
-import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=ab782efa5048549c';
-import { normalizeEnemySpawner } from '../game/enemy-spawners.mjs?v=ab782efa5048549c';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=ab782efa5048549c';
-import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=ab782efa5048549c';
-import { GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT } from '../ground-grid-settings.mjs?v=ab782efa5048549c';
-import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=ab782efa5048549c';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=9c7aef8cf303e523';
+import { catalogAsset, catalogPrefab } from './asset-catalog.mjs?v=9c7aef8cf303e523';
+import { validateFogPaths } from '../fog-paths.mjs?v=9c7aef8cf303e523';
+import { validateCampaignGraph } from '../game/campaign-graph.mjs?v=9c7aef8cf303e523';
+import { validateTerrainEdits } from '../game/terrain-sculpt.mjs?v=9c7aef8cf303e523';
+import { normalizeEnemySpawner } from '../game/enemy-spawners.mjs?v=9c7aef8cf303e523';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects } from '../screen-effects.mjs?v=9c7aef8cf303e523';
+import { ITEM_MAGNET_DEFAULTS, normalizeItemMagnetSettings } from '../game/item-magnet.mjs?v=9c7aef8cf303e523';
+import { GROUND_GRID_DEFAULTS, GROUND_GRID_COLOR_DEFAULT } from '../ground-grid-settings.mjs?v=9c7aef8cf303e523';
+import { CARDBOARD_DAMAGE_DEFAULTS, normalizeCardboardDamageSettings } from '../cardboard-damage.mjs?v=9c7aef8cf303e523';
 export { FOG_DEFAULTS };
 export const PLAYER_REVEAL_KEYS = ['revealEnabled', 'revealInnerRadius', 'revealOuterRadius', 'revealNoiseEnabled',
   'revealNoiseType', 'revealNoiseSize', 'revealNoiseShift', 'revealNoiseMultiply', 'revealNoiseSpeedX',
@@ -314,6 +314,7 @@ export function mergeSceneDiff(overrides, diff) {
   if (diff?.format !== SCENE_DIFF_FORMAT || !Array.isArray(diff.changes) || diff.changes.length > 5000)
     throw new Error('Not a CardboardQuest scene diff');
   const result = clone(overrides);
+  const original = overrides;
   if (result.version !== 1) throw new Error('Unsupported scene override version');
   for (const change of diff.changes) {
     const { location, object, before, after } = change;
@@ -351,14 +352,25 @@ export function mergeSceneDiff(overrides, diff) {
         : prefabId ? result.prefabs?.[prefabId] ?? { size: catalogPrefab(prefabId)?.size }
       : graph ? result.graph ?? before : terrain ? result.locations[location]?.terrain ?? { strokes: [] }
         : result.locations[location]?.[object];
+    const changedSettingsKeys = fog || cardboardDamage
+      ? [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].filter(key => !equal(before?.[key], after?.[key])) : null;
     const matches = (value, expected) => fog || cardboardDamage
-      ? Object.keys(expected).every(key => equal(value?.[key], expected[key]))
+      ? changedSettingsKeys.every(key => equal(value?.[key], expected?.[key]))
       : equal(value, expected);
-    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || screenEffects || itemMagnet || groundGrid || groundGridColor || cardboardDamage || playerReveal || boss || prefabId || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(current, before) && !matches(current, after))
+    const originalDayFog = fog && location !== null
+      ? { ...FOG_DEFAULTS, ...original.fog, ...original.locations?.[location]?.fog } : null;
+    const comparisonCurrent = fog && location !== null
+      ? object === 'fog-night'
+        ? { ...originalDayFog, color: '#25213b', tint: Math.min(originalDayFog.tint ?? 1, .72), ...original.locations?.[location]?.fogNight }
+        : originalDayFog
+      : cardboardDamage ? normalizeCardboardDamageSettings(original.cardboardDamage ?? CARDBOARD_DAMAGE_DEFAULTS) : current;
+    if ((fog || lighting || graph || terrain || globalTerrainStyle || unitPuckColors || screenEffects || itemMagnet || groundGrid || groundGridColor || cardboardDamage || playerReveal || boss || prefabId || Object.hasOwn(result.locations[location] ?? {}, object)) && !matches(comparisonCurrent, before) && !matches(comparisonCurrent, after))
       throw new Error(`Scene edit conflict: ${location}/${object}`);
-    if (fog && location === null) result.fog = { ...current, ...clone(after) };
+    const changedSettings = changedSettingsKeys
+      ? Object.fromEntries(changedSettingsKeys.filter(key => Object.hasOwn(after ?? {}, key)).map(key => [key, clone(after[key])])) : null;
+    if (fog && location === null) result.fog = { ...comparisonCurrent, ...changedSettings };
     else if (playerReveal) result.playerReveal = clone(after);
-    else if (fog) { result.locations[location] ??= {}; result.locations[location][object === 'fog-night' ? 'fogNight' : 'fog'] = { ...current, ...clone(after) }; }
+    else if (fog) { result.locations[location] ??= {}; result.locations[location][object === 'fog-night' ? 'fogNight' : 'fog'] = { ...comparisonCurrent, ...changedSettings }; }
     else if (lighting) result[object === 'lighting-night' ? 'lightingNight' : 'lighting'] = clone(after);
     else if (globalTerrainStyle) result.terrainStyle = clone(after);
     else if (unitPuckColors) result.unitPuckColors = clone(after);
@@ -367,7 +379,7 @@ export function mergeSceneDiff(overrides, diff) {
     else if (boss) result.bossSettings = clone(after);
     else if (screenEffects) result.screenEffects = clone(after);
     else if (itemMagnet) result.itemMagnet = clone(after);
-    else if (cardboardDamage) result.cardboardDamage = { ...current, ...clone(after) };
+    else if (cardboardDamage) result.cardboardDamage = { ...current, ...changedSettings };
     else if (prefabId) { result.prefabs ??= {}; result.prefabs[prefabId] = clone(after); }
     else if (graph) result.graph = clone(after);
     else { result.locations[location] ??= {}; result.locations[location][object] = clone(after); }

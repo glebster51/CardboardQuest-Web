@@ -5,10 +5,9 @@ export const PLAYER_REVEAL_DEFAULTS = Object.freeze({ revealEnabled: true, revea
 
 const patchedRevealShaders = new WeakSet();
 
-export function playerRevealRadiusScale(effectPixelRatio, scenePixelRatio, effectEnabled = true) {
-  if (!effectEnabled || !Number.isFinite(effectPixelRatio) || !Number.isFinite(scenePixelRatio)
-      || effectPixelRatio <= 0 || scenePixelRatio <= 0) return 1;
-  return Math.min(1, effectPixelRatio / scenePixelRatio);
+// Editor values are pixels at a 900 CSS-pixel viewport height, on every device.
+export function playerRevealRadiusScale(viewportHeight) {
+  return Number.isFinite(viewportHeight) && viewportHeight > 0 ? viewportHeight / 900 : 1;
 }
 
 /** Adds the screen-space dither discard to one opaque scenery shader. */
@@ -71,7 +70,7 @@ export function applyPlayerOcclusionDitherShader(shader, uniforms) {
 
 /** Shares a camera-space reveal mask across opaque scenery materials. */
 export function createPlayerOcclusionDither(THREE, renderer,
-  getRenderPixelRatio = () => renderer.getPixelRatio(), getRadiusScale = () => 1) {
+  getRenderPixelRatio = () => renderer.getPixelRatio()) {
   let noiseTexture = null;
   let loadNoiseTexture = null;
   const noiseTextures = new Map();
@@ -129,25 +128,22 @@ export function createPlayerOcclusionDither(THREE, renderer,
   let noiseSpeedX = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedX;
   let noiseSpeedY = PLAYER_REVEAL_DEFAULTS.revealNoiseSpeedY;
   let appliedPixelRatio = null;
-  let appliedZoomScale = null;
   let appliedRadiusScale = null;
-  let referencePlayerDepth = null;
 
-  function syncPixelRatio(zoomScale = 1) {
+  function syncPixelRatio() {
     const devicePixelRatio = renderer.getPixelRatio();
     const renderPixelRatio = getRenderPixelRatio();
     const pixelRatio = Number.isFinite(renderPixelRatio) && renderPixelRatio > 0
       ? renderPixelRatio : devicePixelRatio;
-    const radiusScale = getRadiusScale();
-    if (pixelRatio === appliedPixelRatio && zoomScale === appliedZoomScale
-        && radiusScale === appliedRadiusScale) return pixelRatio;
+    renderer.getDrawingBufferSize(viewport);
+    const radiusScale = playerRevealRadiusScale(viewport.y / devicePixelRatio);
+    if (pixelRatio === appliedPixelRatio && radiusScale === appliedRadiusScale) return pixelRatio;
     appliedPixelRatio = pixelRatio;
-    appliedZoomScale = zoomScale;
     appliedRadiusScale = radiusScale;
-    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio * zoomScale * radiusScale;
-    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio * zoomScale * radiusScale;
+    uniforms.cqRevealInnerRadius.value = innerRadius * pixelRatio * radiusScale;
+    uniforms.cqRevealOuterRadius.value = outerRadius * pixelRatio * radiusScale;
     uniforms.cqRevealCheckerSize.value = checkerSize * pixelRatio;
-    uniforms.cqRevealNoiseSize.value = noiseSize * pixelRatio * zoomScale;
+    uniforms.cqRevealNoiseSize.value = noiseSize * pixelRatio * radiusScale;
     return pixelRatio;
   }
 
@@ -184,14 +180,7 @@ export function createPlayerOcclusionDither(THREE, renderer,
     screen.copy(playerPosition).project(camera);
     viewPosition.copy(playerPosition).applyMatrix4(camera.matrixWorldInverse);
     const playerDepth = -viewPosition.z;
-    if (Number.isFinite(playerDepth) && playerDepth > 0) {
-      referencePlayerDepth ??= playerDepth;
-    }
-    // Under a perspective camera the on-screen height of a fixed-size sprite
-    // is inversely proportional to its camera-space depth.
-    const zoomScale = referencePlayerDepth && playerDepth > 0 ? referencePlayerDepth / playerDepth : 1;
-    renderer.getDrawingBufferSize(viewport);
-    const renderPixelRatio = syncPixelRatio(zoomScale);
+    const renderPixelRatio = syncPixelRatio();
     const renderScale = renderPixelRatio / renderer.getPixelRatio();
     viewport.set(viewport.x * renderScale, viewport.y * renderScale);
     const visible = enabled && viewPosition.z < 0 && screen.z >= -1 && screen.z <= 1

@@ -1,12 +1,11 @@
-import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=ab782efa5048549c';
-import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=ab782efa5048549c';
-import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=ab782efa5048549c';
-import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=ab782efa5048549c';
-import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=ab782efa5048549c';
-import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=ab782efa5048549c';
-import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=ab782efa5048549c';
-import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=ab782efa5048549c';
-import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=ab782efa5048549c';
+import { unionSpriteAlpha, clipSpriteToAlphaMask } from '../sprite-geometry.mjs?v=9c7aef8cf303e523';
+import { silhouetteShapes as buildSilhouetteShapes, makeExtrudedSprite as buildExtrudedSprite } from '../figure-model.mjs?v=9c7aef8cf303e523';
+import { HEALTH_HEART_SIZE, heartHealthLevels, healthHeartLayout, healthHeartRenderOrder } from '../heart-health.mjs?v=9c7aef8cf303e523';
+import { enableFigurePickLayer } from '../game/pick-layers.mjs?v=9c7aef8cf303e523';
+import { assignSharpHudLayer } from './sharp-hud-overlay.mjs?v=9c7aef8cf303e523';
+import { createStatusEffectIndicators } from './status-effect-visuals.mjs?v=9c7aef8cf303e523';
+import { applyEnemySilhouetteStencil } from './enemy-occlusion-silhouette.mjs?v=9c7aef8cf303e523';
+import { bindCardboardDamageTree } from '../cardboard-damage.mjs?v=9c7aef8cf303e523';
 
 const VISUAL_STATES = ['idle', 'aiming', 'attack', 'deal-damage', 'on-hit', 'dead'];
 const damageSeed = value => {
@@ -24,7 +23,6 @@ function cloneSpriteModel(model, damageContext = null) {
     object.material = Array.isArray(object.material) ? object.material.map(material => material.clone()) : object.material.clone();
   });
   if (damageContext) damageMaterials.push(...bindCardboardDamageTree(group, damageContext));
-  bindSsaoSpriteAlphaCutouts(group);
   // Resolve references after the single material-cloning pass. Otherwise the
   // animation updates an orphan material while the rendered clone stays at 0.
   return installWhiteHitShader({ ...model, group, frontCap: group.getObjectByName('cardboard-front'), damageMaterials });
@@ -300,7 +298,6 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     base.position.y = .115; base.castShadow = true; base.receiveShadow = true;
     group.add(base);
     const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(.98, .34), contactShadowMaterial);
-    markSsaoSpriteAlphaCutout(contactShadow, contactShadowMaterial.map, .04);
     contactShadow.rotation.x = -Math.PI / 2; contactShadow.position.set(0, .218, .02); contactShadow.renderOrder = 5;
     group.add(contactShadow);
     const slot = new THREE.Mesh(new THREE.BoxGeometry(1.08, .012, .075), new THREE.MeshStandardMaterial({ color: 0x6c502f }));
@@ -353,7 +350,6 @@ export function createFigureFactory({ THREE, scene, renderer, ambientShadowMater
     const currentLastHeart = levels.reduce((last, level, index) => level > 0 ? index : last, -1);
     const heartIcons = levels.map((level, index) => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(HEALTH_HEART_SIZE, HEALTH_HEART_SIZE), heartMaterialVariants.normal[level]);
-      markSsaoSpriteAlphaCutout(mesh, heartMaterialVariants.normal[level].map, heartMaterialVariants.normal[level].alphaTest || .04);
       mesh.renderOrder = healthHeartRenderOrder(level, index, currentLastHeart);
       const scale = index === currentLastHeart ? 1.2 : 1;
       mesh.scale.set(scale, scale, 1);

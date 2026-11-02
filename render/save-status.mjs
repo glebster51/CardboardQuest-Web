@@ -1,4 +1,4 @@
-import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=ab782efa5048549c';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=9c7aef8cf303e523';
 
 /** Visible recovery and save failures; exporting always uses the current in-memory snapshot. */
 export function createSaveStatus(root, getRepository) {

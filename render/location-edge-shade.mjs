@@ -1,6 +1,6 @@
-import { FOG_DEFAULTS } from '../fog-settings.mjs?v=ab782efa5048549c';
-import { fogPathRadiusAt } from '../fog-paths.mjs?v=ab782efa5048549c';
-import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=ab782efa5048549c';
+import { FOG_DEFAULTS } from '../fog-settings.mjs?v=9c7aef8cf303e523';
+import { fogPathRadiusAt } from '../fog-paths.mjs?v=9c7aef8cf303e523';
+import { applyPlayerOcclusionDitherShader } from './player-occlusion-dither.mjs?v=9c7aef8cf303e523';
 export const LOCATION_FAR_COLOR = 0x242039;
 const originalMaterialHooks = new WeakMap();
 

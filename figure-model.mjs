@@ -1,9 +1,8 @@
-import * as THREE from './vendor/three/build/three.module.js?v=ab782efa5048549c';
-import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=ab782efa5048549c';
-import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=ab782efa5048549c';
-import { markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=ab782efa5048549c';
-import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=ab782efa5048549c';
-import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=ab782efa5048549c';
+import * as THREE from './vendor/three/build/three.module.js?v=9c7aef8cf303e523';
+import { createSpriteCapMask, traceSpriteContours } from './sprite-geometry.mjs?v=9c7aef8cf303e523';
+import { CARDBOARD_EXTRUSION_DEPTH } from './scenery-layout.mjs?v=9c7aef8cf303e523';
+import { smoothExtrusionSideNormals } from './extrusion-smoothing.mjs?v=9c7aef8cf303e523';
+import { subdivideTriangleMesh } from './triangle-subdivision.mjs?v=9c7aef8cf303e523';
 
 export function silhouetteShapes(alphaPixels, width, height, worldWidth, worldHeight) {
   const alpha = new Uint8Array(width * height);
@@ -103,10 +102,8 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   body.userData.cardboardDamageWorldWidth = worldWidth; body.userData.cardboardDamageWorldHeight = worldHeight;
   const capShapes = faceShapes?.length ? faceShapes : shapes;
   const frontCap = createArtworkCap(capShapes, worldWidth, worldHeight, frontMaterial, 'cardboard-front', depth / 2 + .001);
-  markSsaoSpriteAlphaCutout(frontCap, front, frontMaterial.alphaTest);
   const backMaterial = new THREE.MeshStandardMaterial({ map: back, alphaTest: .5, roughness: 1, side: THREE.BackSide, shadowSide: THREE.DoubleSide, vertexColors: true, ...stencil });
   const backPlane = createArtworkCap(capShapes, worldWidth, worldHeight, backMaterial, 'cardboard-back', -depth / 2 - .001);
-  markSsaoSpriteAlphaCutout(backPlane, back, backMaterial.alphaTest);
   const whiteMask = document.createElement('canvas'); whiteMask.width = width; whiteMask.height = height;
   const whiteContext = whiteMask.getContext('2d'); whiteContext.fillStyle = '#fff'; whiteContext.fillRect(0, 0, width, height);
   const alphaCanvas = document.createElement('canvas'); alphaCanvas.width = width; alphaCanvas.height = height;
@@ -123,8 +120,6 @@ export function makeExtrudedSprite(alphaPixels, width, height, front, back, corr
   backWhiteContext.globalCompositeOperation = 'destination-in'; backWhiteContext.drawImage(backAlphaCanvas, 0, 0);
   const backFlashTexture = new THREE.CanvasTexture(backWhiteMask), backFlashMaterial = new THREE.MeshBasicMaterial({ map: backFlashTexture, transparent: true, opacity: 0, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false, ...stencil });
   const backFlash = createArtworkCap(capShapes, worldWidth, worldHeight, backFlashMaterial, 'cardboard-back-flash', -depth / 2 - .002, true);
-  markSsaoSpriteAlphaCutout(frontFlash, flashTexture, flashMaterial.alphaTest);
-  markSsaoSpriteAlphaCutout(backFlash, backFlashTexture, backFlashMaterial.alphaTest);
   const group = new THREE.Group(); group.add(body, frontCap, backPlane, frontFlash, backFlash);
   return { group, body, geometry: sideGeometry, frontMaterial, sideMaterial, frontCap, backPlane, flashMaterial, flashTexture, backFlashMaterial, backFlashTexture, alphaPixels, width, height };
 }

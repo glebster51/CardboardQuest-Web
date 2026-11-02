@@ -1,4 +1,4 @@
-import { reconcileFogPaths } from '../fog-paths.mjs?v=ab782efa5048549c';
+import { reconcileFogPaths } from '../fog-paths.mjs?v=9c7aef8cf303e523';
 
 export const CAMPAIGN_GRAPH_FORMAT = 'cardboardquest.campaign-graph.v1';
 

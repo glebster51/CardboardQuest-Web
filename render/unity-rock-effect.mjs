@@ -1,8 +1,8 @@
-import { OGRE_SETTINGS } from '../bosses/ogre/settings.mjs?v=ab782efa5048549c';
-import { earthShatterRockLifetime } from '../game/earth-shatter.mjs?v=ab782efa5048549c';
-import { applyCardboardOcclusionStencil } from './enemy-occlusion-silhouette.mjs?v=ab782efa5048549c';
-import { createBakedParticleEffect } from './baked-particle-effect.mjs?v=ab782efa5048549c';
-import { UNIT_MARKER_RADIUS, MARKER_STROKE_WIDTH } from '../marker-shapes.mjs?v=ab782efa5048549c';
+import { OGRE_SETTINGS } from '../bosses/ogre/settings.mjs?v=9c7aef8cf303e523';
+import { earthShatterRockLifetime } from '../game/earth-shatter.mjs?v=9c7aef8cf303e523';
+import { applyCardboardOcclusionStencil } from './enemy-occlusion-silhouette.mjs?v=9c7aef8cf303e523';
+import { createBakedParticleEffect } from './baked-particle-effect.mjs?v=9c7aef8cf303e523';
+import { UNIT_MARKER_RADIUS, MARKER_STROKE_WIDTH } from '../marker-shapes.mjs?v=9c7aef8cf303e523';
 
 /** Game-specific obstacle lifecycle around the Fourier-compressed Unity bake. */
 export function createUnityRockEffectVisual(THREE, scene, position, sceneStencil = {}, assets) {

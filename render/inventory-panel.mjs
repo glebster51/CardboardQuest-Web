@@ -1,8 +1,8 @@
-import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=ab782efa5048549c';
-import { heartHealthLevels } from '../heart-health.mjs?v=ab782efa5048549c';
-import { combatBonuses, equipmentItem, EQUIPMENT_SLOT_LABELS, normalizeEquipment } from '../game/equipment.mjs?v=ab782efa5048549c';
-import { normalizeCoins } from '../game/currency.mjs?v=ab782efa5048549c';
-import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=ab782efa5048549c';
+import { INVENTORY_CAPACITY, inventoryEntries, inventoryItemAction } from '../game/inventory-items.mjs?v=9c7aef8cf303e523';
+import { heartHealthLevels } from '../heart-health.mjs?v=9c7aef8cf303e523';
+import { combatBonuses, equipmentItem, EQUIPMENT_SLOT_LABELS, normalizeEquipment } from '../game/equipment.mjs?v=9c7aef8cf303e523';
+import { normalizeCoins } from '../game/currency.mjs?v=9c7aef8cf303e523';
+import { hideUIWindow, indicateUIChange, showUIWindow } from './ui-window-motion.mjs?v=9c7aef8cf303e523';
 
 /** Inventory owns only presentation; consuming and saving remain game actions. */
 export function createInventoryPanel({ root, trigger, getState, getHealth, onOpen, onUse, onEquip, onUnequip, onDrop }) {

@@ -1,4 +1,4 @@
-import { hazardAtPoint, isPlayableFloor, pointInPolygon } from '../game/world-hazards.mjs?v=ab782efa5048549c';
+import { hazardAtPoint, isPlayableFloor, pointInPolygon } from '../game/world-hazards.mjs?v=9c7aef8cf303e523';
 
 const original = new Set(['tree', 'evergreen', 'moss-rocks', 'bushes']);
 const neutral = new Set(['fallen-log', 'rock-cluster', 'wildflowers', 'mushrooms']);

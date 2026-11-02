@@ -1,4 +1,3 @@
-import { markSsaoSpriteAlphaCutout } from './ssao-alpha-cutout.mjs?v=ab782efa5048549c';
 
 const GROUND_DECALS = [
   'ground-v2-pit', 'ground-v2-grass-ring', 'ground-v2-dirt-patch', 'ground-v2-footprints',
@@ -18,7 +17,6 @@ function addInstances(THREE, parent, kind, marks, materials, upright = false, id
   const multiplier = upright ? 2 : 1;
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), materials.get(kind), marks.length * multiplier);
   const material = materials.get(kind);
-  markSsaoSpriteAlphaCutout(mesh, material.map, material.alphaTest);
   const position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3();
   const matrix = new THREE.Matrix4(), euler = new THREE.Euler(0, 0, 0, 'XYZ');
   const editEntries = [];

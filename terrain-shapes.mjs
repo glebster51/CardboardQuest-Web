@@ -1,5 +1,5 @@
-import { applyTerrainSculptStrokes, TERRAIN_SCULPT_MAX_HEIGHT } from './game/terrain-sculpt.mjs?v=ab782efa5048549c';
-import { restoreBakedHeights } from './game/terrain-bake.mjs?v=ab782efa5048549c';
+import { applyTerrainSculptStrokes, TERRAIN_SCULPT_MAX_HEIGHT } from './game/terrain-sculpt.mjs?v=9c7aef8cf303e523';
+import { restoreBakedHeights } from './game/terrain-bake.mjs?v=9c7aef8cf303e523';
 
 export function createTerrainPeaks(seed = 1937, count = 16, maxRadius = 6.5) {
   let state = seed >>> 0;

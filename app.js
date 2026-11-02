@@ -1,107 +1,106 @@
-import { OGRE_SETTINGS, loadOgreSettings, setOgreSettings } from './bosses/ogre/settings.mjs?v=ab782efa5048549c';
-import * as THREE from './vendor/three/build/three.module.js?v=ab782efa5048549c';
-import { getBrowserStorage, createMemoryStorage } from './storage.mjs?v=ab782efa5048549c';
-import { createCampaignSaveRepository } from './game/campaign-save.mjs?v=ab782efa5048549c';
-import { createSaveStatus } from './render/save-status.mjs?v=ab782efa5048549c';
-import { createGameAudio } from './audio/game-audio.mjs?v=ab782efa5048549c';
-import { createAudioControls } from './audio/audio-controls.mjs?v=ab782efa5048549c';
-import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=ab782efa5048549c';
-import { createLocationStreaming } from './game/location-streaming.mjs?v=ab782efa5048549c';
-import { createGeometryClient } from './render/geometry-client.mjs?v=ab782efa5048549c';
-import { attachSceneryToTerrain, regroundLocationScenery } from './render/scenery-grounding.mjs?v=ab782efa5048549c';
-import { installTerrainVolumeTexture } from './render/terrain-volume-texture.mjs?v=ab782efa5048549c';
-import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=ab782efa5048549c';
-import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs?v=ab782efa5048549c';
-import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=ab782efa5048549c';
-import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=ab782efa5048549c';
-import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=ab782efa5048549c';
-import { createPlayerOcclusionDither, playerRevealRadiusScale } from './render/player-occlusion-dither.mjs?v=ab782efa5048549c';
-import { applyCardboardOcclusionStencil } from './render/enemy-occlusion-silhouette.mjs?v=ab782efa5048549c';
-import { createHexTiltShiftShader, createPostEffectInputShader, createTiltShiftCompositeShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=ab782efa5048549c';
-import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=ab782efa5048549c';
-import { hideUIWindow, indicateUIChange, installUIFeedback, showUIWindow } from './render/ui-window-motion.mjs?v=ab782efa5048549c';
-import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=ab782efa5048549c';
-import { bindSsaoSpriteAlphaCutouts, markSsaoSpriteAlphaCutout } from './render/ssao-alpha-cutout.mjs?v=ab782efa5048549c';
-import { SCENE_OVERRIDES as RELEASE_SCENE_OVERRIDES } from './scene-overrides.mjs?v=ab782efa5048549c';
-import { createSceneRegistry } from './editor/scene-registry.mjs?v=ab782efa5048549c';
-import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=ab782efa5048549c';
-import { clearLocalEditorDraft, isLocalEditorOrigin } from './editor/release-local-editor-state.mjs?v=ab782efa5048549c';
-import { connectLocalEditor, loadLocalEditorUi } from './editor/release-local-editor-client.mjs?v=ab782efa5048549c';
-import { ASSET_CATALOG, catalogAsset } from './editor/asset-catalog.mjs?v=ab782efa5048549c';
-import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=ab782efa5048549c';
-import { CARDBOARD_DAMAGE_DEFAULTS, cardboardDamageStageForHealth, cardboardPropDamageStageForHealth, applyCardboardPropHit, updateCardboardDamageTree } from './cardboard-damage.mjs?v=ab782efa5048549c';
-import { advanceEnemyAI } from './game/enemy-ai.mjs?v=ab782efa5048549c';
+import { OGRE_SETTINGS, loadOgreSettings, setOgreSettings } from './bosses/ogre/settings.mjs?v=9c7aef8cf303e523';
+import * as THREE from './vendor/three/build/three.module.js?v=9c7aef8cf303e523';
+import { getBrowserStorage, createMemoryStorage } from './storage.mjs?v=9c7aef8cf303e523';
+import { createCampaignSaveRepository } from './game/campaign-save.mjs?v=9c7aef8cf303e523';
+import { createSaveStatus } from './render/save-status.mjs?v=9c7aef8cf303e523';
+import { createGameAudio } from './audio/game-audio.mjs?v=9c7aef8cf303e523';
+import { createAudioControls } from './audio/audio-controls.mjs?v=9c7aef8cf303e523';
+import { audioMood, audioAmbience, chargeReadyCue } from './audio/audio-rules.mjs?v=9c7aef8cf303e523';
+import { createLocationStreaming } from './game/location-streaming.mjs?v=9c7aef8cf303e523';
+import { createGeometryClient } from './render/geometry-client.mjs?v=9c7aef8cf303e523';
+import { attachSceneryToTerrain, regroundLocationScenery } from './render/scenery-grounding.mjs?v=9c7aef8cf303e523';
+import { installTerrainVolumeTexture } from './render/terrain-volume-texture.mjs?v=9c7aef8cf303e523';
+import { DEFAULT_SCREEN_EFFECTS, normalizeScreenEffects, SCREEN_EFFECT_SETTINGS_KEY } from './screen-effects.mjs?v=9c7aef8cf303e523';
+import { disposeUnusedScenes, sceneResources } from './render/scene-resources.mjs?v=9c7aef8cf303e523';
+import { restoreTerrainSampler } from './render/terrain-sampler.mjs?v=9c7aef8cf303e523';
+import { applyTerrainEdgeStyle } from './render/terrain-edge-style.mjs?v=9c7aef8cf303e523';
+import { createLocationEdgeShade, LOCATION_FAR_COLOR } from './render/location-edge-shade.mjs?v=9c7aef8cf303e523';
+import { createPlayerOcclusionDither } from './render/player-occlusion-dither.mjs?v=9c7aef8cf303e523';
+import { applyCardboardOcclusionStencil } from './render/enemy-occlusion-silhouette.mjs?v=9c7aef8cf303e523';
+import { createHexTiltShiftShader, createPostEffectInputShader, createTiltShiftCompositeShader, tiltShiftRenderPixelRatio } from './render/hex-tilt-shift.mjs?v=9c7aef8cf303e523';
+import { renderSharpHudOverlay } from './render/sharp-hud-overlay.mjs?v=9c7aef8cf303e523';
+import { hideUIWindow, indicateUIChange, installUIFeedback, showUIWindow } from './render/ui-window-motion.mjs?v=9c7aef8cf303e523';
+import { createStatusHeartMaterials } from './render/status-effect-visuals.mjs?v=9c7aef8cf303e523';
+import { SCENE_OVERRIDES as RELEASE_SCENE_OVERRIDES } from './scene-overrides.mjs?v=9c7aef8cf303e523';
+import { createSceneRegistry } from './editor/scene-registry.mjs?v=9c7aef8cf303e523';
+import { mergeSceneDiff, SCENE_BUILD } from './editor/edit-model.mjs?v=9c7aef8cf303e523';
+import { clearLocalEditorDraft, isLocalEditorOrigin } from './editor/release-local-editor-state.mjs?v=9c7aef8cf303e523';
+import { connectLocalEditor, loadLocalEditorUi } from './editor/release-local-editor-client.mjs?v=9c7aef8cf303e523';
+import { ASSET_CATALOG, catalogAsset } from './editor/asset-catalog.mjs?v=9c7aef8cf303e523';
+import { createCardboardGrainTexture } from './cardboard-surface.mjs?v=9c7aef8cf303e523';
+import { CARDBOARD_DAMAGE_DEFAULTS, cardboardDamageStageForHealth, cardboardPropDamageStageForHealth, applyCardboardPropHit, updateCardboardDamageTree } from './cardboard-damage.mjs?v=9c7aef8cf303e523';
+import { advanceEnemyAI } from './game/enemy-ai.mjs?v=9c7aef8cf303e523';
 import { advanceEarthShatterWave, createEarthShatterWave, earthShatterRockCanDamage,
   createEarthShatterKnockback,
-  earthShatterAttackPoseActive } from './game/earth-shatter.mjs?v=ab782efa5048549c';
-import { groundSlamProgress, groundSlamJumpHeight, groundSlamContains, createGroundSlamKnockback } from './bosses/ogre/ground-slam.mjs?v=ab782efa5048549c';
-import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=ab782efa5048549c';
-import { sampleOpeningCinematic } from './game/opening-cinematic.mjs?v=ab782efa5048549c';
-import { createInspectionTrigger } from './game/inspection-trigger.mjs?v=ab782efa5048549c';
-import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=ab782efa5048549c';
-import { createEntryCheckpoint, createLocationStartCheckpoint, restoreCampaignCheckpointAfterDeath } from './game/campaign-checkpoint.mjs?v=ab782efa5048549c';
-import { captureDeathResumeSnapshot, restoreDeathResumeSnapshot } from './game/death-recovery.mjs?v=ab782efa5048549c';
-import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=ab782efa5048549c';
-import { advanceEnemySpawner, ENEMY_SPAWNER_DEFAULTS, isEnemySpawnerRequestCurrent, normalizeEnemySpawner } from './game/enemy-spawners.mjs?v=ab782efa5048549c';
-import { advanceDayNightClock, DAY_NIGHT_STATES, resetEncounterSnapshot } from './game/day-night.mjs?v=ab782efa5048549c';
-import { advanceStoneProjectile, projectileStatusEffect } from './game/projectiles.mjs?v=ab782efa5048549c';
-import { createPointerInput } from './game/pointer-input.mjs?v=ab782efa5048549c';
-import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=ab782efa5048549c';
-import { followDirection, followMotion, combatCenterOfMass } from './render/camera-follow.mjs?v=ab782efa5048549c';
-import { getStoryDialogue } from './game/story-dialogue.mjs?v=ab782efa5048549c';
-import { createDialoguePanel } from './render/dialogue-panel.mjs?v=ab782efa5048549c';
-import { createLocationMapView } from './render/location-map-view.mjs?v=ab782efa5048549c';
-import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=ab782efa5048549c';
-import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=ab782efa5048549c';
-import { buildLocationMapGraph } from './game/location-map-data.mjs?v=ab782efa5048549c';
-import { createInventoryPanel } from './render/inventory-panel.mjs?v=ab782efa5048549c';
-import { EQUIPMENT_ITEMS, combatBonuses, equipInventoryItem, unequipItem, grantEquipmentStarter, playerDamageTaken } from './game/equipment.mjs?v=ab782efa5048549c';
-import { createCharacterEquipment } from './render/character-equipment.mjs?v=ab782efa5048549c';
-import { COIN_SKINS, coinSkin, creditCoins, rollCoins } from './game/currency.mjs?v=ab782efa5048549c';
-import { executeMerchantTrade, canReachMerchant, merchantDefinition } from './game/merchants.mjs?v=ab782efa5048549c';
-import { createLocationMerchants, createMerchantActor } from './render/merchants.mjs?v=ab782efa5048549c';
-import { createShopPanel } from './render/shop-panel.mjs?v=ab782efa5048549c';
-import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=ab782efa5048549c';
-import { createFigureFactory } from './render/figure-factory.mjs?v=ab782efa5048549c';
-import { updateFigureHitFlash } from './render/figure-hit-flash.mjs?v=ab782efa5048549c';
-import { createEarthShatterVisual, createEarthShatterWarning, createGroundSlamWarning } from './render/earth-shatter.mjs?v=ab782efa5048549c';
-import { loadRockEffectAssets } from './render/rock-effect-animation.mjs?v=ab782efa5048549c';
-import { createGroundRenderer } from './render/ground-renderer.mjs?v=ab782efa5048549c';
-import { createScenePlaceholder, updateScenePlaceholderName } from './render/scene-placeholder.mjs?v=ab782efa5048549c';
-import { createGroundGrid } from './render/ground-grid.mjs?v=ab782efa5048549c';
-import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=ab782efa5048549c';
-import { createScenerySystem } from './render/scenery-system.mjs?v=ab782efa5048549c';
-import { sceneryFaceForCamera } from './scenery-face.mjs?v=ab782efa5048549c';
-import { cardboardFallGroundOffset } from './scenery-layout.mjs?v=ab782efa5048549c';
-import { populateNarrativeScenery } from './render/location-scenery.mjs?v=ab782efa5048549c';
-import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=ab782efa5048549c';
-import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=ab782efa5048549c';
-import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=ab782efa5048549c';
-import { createVectorMarker as makeVectorMarker, resizeRingGeometry } from './render/vector-marker.mjs?v=ab782efa5048549c';
-import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, refillCharges, playerChargeRechargeInterval } from './charge-recharge.mjs?v=ab782efa5048549c';
+  earthShatterAttackPoseActive } from './game/earth-shatter.mjs?v=9c7aef8cf303e523';
+import { groundSlamProgress, groundSlamJumpHeight, groundSlamContains, createGroundSlamKnockback } from './bosses/ogre/ground-slam.mjs?v=9c7aef8cf303e523';
+import { bossCanShatterOwnRock } from './bosses/ogre/attacks.mjs?v=9c7aef8cf303e523';
+import { sampleOpeningCinematic } from './game/opening-cinematic.mjs?v=9c7aef8cf303e523';
+import { createInspectionTrigger } from './game/inspection-trigger.mjs?v=9c7aef8cf303e523';
+import { resolveSpawnOrigin } from './game/spawn-origin.mjs?v=9c7aef8cf303e523';
+import { createEntryCheckpoint, createLocationStartCheckpoint, restoreCampaignCheckpointAfterDeath } from './game/campaign-checkpoint.mjs?v=9c7aef8cf303e523';
+import { captureDeathResumeSnapshot, restoreDeathResumeSnapshot } from './game/death-recovery.mjs?v=9c7aef8cf303e523';
+import { STORY_ENCOUNTERS, ENEMY_STATS } from './game/encounters.mjs?v=9c7aef8cf303e523';
+import { advanceEnemySpawner, ENEMY_SPAWNER_DEFAULTS, isEnemySpawnerRequestCurrent, normalizeEnemySpawner } from './game/enemy-spawners.mjs?v=9c7aef8cf303e523';
+import { advanceDayNightClock, DAY_NIGHT_STATES, resetEncounterSnapshot } from './game/day-night.mjs?v=9c7aef8cf303e523';
+import { advanceStoneProjectile, projectileStatusEffect } from './game/projectiles.mjs?v=9c7aef8cf303e523';
+import { createPointerInput } from './game/pointer-input.mjs?v=9c7aef8cf303e523';
+import { PLAYER_PICK_LAYER, ENEMY_PICK_LAYER } from './game/pick-layers.mjs?v=9c7aef8cf303e523';
+import { followDirection, followMotion, combatCenterOfMass } from './render/camera-follow.mjs?v=9c7aef8cf303e523';
+import { getStoryDialogue } from './game/story-dialogue.mjs?v=9c7aef8cf303e523';
+import { createDialoguePanel } from './render/dialogue-panel.mjs?v=9c7aef8cf303e523';
+import { createLocationMapView } from './render/location-map-view.mjs?v=9c7aef8cf303e523';
+import { createCampaignNodeVisuals } from './render/campaign-graph-view.mjs?v=9c7aef8cf303e523';
+import { createCampaignGraph, applyCampaignGraphToLocation } from './game/campaign-graph.mjs?v=9c7aef8cf303e523';
+import { buildLocationMapGraph } from './game/location-map-data.mjs?v=9c7aef8cf303e523';
+import { createInventoryPanel } from './render/inventory-panel.mjs?v=9c7aef8cf303e523';
+import { EQUIPMENT_ITEMS, combatBonuses, equipInventoryItem, unequipItem, grantEquipmentStarter, playerDamageTaken } from './game/equipment.mjs?v=9c7aef8cf303e523';
+import { createCharacterEquipment } from './render/character-equipment.mjs?v=9c7aef8cf303e523';
+import { COIN_SKINS, coinSkin, creditCoins, rollCoins } from './game/currency.mjs?v=9c7aef8cf303e523';
+import { executeMerchantTrade, canReachMerchant, merchantDefinition } from './game/merchants.mjs?v=9c7aef8cf303e523';
+import { createLocationMerchants, createMerchantActor } from './render/merchants.mjs?v=9c7aef8cf303e523';
+import { createShopPanel } from './render/shop-panel.mjs?v=9c7aef8cf303e523';
+import { createStoryActors, isStoryActorVisible } from './render/story-actors.mjs?v=9c7aef8cf303e523';
+import { createFigureFactory } from './render/figure-factory.mjs?v=9c7aef8cf303e523';
+import { updateFigureHitFlash } from './render/figure-hit-flash.mjs?v=9c7aef8cf303e523';
+import { createEarthShatterVisual, createEarthShatterWarning, createGroundSlamWarning } from './render/earth-shatter.mjs?v=9c7aef8cf303e523';
+import { loadRockEffectAssets } from './render/rock-effect-animation.mjs?v=9c7aef8cf303e523';
+import { createGroundRenderer } from './render/ground-renderer.mjs?v=9c7aef8cf303e523';
+import { createScenePlaceholder, updateScenePlaceholderName } from './render/scene-placeholder.mjs?v=9c7aef8cf303e523';
+import { createGroundGrid } from './render/ground-grid.mjs?v=9c7aef8cf303e523';
+import { createLocationExitVisuals, updateLocationExitLock } from './render/location-exits.mjs?v=9c7aef8cf303e523';
+import { createScenerySystem } from './render/scenery-system.mjs?v=9c7aef8cf303e523';
+import { sceneryFaceForCamera } from './scenery-face.mjs?v=9c7aef8cf303e523';
+import { cardboardFallGroundOffset } from './scenery-layout.mjs?v=9c7aef8cf303e523';
+import { populateNarrativeScenery } from './render/location-scenery.mjs?v=9c7aef8cf303e523';
+import { hazardAtPoint, isPlayableFloor } from './game/world-hazards.mjs?v=9c7aef8cf303e523';
+import { launch, advanceWorld, facingAngle, turnToward, isAttacking, WALKABLE_POINTS, PUCK_RADIUS, LAUNCH_GAIN, PLAYER_DASH_DISTANCE_MULTIPLIER, PLAYER_DASH_SPEED_MULTIPLIER, GOBLIN_DASH_MAX_POWER } from './physics.mjs?v=9c7aef8cf303e523';
+import { loadLocationDepthMaps } from './depth-map-assets.mjs?v=9c7aef8cf303e523';
+import { createVectorMarker as makeVectorMarker, resizeRingGeometry } from './render/vector-marker.mjs?v=9c7aef8cf303e523';
+import { advanceChargeRecharge, chargeRechargeProgress, spendCharge, refillCharges, playerChargeRechargeInterval } from './charge-recharge.mjs?v=9c7aef8cf303e523';
 import { heartHealthLevels, healthHeartRenderOrder, healthRestoreVisual, restoredHeartIndices,
-  ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=ab782efa5048549c';
-import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=ab782efa5048549c';
-import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=ab782efa5048549c';
-import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=ab782efa5048549c';
-import { recoverAfterFall } from './game/fall-recovery.mjs?v=ab782efa5048549c';
-import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, createCacheOpening } from './game/cache-animation.mjs?v=ab782efa5048549c';
+  ricochetDamageQuarters, shouldShowHealthHud } from './heart-health.mjs?v=9c7aef8cf303e523';
+import { canEnemyDamagePlayer, clearDirectHitProtectionWhenSafe, markDirectPlayerHit } from './game/attack-protection.mjs?v=9c7aef8cf303e523';
+import { createLocationWalkPaths, pointInWalkableArea, scatterGroundDetails } from './ground-decoration.mjs?v=9c7aef8cf303e523';
+import { advanceVictoryLoop, canCelebrateLocationVictory, createVictoryLoop, settleEnemiesForVictory } from './victory-animation.mjs?v=9c7aef8cf303e523';
+import { recoverAfterFall } from './game/fall-recovery.mjs?v=9c7aef8cf303e523';
+import { CACHE_LOOT_SPAWN_DURATION, advanceCacheOpening, cacheOpeningPhase, createCacheOpening } from './game/cache-animation.mjs?v=9c7aef8cf303e523';
 import { CAMPAIGN, addItems, campaignLocation, chooseCampaignOption,
   collectCampaignStoryPickup, consumeInventoryItem, createCampaignState, inspectCampaignLocation, openCampaignCache,
-  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=ab782efa5048549c';
-import { locationNeedsLootSprites, normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot, unlockDroppedLootAfterLeaving, WORLD_ITEM_IDS } from './game/world-items.mjs?v=ab782efa5048549c';
-import { INVENTORY_ITEMS, removeInventoryItem } from './game/inventory-items.mjs?v=ab782efa5048549c';
+  visitCampaignLocation, CAMPAIGN_EDGES } from './game/story-campaign.mjs?v=9c7aef8cf303e523';
+import { locationNeedsLootSprites, normalizeWorldLoot, rollEditorChestLoot, rollEnemyLoot, scatterWorldLoot, takeWorldLoot, unlockDroppedLootAfterLeaving, WORLD_ITEM_IDS } from './game/world-items.mjs?v=9c7aef8cf303e523';
+import { INVENTORY_ITEMS, removeInventoryItem } from './game/inventory-items.mjs?v=9c7aef8cf303e523';
 import { createItemIconFlight, itemIconFlightPosition, itemMagnetWorldPosition, ITEM_MAGNET_DEFAULTS,
-  ITEM_MAGNET_STORAGE_KEY, itemMagnetRadiusForItem, normalizeItemMagnetSettings, sampleItemMagnetMotion } from './game/item-magnet.mjs?v=ab782efa5048549c';
-import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=ab782efa5048549c';
-import { createPerformanceProfiler } from './diagnostics/release-performance-profiler.mjs?v=ab782efa5048549c';
+  ITEM_MAGNET_STORAGE_KEY, itemMagnetRadiusForItem, normalizeItemMagnetSettings, sampleItemMagnetMotion } from './game/item-magnet.mjs?v=9c7aef8cf303e523';
+import { createCampaignLocations, isCampaignPositionSafe, resolveCampaignPlayerStart } from './game/story-world.mjs?v=9c7aef8cf303e523';
+import { createPerformanceProfiler } from './diagnostics/release-performance-profiler.mjs?v=9c7aef8cf303e523';
 import { advanceStatusEffects, advanceStatusLocations, applyConsumableEffect, applyStatusEffect,
-  statusEffectLabels } from './game/status-effects.mjs?v=ab782efa5048549c';
-import { isMobileRenderTarget, localRenderFps, renderQualityProfile } from './game/frame-rate.mjs?v=ab782efa5048549c';
+  statusEffectLabels } from './game/status-effects.mjs?v=9c7aef8cf303e523';
+import { isMobileRenderTarget, localRenderFps, renderQualityProfile } from './game/frame-rate.mjs?v=9c7aef8cf303e523';
 import { CAMP_BOSS_DEFEATS, CAMP_GOBLIN_SPAWNS, CAMP_GOBLIN_TOTAL, CAMP_HUT_ANCHORS, CAMP_LIVING_CAP, LOCATION_SCALE,
   createExitBarrierBodies, createLocationNetwork, findNearbyExit, lastExitPosition, locationArrival, locationEntryDirection,
   locationHasLivingEnemies, shouldIgnoreEntryExit,
-  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=ab782efa5048549c';
+  finishCampReinforcement, recordCampDefeat, rememberExitPosition, takeDueReinforcement, wakeForestCombat } from './location-network.mjs?v=9c7aef8cf303e523';
 
 const host = document.querySelector('#scene');
 const loading = document.querySelector('#loading');
@@ -251,7 +250,7 @@ async function start() {
   let cardboardTearNoiseTexture = null;
   host.append(renderer.domElement);
   let tiltShiftComposer = null, tiltShiftInputPass = null, tiltShiftPass = null,
-    tiltShiftCompositePass = null, ssaoPass = null,
+    tiltShiftCompositePass = null,
     sharpSceneTarget = null,
     tiltShiftPixelRatio = 1, postProcessingPromise = null;
   let screenEffects = DEFAULT_SCREEN_EFFECTS;
@@ -266,12 +265,6 @@ async function start() {
     itemMagnetSettings = normalizeItemMagnetSettings(settings);
     try { localStorage.setItem(ITEM_MAGNET_STORAGE_KEY, JSON.stringify(itemMagnetSettings)); } catch { /* Current settings still apply for this session. */ }
   };
-  const setSsaoSize = () => {
-    if (!ssaoPass) return;
-    const scale = Math.min(.5, 720 / Math.max(1, innerWidth), 540 / Math.max(1, innerHeight));
-    ssaoPass.setSize(Math.max(1, Math.round(innerWidth * scale * tiltShiftPixelRatio)),
-      Math.max(1, Math.round(innerHeight * scale * tiltShiftPixelRatio)));
-  };
   const renderScene = () => {
     performanceProfiler.beginPhase('renderPreparation');
     try {
@@ -284,7 +277,7 @@ async function start() {
     performanceProfiler.beginPhase('renderSubmissionCpu');
     const gpuQuery = performanceProfiler.beginGpu();
     try {
-      if (!tiltShiftComposer || (!screenEffects.ssao && !screenEffects.tiltShift && !screenEffects.tiltShiftShowGradient)) {
+      if (!tiltShiftComposer || (!screenEffects.tiltShift && !screenEffects.tiltShiftShowGradient)) {
         renderer.render(scene, camera);
         renderSharpHudOverlay(renderer, scene, camera);
         return;
@@ -302,22 +295,7 @@ async function start() {
       }
       catch (error) {
         renderer.setRenderTarget(null);
-        if (ssaoPass?.enabled) {
-          ssaoPass.enabled = false;
-          console.warn('SSAO отключён после ошибки; сохраняю остальные эффекты', error);
-          try {
-            renderer.setRenderTarget(sharpSceneTarget);
-            renderer.clear(true, true, true);
-            renderer.render(scene, camera);
-            renderer.setRenderTarget(null);
-            tiltShiftInputPass.uniforms.sharpTexture.value = sharpSceneTarget.texture;
-            tiltShiftCompositePass.uniforms.sharpTexture.value = sharpSceneTarget.texture;
-            tiltShiftComposer.render();
-            renderSharpHudOverlay(renderer, scene, camera);
-            return;
-          } catch { renderer.setRenderTarget(null); /* Fall back to the direct renderer below. */ }
-        }
-        tiltShiftComposer.dispose(); tiltShiftComposer = null; ssaoPass = null;
+        tiltShiftComposer.dispose(); tiltShiftComposer = null;
         tiltShiftInputPass = null; tiltShiftCompositePass = null;
         sharpSceneTarget?.dispose(); sharpSceneTarget = null;
         console.warn('Постобработка остановлена; используется обычный рендер', error);
@@ -330,40 +308,26 @@ async function start() {
     }
   };
   async function enableTiltShift() {
-    if ((!screenEffects.ssao && !screenEffects.tiltShift && !screenEffects.tiltShiftShowGradient) || tiltShiftComposer) return;
+    if ((!screenEffects.tiltShift && !screenEffects.tiltShiftShowGradient) || tiltShiftComposer) return;
     if (postProcessingPromise) return postProcessingPromise;
     postProcessingPromise = (async () => { try {
-      const [composerModule, ssaoModule, shaderPassModule] = await Promise.all([
-        import("./vendor/three/examples/jsm/postprocessing/EffectComposer.js?v=ab782efa5048549c"),
-        import("./vendor/three/examples/jsm/postprocessing/SSAOPass.js?v=ab782efa5048549c"),
-        import("./vendor/three/examples/jsm/postprocessing/ShaderPass.js?v=ab782efa5048549c"),
+      const [composerModule, shaderPassModule] = await Promise.all([
+        import("./vendor/three/examples/jsm/postprocessing/EffectComposer.js?v=9c7aef8cf303e523"),
+        import("./vendor/three/examples/jsm/postprocessing/ShaderPass.js?v=9c7aef8cf303e523"),
       ]);
       const target = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat,
-        type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false });
+        type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false });
       const composer = new composerModule.EffectComposer(renderer, target);
       tiltShiftPixelRatio = tiltShiftRenderPixelRatio(renderer.getPixelRatio(), IS_MOBILE_RENDER_TARGET);
       composer.setPixelRatio(tiltShiftPixelRatio);
       const drawingBufferSize = renderer.getDrawingBufferSize(new THREE.Vector2());
       sharpSceneTarget = new THREE.WebGLRenderTarget(Math.max(1, drawingBufferSize.x), Math.max(1, drawingBufferSize.y), {
-        format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: true,
+        format: THREE.RGBAFormat, type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: true,
         minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
       });
       const input = new shaderPassModule.ShaderPass(createPostEffectInputShader());
       input.uniforms.sharpTexture.value = sharpSceneTarget.texture;
       composer.addPass(input);
-      try {
-        const ssao = new ssaoModule.SSAOPass(scene, camera, innerWidth, innerHeight, 12);
-        // The alpha-cutout shader made SSAO blank the framebuffer in the web
-        // build. Keep Three.js's stock normal prepass until that path is safe.
-        ssao.kernelRadius = screenEffects.ssaoKernelRadius;
-        ssao.minDistance = screenEffects.ssaoMinDistance;
-        ssao.maxDistance = screenEffects.ssaoMaxDistance;
-        ssao.enabled = screenEffects.ssao;
-        composer.addPass(ssao);
-        ssaoPass = ssao;
-      } catch (error) {
-        console.warn('SSAO недоступен; остальные эффекты сохраняются', error);
-      }
       const tilt = new shaderPassModule.ShaderPass(createHexTiltShiftShader(THREE));
       tilt.uniforms.focus.value = screenEffects.tiltShiftFocus;
       tilt.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
@@ -386,10 +350,8 @@ async function start() {
       composite.renderToScreen = true;
       composer.addPass(composite);
       composer.setSize(innerWidth, innerHeight);
-      setSsaoSize();
       tiltShiftComposer = composer; tiltShiftInputPass = input; tiltShiftPass = tilt; tiltShiftCompositePass = composite;
       tiltShiftPass.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
-      if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
     } catch (error) {
       console.warn('Постобработка недоступна; используется обычный рендер', error);
     } finally { postProcessingPromise = null; } })();
@@ -400,12 +362,6 @@ async function start() {
     try { localStorage.setItem(SCREEN_EFFECT_SETTINGS_KEY, JSON.stringify(screenEffects)); }
     catch { /* The current session still honors the selected effects. */ }
     if (tiltShiftPass) tiltShiftPass.enabled = screenEffects.tiltShift || screenEffects.tiltShiftShowGradient;
-    if (ssaoPass) ssaoPass.enabled = screenEffects.ssao;
-    if (ssaoPass) {
-      ssaoPass.kernelRadius = screenEffects.ssaoKernelRadius;
-      ssaoPass.minDistance = screenEffects.ssaoMinDistance;
-      ssaoPass.maxDistance = screenEffects.ssaoMaxDistance;
-    }
     if (tiltShiftPass) {
       tiltShiftPass.uniforms.focus.value = screenEffects.tiltShiftFocus;
       tiltShiftPass.uniforms.blurPixels.value = screenEffects.tiltShiftBlur;
@@ -422,7 +378,7 @@ async function start() {
       tiltShiftCompositePass.uniforms.tiltShiftActive.value = screenEffects.tiltShift;
       tiltShiftCompositePass.uniforms.showGradient.value = screenEffects.tiltShiftShowGradient;
     }
-    if (screenEffects.ssao || screenEffects.tiltShift || screenEffects.tiltShiftShowGradient) void enableTiltShift();
+    if (screenEffects.tiltShift || screenEffects.tiltShiftShowGradient) void enableTiltShift();
   }
 
   const scene = new THREE.Scene();
@@ -541,7 +497,7 @@ async function start() {
   let activeLocation = locations[campaignState.currentLocationId];
   const inspectionTrigger = createInspectionTrigger();
   const locationTitle = document.querySelector('#location-title');
-  const locationDetail = document.querySelector('#location-detail');
+  const locationInfoButton = document.querySelector('#location-info');
   const statusEffectsHud = document.querySelector('#status-effects-hud');
   const statusEffectTooltip = document.querySelector('#status-effect-tooltip');
   let selectedStatusEffectId = null, statusTooltipPositioning = false;
@@ -625,10 +581,9 @@ async function start() {
   const deathAdOverlay = document.querySelector('#death-ad-overlay');
   const deathAdCountdown = document.querySelector('#death-ad-countdown');
   const deathAdCancel = document.querySelector('#death-ad-cancel');
-  const mapButton = document.querySelector('#map-toggle');
   const locationMap = createLocationMapView({ root: mapPanel,
     viewport: document.querySelector('#world-map-viewport'), graph: document.querySelector('#world-map-graph'),
-    progress: document.querySelector('#world-map-progress'), openButton: mapButton,
+    progress: document.querySelector('#world-map-progress'), openButton: locationInfoButton,
     closeButton: document.querySelector('#world-map-close'), campaign: CAMPAIGN, edges: CAMPAIGN_EDGES });
   let campaignGraphData = null, campaignGraphDataKey = null;
   function applyEditedAnchorsToGraphLayouts(layouts) {
@@ -762,12 +717,11 @@ async function start() {
     onCommit() { audio.play('pickup'); renderInventory(); persistCampaign(); } });
   const locationGroups = {};
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 280);
-  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer, () => renderer.getPixelRatio(),
-    () => playerRevealRadiusScale(tiltShiftRenderPixelRatio(renderer.getPixelRatio(), IS_MOBILE_RENDER_TARGET),
-      renderer.getPixelRatio()));
+  playerOcclusionDither = createPlayerOcclusionDither(THREE, renderer);
   cardboardTearNoiseTexture = playerOcclusionDither.getNoiseTexture('gaussian');
   playerOcclusionDither.updateSettings(sceneRegistry.fog);
-  const target = new THREE.Vector3(0, .65, 0);
+  const cameraFocusHeight = 2.75;
+  const target = new THREE.Vector3(0, cameraFocusHeight, 0);
   const orbit = { theta: .22, phi: .86, distance: innerWidth < 650 ? 27 : 15.75 };
   let cameraManualOverride = 0;
   const hemisphereLight = new THREE.HemisphereLight(0xfff8ea, 0x8f826a, 2.5);
@@ -947,7 +901,7 @@ async function start() {
   heroFigure.facing = 0;
   heroFigure.group.rotation.y = 0;
   orbit.theta = Math.PI;
-  target.set(heroBody.x, .65, heroBody.z);
+  target.set(heroBody.x, cameraFocusHeight, heroBody.z);
   heroFigure.locationId = activeLocation.id; registerFigure(heroFigure);
   const revealTarget = new THREE.Vector3();
   function updatePlayerReveal() {
@@ -957,7 +911,7 @@ async function start() {
       heroBody.health > 0 && heroFigure.group.visible, performance.now() / 1000);
   }
   const enemyBody = (id, locationId, x, z, options = {}) => {
-    const stored = campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
+    const stored = options.freshSpawn ? null : campaignState.world?.[locationId]?.enemies?.find(enemy => enemy.id === id);
     return {
     id, team: 'enemy', locationId, x: stored?.x ?? x, z: stored?.z ?? z, vx: stored?.vx ?? 0, vz: stored?.vz ?? 0,
     health: Math.min(options.maxHealth ?? 32, stored?.health ?? options.health ?? 32), maxHealth: options.maxHealth ?? 32,
@@ -1225,9 +1179,11 @@ async function start() {
             : { health: 32, maxHealth: 32, combatAwake: true });
         body.spawnReady = true;
         figure.body = body; figure.group.userData.figure = figure; figure.poolDormant = false;
+        createFigure.attach(figure);
+        if (!figures.includes(figure)) registerFigure(figure);
         figure.spawnAnimation = null; figure.victoryAnimation = null; figure.bossScale = isBoss ? 1.5 : 1;
         figure.hitAge = 10; figure.hitStrength = 0; figure.hurtAge = 10; figure.dealDamageAge = 10;
-        figure.viewBack = false; figure.locationId = 'camp';
+        figure.viewBack = false; figure.locationId = 'camp'; syncFigureDamageStage(figure);
         setVisualState(figure, body.health > 0 ? 'idle' : 'dead');
         figure.group.visible = activeLocation.id === 'camp';
         figure.healthHUD.visible = figure.group.visible && shouldShowHealthHud(body.team, body.health, body.maxHealth);
@@ -1285,7 +1241,7 @@ async function start() {
     shop.hide();
     inventory.open();
   });
-  mapButton.addEventListener('click', () => {
+  locationInfoButton.addEventListener('click', () => {
     if (dialogue.isOpen()) return;
     shop.hide();
     inputController?.cancel(); inventory.hide();
@@ -1474,7 +1430,6 @@ async function start() {
       material.name = 'loot-artwork-unlit';
       mesh.material = material;
     });
-    bindSsaoSpriteAlphaCutouts(icon);
     icon.scale.set(iconScale, iconScale, 1); icon.position.y = .11 + iconHeight / 2; group.add(icon);
     const facePair = { prop: group, front: icon.getObjectByName('scenery-front'), back: icon.getObjectByName('scenery-back') };
     sceneryFacePairs.push(facePair);
@@ -1493,13 +1448,11 @@ async function start() {
   function createStoryPickupVisual(location, pickup) {
     const group = new THREE.Group(); group.name = pickup.id;
     const icon = new THREE.Mesh(storyPickupIconGeometry, storyPickupIconMaterial);
-    markSsaoSpriteAlphaCutout(icon, storyPickupIconMaterial.map, storyPickupIconMaterial.alphaTest);
     icon.position.y = .34; icon.renderOrder = 6; group.add(icon);
     const glow = new THREE.Mesh(new THREE.CircleGeometry(.34, 28),
       new THREE.MeshBasicMaterial({ color: 0xffd879, transparent: true, opacity: .075, depthWrite: false, toneMapped: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = .018; group.add(glow);
     const beam = new THREE.Mesh(lootBeamGeometry, lootBeamMaterial);
-    markSsaoSpriteAlphaCutout(beam, lootBeamTexture, .025);
     beam.scale.set(1.02, 1.7, 1); beam.position.set(0, 1.08, -.025); beam.renderOrder = 5; group.add(beam);
     group.position.set(pickup.x, 0, pickup.z); location.sceneGroup.add(group);
     const visual = { group, beam, glow, spin: 0 };
@@ -1532,7 +1485,6 @@ async function start() {
     const artHolder = new THREE.Group(); artHolder.position.y = opened ? 0 : .21; group.add(artHolder);
     const stateArt = chestTemplates.map((template, index) => {
       const art = template.clone(true);
-      bindSsaoSpriteAlphaCutouts(art);
       const spriteHeight = 1.72, scale = spriteHeight / 2.05;
       art.scale.set(scale, scale, 1); art.position.y = spriteHeight / 2;
       art.visible = index === (opened ? 1 : 0); artHolder.add(art);
@@ -1569,7 +1521,7 @@ async function start() {
     puck.castShadow = true; puck.receiveShadow = true; group.add(puck);
     const artHolder = new THREE.Group(); artHolder.position.y = opened ? 0 : .21; group.add(artHolder);
     const stateArt = chestTemplates.map((template, index) => {
-      const art = template.clone(true); bindSsaoSpriteAlphaCutouts(art);
+      const art = template.clone(true);
       const spriteHeight = 1.72, scale = spriteHeight / 2.05;
       art.scale.set(scale, scale, 1); art.position.y = spriteHeight / 2;
       art.visible = index === (opened ? 1 : 0); artHolder.add(art);
@@ -1817,6 +1769,9 @@ async function start() {
     if (location.edgeShade?.texture) renderer.initTexture(location.edgeShade.texture);
     reportLoadStage(`Кромки и туман: ${id}`, 'ready');
     await checkpoint();
+    // Fail a missing mandatory boss resource before allocating the camp's
+    // figure pools, which would otherwise be discarded and rebuilt on retry.
+    if (id === 'camp') await ensureRockEffectAssets();
     await createLocationEnemies(location);
     if (id === 'camp') {
       location.reinforcementQueue = (campaignState.world?.camp?.reinforcementQueue ?? []).map(due => due + elapsed);
@@ -2039,19 +1994,10 @@ async function start() {
   });
 
   function refreshLocationInfo() {
-    const previousTitle = locationTitle.textContent, previousDetail = locationDetail.textContent;
+    const previousTitle = locationTitle.textContent;
     locationTitle.textContent = activeLocation.title;
-    const progress = `${campaignState.visited.length}/${CAMPAIGN.length} мест`;
-    if (activeLocation.kind === 'forest') locationDetail.textContent = activeLocation.combatTriggered
-      ? `Гоблины напали · ${progress}` : `Следы деда уходят в лес · ${progress}`;
-    else if (activeLocation.kind === 'camp') locationDetail.textContent = activeLocation.bossSpawned
-      ? `Вожак вышел · ${progress}`
-      : `Лагерь: ${activeLocation.defeats}/${CAMP_BOSS_DEFEATS} побед · ${progress}`;
-    else locationDetail.textContent = activeLocation.campaignIntro.length > 54
-      ? `${activeLocation.campaignIntro.slice(0, 52)}… · ${progress}`
-      : `${activeLocation.campaignIntro} · ${progress}`;
+    locationInfoButton.setAttribute('aria-label', `${activeLocation.title}. Открыть карту локаций`);
     if (previousTitle && previousTitle !== locationTitle.textContent) indicateUIChange(locationTitle, 'location');
-    if (previousDetail && previousDetail !== locationDetail.textContent) indicateUIChange(locationDetail, 'progress');
   }
   function rebuildBodies() {
     bodies = [heroBody, ...activeLocation.obstacles.filter(body => body.active !== false),
@@ -2197,7 +2143,7 @@ async function start() {
     const x = spawner.position.x + Math.cos(angle) * radius, z = spawner.position.z + Math.sin(angle) * radius;
     const definition = ASSET_CATALOG.find(item => item.archetype === settings.archetype);
     const stats = ENEMY_STATS[settings.archetype] ?? { health: 32, maxHealth: 32, damageQuarters: 4, radius: .62 };
-    const body = enemyBody(id, location.id, x, z, { ...stats, combatAwake: location.id === 'forest'
+    const body = enemyBody(id, location.id, x, z, { ...stats, freshSpawn: true, combatAwake: location.id === 'forest'
       ? Boolean(location.combatTriggered) : true, archetype: settings.archetype, spawnReady: !settings.spawnAnimation });
     body.spawnerId = spawner.userData.sceneEditId;
     body.lastSafePosition = { x: body.x, z: body.z };
@@ -2261,6 +2207,8 @@ async function start() {
         if (figure === heroFigure || figure.locationId !== location.id) continue;
         figure.group.visible = false; figure.healthHUD.visible = false; figure.enemyMarker.group.visible = false;
         figure.group.removeFromParent(); figure.healthHUD.removeFromParent(); figure.enemyMarker.group.removeFromParent();
+        figure.sceneAttached = false;
+        figure.poolDormant = true;
         if (location.id === 'camp' && figure.body.id.startsWith('camp-goblin-')) campGoblinPool.push(figure);
         if (location.id === 'camp' && figure.body.boss) campOgrePool = figure;
         figures.splice(index, 1);
@@ -2280,14 +2228,16 @@ async function start() {
     if (boss) campOgrePool = null;
     const body = enemyBody(boss ? 'camp-ogre' : (forcedId ?? `camp-goblin-${locations.camp.goblinsSpawned + 1}`),
       'camp', spawn.x, spawn.z, boss
-        ? { health: OGRE_SETTINGS.health, maxHealth: OGRE_SETTINGS.health, combatAwake: true, spawnReady: false, boss: true,
+        ? { health: OGRE_SETTINGS.health, maxHealth: OGRE_SETTINGS.health, freshSpawn: true, combatAwake: true, spawnReady: false, boss: true,
           archetype: 'ogre-boss', radius: PUCK_RADIUS * 1.5 }
-        : { combatAwake: true, spawnReady: false });
+        : { freshSpawn: true, combatAwake: true, spawnReady: false });
     body.aiPhase = 'pause'; body.aiTimer = randomBetween(.4, 1.2);
     figure.body = body; figure.group.userData.figure = figure; figure.poolDormant = false;
+    createFigure.attach(figure);
+    if (!figures.includes(figure)) registerFigure(figure);
     figure.spawnAnimation = null; figure.victoryAnimation = null; figure.bossScale = boss ? 1.5 : 1;
     figure.hitAge = 10; figure.hitStrength = 0; figure.hurtAge = 10; figure.dealDamageAge = 10;
-    figure.viewBack = false; setVisualState(figure, 'idle');
+    figure.viewBack = false; syncFigureDamageStage(figure); setVisualState(figure, 'idle');
     locations.camp.enemies.push(body);
     figure.locationId = 'camp';
     if (boss) {
@@ -2355,7 +2305,7 @@ async function start() {
       const heading = Math.atan2(direction.x, direction.z);
       heroFigure.facing = heading; heroFigure.group.rotation.y = heading;
       orbit.theta = heading + Math.PI;
-      target.set(heroBody.x, .65, heroBody.z);
+      target.set(heroBody.x, cameraFocusHeight, heroBody.z);
       transitionCooldown = .85;
       const visit = visitCampaignLocation(campaignState, activeLocation.id);
       if (fromLocationId !== activeLocation.id) advanceStatusLocations(campaignState);
@@ -3251,7 +3201,7 @@ async function start() {
     const worldWidth = Math.max(1, bounds.maxX - bounds.minX);
     const worldDepth = Math.max(1, bounds.maxZ - bounds.minZ) * Math.cos(overviewPhi);
     const overviewDistance = Math.max(worldWidth / (2 * fit * aspect), worldDepth / (2 * fit)) * 1.22;
-    const gameplayView = { target: { x: heroBody.x, y: .65, z: heroBody.z }, theta: heroFigure.facing + Math.PI,
+    const gameplayView = { target: { x: heroBody.x, y: cameraFocusHeight, z: heroBody.z }, theta: heroFigure.facing + Math.PI,
       phi: .86, distance: orbit.distance, fov: 38 };
     const arrivalDistance = Math.min(gameplayView.distance, Math.max(8.5, gameplayView.distance * .76));
     const views = {
@@ -3278,7 +3228,8 @@ async function start() {
     target.set(frame.view.target.x, frame.view.target.y, frame.view.target.z);
     orbit.theta = frame.view.theta; orbit.phi = frame.view.phi; orbit.distance = frame.view.distance;
     if (camera.fov !== frame.view.fov) { camera.fov = frame.view.fov; camera.updateProjectionMatrix(); }
-    updateCamera();
+    // Refresh the camera-facing sprite and HUD even while the normal game loop is paused.
+    prepareScenePresentation();
     if (frame.showPlayer && !cinematic.playerSpawned) {
       cinematic.playerSpawned = true;
       heroFigure.group.visible = true;
@@ -3301,7 +3252,6 @@ async function start() {
       const drawingBufferSize = renderer.getDrawingBufferSize(new THREE.Vector2());
       sharpSceneTarget?.setSize(Math.max(1, drawingBufferSize.x), Math.max(1, drawingBufferSize.y));
       tiltShiftPass.uniforms.resolution.value.set(innerWidth * tiltShiftPixelRatio, innerHeight * tiltShiftPixelRatio);
-      setSsaoSize();
     }
   }
   addEventListener('resize', resize); addEventListener('resize', resizeItemFlightCanvas); resize();
@@ -3397,7 +3347,7 @@ async function start() {
           heroBody.rechargeTimer = checkpoint.rechargeTimer; heroBody.lastSafePosition = { x: checkpoint.x, z: checkpoint.z };
           campaignState.coins = checkpoint.coins; campaignState.inventorySlots = [...checkpoint.inventorySlots];
           campaignState.statusEffects = structuredClone(checkpoint.statusEffects);
-          target.set(checkpoint.x, .65, checkpoint.z);
+          target.set(checkpoint.x, cameraFocusHeight, checkpoint.z);
         }
         showActiveLocationFigures(); rebuildBodies(); storyActors.update(); refreshLocationInfo(); renderInventory();
         renderStatusEffectsHud(); persistCampaign(); updateCamera();
@@ -3501,6 +3451,7 @@ async function start() {
           visible: heroFigure.group.visible,
           health: heroBody.health, charges: heroBody.charges, rechargeTimer: heroBody.rechargeTimer,
           renderedX: heroFigure.group.position.x, renderedZ: heroFigure.group.position.z, viewBack: heroFigure.viewBack,
+          healthHudBillboardAligned: Math.abs(heroFigure.healthHUD.quaternion.dot(camera.quaternion)) > .99999,
           visualState: heroFigure.visualState, equipment: heroEquipment.inspect(), bonuses: combatBonuses(campaignState) },
         aim: { active: Boolean(inputController.getAimingBody()), color: playerMarker.material.color.getHexString(),
           hoveringPlayer: inputController.isHoveringPlayer(),
@@ -3844,7 +3795,6 @@ async function start() {
         icon.mesh.scale.set(baseScale * (1 + squash * .85), baseScale * (1 - squash), 1);
         if (icon.level !== level || icon.materialVariant !== materialVariant) {
           icon.mesh.material = material;
-          markSsaoSpriteAlphaCutout(icon.mesh, material.map, material.alphaTest || .04);
           icon.level = level; icon.materialVariant = materialVariant;
         }
       });
@@ -3964,7 +3914,7 @@ async function start() {
         projectiles: projectiles.length,
         earthShatterRocks: earthShatterRocks.length,
         sceneryFaces: sceneryFacePairs.length,
-        postEffects: { ssao: Boolean(screenEffects.ssao), tiltShift: Boolean(screenEffects.tiltShift) },
+        postEffects: { tiltShift: Boolean(screenEffects.tiltShift) },
       }));
     }
   });

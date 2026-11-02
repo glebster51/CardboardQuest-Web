@@ -1,4 +1,4 @@
-import { createMarkerContours, markerFillTransform, UNIT_MARKER_RADIUS, MARKER_STROKE_WIDTH } from '../marker-shapes.mjs?v=ab782efa5048549c';
+import { createMarkerContours, markerFillTransform, UNIT_MARKER_RADIUS, MARKER_STROKE_WIDTH } from '../marker-shapes.mjs?v=9c7aef8cf303e523';
 
 export function resizeRingGeometry(geometry, radius, width = MARKER_STROKE_WIDTH) {
   const segments=geometry.parameters.thetaSegments,position=geometry.attributes.position;

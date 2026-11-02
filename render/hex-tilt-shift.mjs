@@ -1,4 +1,4 @@
-import { MOBILE_RENDER_PIXEL_RATIO_CAP, MOBILE_POST_EFFECT_SCALE } from '../game/frame-rate.mjs?v=ab782efa5048549c';
+import { MOBILE_RENDER_PIXEL_RATIO_CAP, MOBILE_POST_EFFECT_SCALE } from '../game/frame-rate.mjs?v=9c7aef8cf303e523';
 export { MOBILE_POST_EFFECT_SCALE };
 
 export const HEX_BOKEH_DIRECTIONS = Object.freeze([

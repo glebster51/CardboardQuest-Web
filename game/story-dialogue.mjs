@@ -1,6 +1,6 @@
 // Original dialogue: a small domestic mystery becomes a debt inherited from adults.
 // Dialogue busts share the cut-paper character art used throughout the game.
-import { hasGrandpaDied } from './story-campaign.mjs?v=ab782efa5048549c';
+import { hasGrandpaDied } from './story-campaign.mjs?v=9c7aef8cf303e523';
 const portraitSet = key => Object.freeze({
   calm: `assets/dialogue-portraits/${key}-calm.png`,
   bold: `assets/dialogue-portraits/${key}-bold.png`,

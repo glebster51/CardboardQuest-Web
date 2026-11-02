@@ -1,4 +1,4 @@
-import { OGRE_SETTINGS as settings } from '../bosses/ogre/settings.mjs?v=ab782efa5048549c';
+import { OGRE_SETTINGS as settings } from '../bosses/ogre/settings.mjs?v=9c7aef8cf303e523';
 export const EARTH_SHATTER_ROCK_COUNT = 7;
 export const EARTH_SHATTER_LINE_SPACING = 1.18;
 export const EARTH_SHATTER_FIRST_OFFSET = 1.7;

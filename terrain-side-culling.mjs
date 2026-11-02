@@ -1,5 +1,5 @@
-import { FOG_DEFAULTS } from './fog-settings.mjs?v=ab782efa5048549c';
-import { buildFogPathTopology, fogPathDistanceAt, isInsideFogLoop } from './render/location-edge-shade.mjs?v=ab782efa5048549c';
+import { FOG_DEFAULTS } from './fog-settings.mjs?v=9c7aef8cf303e523';
+import { buildFogPathTopology, fogPathDistanceAt, isInsideFogLoop } from './render/location-edge-shade.mjs?v=9c7aef8cf303e523';
 
 const cross2 = (ax, az, bx, bz) => ax * bz - az * bx;
 

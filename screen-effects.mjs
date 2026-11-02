@@ -1,11 +1,7 @@
 export const SCREEN_EFFECT_SETTINGS_KEY = 'cardboardquest-screen-effects';
 
 export const DEFAULT_SCREEN_EFFECTS = Object.freeze({
-  ssao: false,
   tiltShift: true,
-  ssaoKernelRadius: 5,
-  ssaoMinDistance: .008,
-  ssaoMaxDistance: .12,
   tiltShiftFocus: .48,
   tiltShiftBlur: 12,
   tiltShiftUpperGradientShift: 0,
@@ -20,11 +16,7 @@ export function normalizeScreenEffects(value) {
     return Number.isFinite(candidate) ? Math.max(min, Math.min(max, candidate)) : DEFAULT_SCREEN_EFFECTS[key];
   };
   return {
-    ssao: value?.ssao === true,
     tiltShift: value?.tiltShift !== false,
-    ssaoKernelRadius: number('ssaoKernelRadius', 0, 16),
-    ssaoMinDistance: number('ssaoMinDistance', .001, .05),
-    ssaoMaxDistance: number('ssaoMaxDistance', .01, .5),
     tiltShiftFocus: number('tiltShiftFocus', 0, 1),
     tiltShiftBlur: number('tiltShiftBlur', 0, 24),
     tiltShiftUpperGradientShift: number('tiltShiftUpperGradientShift', -.25, .25),

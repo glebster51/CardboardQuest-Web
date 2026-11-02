@@ -1,6 +1,7 @@
-import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=ab782efa5048549c';
+import { clampPull, facingAngle, MAX_PULL } from '../physics.mjs?v=9c7aef8cf303e523';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const AIM_DRAG_INPUT_MULTIPLIER = 2;
 
 /** Bind the tabletop pointer, drag-to-aim, orbit, and zoom gestures. */
 export function createPointerInput({ THREE, host, inputElement = host, camera, orbit, playerMarker, windowRef = window,
@@ -67,7 +68,8 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
     const hit = hitFigure(event.clientX, event.clientY);
     if (hit?.body.team === 'player') choose(hit);
     if (hit?.body.team === 'enemy') {
-      gesture = { mode: 'blocked', pointer: event.pointerId };
+      gesture = { mode: 'orbit', pointer: event.pointerId, startX: event.clientX, startY: event.clientY,
+        lastX: event.clientX, lastY: event.clientY, moved: false };
     } else if (hit) {
       const body = getBody();
       gesture = body.health > 0
@@ -115,8 +117,8 @@ export function createPointerInput({ THREE, host, inputElement = host, camera, o
       }
       choose(figure);
       const scale = 2 * orbit.distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / windowRef.innerHeight;
-      const dx = (event.clientX - gesture.startX) * scale;
-      const dz = (event.clientY - gesture.startY) * scale / Math.cos(orbit.phi);
+      const dx = (event.clientX - gesture.startX) * scale * AIM_DRAG_INPUT_MULTIPLIER;
+      const dz = (event.clientY - gesture.startY) * scale * AIM_DRAG_INPUT_MULTIPLIER / Math.cos(orbit.phi);
       gesture.pull = clampPull((Math.cos(orbit.theta) * dx + Math.sin(orbit.theta) * dz) * aimDragSensitivity,
         (-Math.sin(orbit.theta) * dx + Math.cos(orbit.theta) * dz) * aimDragSensitivity);
       const direction = new THREE.Vector3(-gesture.pull.x, 0, -gesture.pull.z);

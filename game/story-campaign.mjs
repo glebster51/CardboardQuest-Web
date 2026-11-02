@@ -1,7 +1,7 @@
-import { EQUIPMENT_ITEMS, normalizeEquipment } from './equipment.mjs?v=ab782efa5048549c';
-import { normalizeCoins } from './currency.mjs?v=ab782efa5048549c';
-import { normalizeStatusEffects } from './status-effects.mjs?v=ab782efa5048549c';
-import { finiteNumber, isRecord, normalizeCampaignSaveFields } from './campaign-state-validation.mjs?v=ab782efa5048549c';
+import { EQUIPMENT_ITEMS, normalizeEquipment } from './equipment.mjs?v=9c7aef8cf303e523';
+import { normalizeCoins } from './currency.mjs?v=9c7aef8cf303e523';
+import { normalizeStatusEffects } from './status-effects.mjs?v=9c7aef8cf303e523';
+import { finiteNumber, isRecord, normalizeCampaignSaveFields } from './campaign-state-validation.mjs?v=9c7aef8cf303e523';
 export const CAMPAIGN_SAVE_KEY = 'cardboardquest-campaign-v1';
 
 // Plot clues stay in the world until the player physically reaches them.
